@@ -31,6 +31,7 @@ import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemor
 import { recordMessage as recordSessionMessage, recordToolCall as recordSessionToolCall, recordFailure as recordSessionFailure } from "./sessionHealth";
 import { verifyResponse, shouldVerify, generateBadge } from "./synthesisVerification";
 import { createHeartbeatState, feedTokens, getHeartbeatStatus, getProgressPercent } from "./heartbeatInterrupt";
+import { OWNER_CONTEXT } from "./ownerContext";
 
 const CAPTAIN_SYSTEM_PROMPT = `You are Captain Q — Anthony's AI co-pilot and the brain behind Quoratorium.
 
@@ -640,7 +641,7 @@ async function handleStandardChat(
   userId?: number | null
 ) {
   const basePrompt = getSystemPrompt(intent);
-  const systemPrompt = memoryContext ? basePrompt + memoryContext : basePrompt;
+  const systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
   ];
