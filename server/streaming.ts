@@ -9,7 +9,6 @@ import Anthropic from "@anthropic-ai/sdk";
 import { addOrchestrationEvent } from "./db";
 import { detectIntent, type WorkerIntent } from "./workers";
 import { invokeLLM } from "./_core/llm";
-import { clerkClient } from "@clerk/express";
 import * as db from "./db";
 import { executeCode, getExecutionEngineStatus } from "./codeExecutor";
 import { executeBrowserTask, parseBrowserTask } from "./browserWorker";
@@ -26,6 +25,7 @@ import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabas
 import { getRAGContext } from "./knowledgeBaseService";
 import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
 import { OWNER_EMAILS } from "./_core/env";
+import { getOwnerUser } from "./_core/context";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
 import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
 import { recordMessage as recordSessionMessage, recordToolCall as recordSessionToolCall, recordFailure as recordSessionFailure } from "./sessionHealth";
@@ -139,46 +139,50 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Authenticate user from Clerk session (with owner bypass)
+    // Resolve the platform owner first, using the exact same path as the tRPC
+    // context that powers conversations.list. This keeps streaming writes and
+    // sidebar reads on the same database user even if a stale Clerk session exists.
     let userId: number | null = null;
     let isGuest = true;
     try {
-      const clerkAuth = (req as any).auth;
-      if (clerkAuth?.userId) {
-        const dbUser = await db.getUserByClerkId(clerkAuth.userId);
-        if (dbUser?.id) {
-          userId = dbUser.id;
-          isGuest = false;
-        }
+      const ownerUser = await getOwnerUser();
+      if (ownerUser?.id) {
+        userId = ownerUser.id;
+        isGuest = false;
+        console.log("[Conversation] Streaming user resolved", {
+          source: "owner_bypass",
+          userId,
+        });
+      } else {
+        console.error("[Conversation] Owner bypass did not resolve a database user", {
+          ownerOpenIdConfigured: Boolean(process.env.OWNER_OPEN_ID),
+        });
       }
-    } catch {
-      // Continue as guest
+    } catch (error: any) {
+      console.error("[Conversation] Owner resolution failed", {
+        error: error?.stack || error?.message || error,
+      });
     }
 
-    // Owner bypass: resolve owner user when Clerk is unavailable
+    // Fallback to Clerk only when the shared owner bypass is unavailable.
     if (!userId) {
       try {
-        const ownerOpenId = process.env.OWNER_OPEN_ID;
-        if (ownerOpenId) {
-          let ownerUser = await db.getUserByClerkId(ownerOpenId);
-          if (!ownerUser) {
-            await db.upsertUser({
-              clerkId: ownerOpenId,
-              name: process.env.OWNER_NAME || "Owner",
-              email: null,
-              loginMethod: "owner_bypass",
-              lastSignedIn: new Date(),
-              role: "admin",
-            });
-            ownerUser = await db.getUserByClerkId(ownerOpenId);
-          }
-          if (ownerUser?.id) {
-            userId = ownerUser.id;
+        const clerkAuth = (req as any).auth;
+        if (clerkAuth?.userId) {
+          const dbUser = await db.getUserByClerkId(clerkAuth.userId);
+          if (dbUser?.id) {
+            userId = dbUser.id;
             isGuest = false;
+            console.log("[Conversation] Streaming user resolved", {
+              source: "clerk",
+              userId,
+            });
           }
         }
-      } catch {
-        // Non-blocking: proceed as guest if owner bypass fails
+      } catch (error: any) {
+        console.error("[Conversation] Clerk fallback resolution failed", {
+          error: error?.stack || error?.message || error,
+        });
       }
     }
 
@@ -198,10 +202,20 @@ export function registerStreamingRoutes(app: Express) {
             : null;
         const title = message.trim().replace(/\s+/g, " ").slice(0, 80) || "New conversation";
 
+        console.log("[Conversation] Persistence attempt", {
+          userId,
+          requestedConversationId,
+          projectId: normalizedProjectId,
+        });
+
         if (requestedConversationId) {
           const existingConversation = await db.getConversationForUser(requestedConversationId, userId);
           if (existingConversation) {
             persistedConversationId = existingConversation.id;
+            console.log("[Conversation] Reusing conversation", {
+              userId,
+              conversationId: persistedConversationId,
+            });
             if (!existingConversation.title) {
               await db.updateConversationTitle(existingConversation.id, userId, title);
             }
@@ -213,25 +227,41 @@ export function registerStreamingRoutes(app: Express) {
         }
 
         if (!persistedConversationId) {
+          console.log("[Conversation] Creating conversation", { userId });
           persistedConversationId = await db.createConversation({
             userId,
             title,
             projectId: normalizedProjectId,
           });
+          console.log("[Conversation] Conversation created", {
+            userId,
+            conversationId: persistedConversationId,
+          });
         }
 
-        await db.addConversationMessage({
+        const userMessageId = await db.addConversationMessage({
           userId,
           conversationId: persistedConversationId,
           role: "user",
           content: message,
         });
-      } catch (error: any) {
-        logger.error(`[Conversation] Failed to persist user message: ${error?.message || error}`, {
+        console.log("[Conversation] User message saved", {
           userId,
+          conversationId: persistedConversationId,
+          messageId: userMessageId,
+        });
+      } catch (error: any) {
+        console.error("[Conversation] Failed to persist conversation or user message", {
+          userId,
+          conversationId: persistedConversationId,
+          error: error?.stack || error?.message || error,
         });
         persistedConversationId = null;
       }
+    } else {
+      console.error("[Conversation] Persistence skipped because no database user was resolved", {
+        ownerOpenIdConfigured: Boolean(process.env.OWNER_OPEN_ID),
+      });
     }
 
     // Set SSE headers
@@ -465,16 +495,16 @@ export function registerStreamingRoutes(app: Express) {
       // Route to appropriate worker
       switch (intent) {
         case "image":
-          await handleImageGeneration(res, message, projectId);
+          await handleImageGeneration(res, message, projectId, userId, persistedConversationId);
           break;
         case "browser":
-          await handleBrowserTask(res, message, projectId);
+          await handleBrowserTask(res, message, projectId, userId, persistedConversationId);
           break;
         case "execute":
-          await handleCodeExecution(res, message, projectId);
+          await handleCodeExecution(res, message, projectId, userId, persistedConversationId);
           break;
         case "complex":
-          await handleMultiStepChain(res, message, projectId, memoryContext + knowledgeContext);
+          await handleMultiStepChain(res, message, projectId, memoryContext + knowledgeContext, userId, persistedConversationId);
           break;
         default:
           await handleStandardChat(
@@ -577,51 +607,142 @@ export function registerStreamingRoutes(app: Express) {
 
 // ─── Handler Functions ──────────────────────────────────────────────────────
 
-async function handleImageGeneration(res: Response, message: string, projectId: number | null) {
+async function persistAssistantConversationMessage(
+  userId: number | null | undefined,
+  conversationId: number | null | undefined,
+  content: string,
+  metadata: Record<string, any>
+): Promise<void> {
+  if (!userId || !conversationId) {
+    console.error("[Conversation] Assistant message persistence skipped", {
+      userId: userId ?? null,
+      conversationId: conversationId ?? null,
+      reason: "missing user or conversation",
+    });
+    return;
+  }
+
+  if (!content.trim()) {
+    console.error("[Conversation] Assistant message persistence skipped", {
+      userId,
+      conversationId,
+      reason: "empty response",
+    });
+    return;
+  }
+
+  console.log("[Conversation] Assistant message persistence attempt", {
+    userId,
+    conversationId,
+    responseLength: content.length,
+    intent: metadata.intent,
+  });
+
+  try {
+    const messageId = await db.addConversationMessage({
+      userId,
+      conversationId,
+      role: "assistant",
+      content,
+      metadata,
+    });
+    console.log("[Conversation] Assistant message saved", {
+      userId,
+      conversationId,
+      messageId,
+      responseLength: content.length,
+    });
+  } catch (error: any) {
+    console.error("[Conversation] Failed to persist assistant message", {
+      userId,
+      conversationId,
+      responseLength: content.length,
+      error: error?.stack || error?.message || error,
+    });
+  }
+}
+
+async function handleImageGeneration(
+  res: Response,
+  message: string,
+  projectId: number | null,
+  userId: number | null,
+  conversationId: number | null
+) {
   const prompt = extractImagePrompt(message);
-  res.write(`data: ${JSON.stringify({ type: "token", content: `🎨 Generating image: "${prompt}"...\n\n` })}\n\n`);
+  let assistantResponse = `🎨 Generating image: "${prompt}"...\n\n`;
+  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await generateImage(prompt);
 
   if (result.success && result.imageUrl) {
+    const completion = `\n\n✅ Image generated successfully.\n\n**Prompt used:** ${result.revisedPrompt || prompt}\n\n**Storage:** ${result.storageKey ? "Saved to vault" : "Inline display"}\n\n**Image:** ${result.imageUrl}`;
     res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, revisedPrompt: result.revisedPrompt })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: "token", content: `\n\n✅ Image generated successfully.\n\n**Prompt used:** ${result.revisedPrompt || prompt}\n\n**Storage:** ${result.storageKey ? "Saved to vault" : "Inline display"}` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+    assistantResponse += completion;
   } else {
-    res.write(`data: ${JSON.stringify({ type: "token", content: `❌ Image generation failed: ${result.error}` })}\n\n`);
+    const failure = `❌ Image generation failed: ${result.error}`;
+    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
+    assistantResponse += failure;
   }
+
+  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "image" });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
   res.end();
 }
 
-async function handleBrowserTask(res: Response, message: string, projectId: number | null) {
+async function handleBrowserTask(
+  res: Response,
+  message: string,
+  projectId: number | null,
+  userId: number | null,
+  conversationId: number | null
+) {
   const task = parseBrowserTask(message);
-  res.write(`data: ${JSON.stringify({ type: "token", content: `🌐 Browser worker activated...\n\n**Action:** ${task?.action || "extract"}\n**URL:** ${task?.url || "unknown"}\n\n` })}\n\n`);
+  let assistantResponse = `🌐 Browser worker activated...\n\n**Action:** ${task?.action || "extract"}\n**URL:** ${task?.url || "unknown"}\n\n`;
+  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await executeBrowserTask(message);
 
   if (result.success) {
     if (result.type === "screenshot") {
+      const completion = `\n\n✅ Screenshot captured: **${result.title}**\nURL: ${result.url}`;
       res.write(`data: ${JSON.stringify({ type: "image", url: `data:image/png;base64,${result.content}`, title: result.title })}\n\n`);
-      res.write(`data: ${JSON.stringify({ type: "token", content: `\n\n✅ Screenshot captured: **${result.title}**\nURL: ${result.url}` })}\n\n`);
+      res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+      assistantResponse += completion;
     } else {
-      res.write(`data: ${JSON.stringify({ type: "token", content: `✅ **${result.title || "Page"}** (${result.url})\n\n\`\`\`\n${result.content.slice(0, 5000)}\n\`\`\`` })}\n\n`);
+      const completion = `✅ **${result.title || "Page"}** (${result.url})\n\n\`\`\`\n${result.content.slice(0, 5000)}\n\`\`\``;
+      res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+      assistantResponse += completion;
     }
   } else {
-    res.write(`data: ${JSON.stringify({ type: "token", content: `❌ Browser task failed: ${result.error}\n\nNote: The browser worker requires Chromium to be installed in the deployment environment. This feature works best in development.` })}\n\n`);
+    const failure = `❌ Browser task failed: ${result.error}\n\nNote: The browser worker requires Chromium to be installed in the deployment environment. This feature works best in development.`;
+    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
+    assistantResponse += failure;
   }
+
+  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "browser" });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
   res.end();
 }
 
-async function handleCodeExecution(res: Response, message: string, projectId: number | null) {
+async function handleCodeExecution(
+  res: Response,
+  message: string,
+  projectId: number | null,
+  userId: number | null,
+  conversationId: number | null
+) {
   // Extract code block from message
   const codeMatch = message.match(/```(\w+)?\n([\s\S]*?)```/);
   if (!codeMatch) {
-    res.write(`data: ${JSON.stringify({ type: "token", content: "❌ No code block found. Please wrap your code in triple backticks:\n\n\\`\\`\\`javascript\nconsole.log('hello');\n\\`\\`\\`" })}\n\n`);
+    const failure = "❌ No code block found. Please wrap your code in triple backticks:\n\n```javascript\nconsole.log('hello');\n```";
+    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
+    await persistAssistantConversationMessage(userId, conversationId, failure, { intent: "execute" });
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
     res.write(`data: [DONE]\n\n`);
     res.end();
@@ -630,66 +751,95 @@ async function handleCodeExecution(res: Response, message: string, projectId: nu
 
   const langHint = (codeMatch[1] || "javascript").toLowerCase();
   const code = codeMatch[2];
-  const language: "javascript" | "typescript" | "python" | "bash" = 
+  const language: "javascript" | "typescript" | "python" | "bash" =
     langHint === "python" || langHint === "py" ? "python" :
     langHint === "typescript" || langHint === "ts" ? "typescript" :
     langHint === "bash" || langHint === "sh" || langHint === "shell" ? "bash" : "javascript";
 
   const engineLabel = process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox";
-  res.write(`data: ${JSON.stringify({ type: "token", content: `⚡ Executing ${language} code via **${engineLabel}**...\n\n` })}\n\n`);
+  let assistantResponse = `⚡ Executing ${language} code via **${engineLabel}**...\n\n`;
+  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await executeCode(code, language);
 
-  const engineInfo = result.engine === "sprites" 
-    ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}` 
+  const engineInfo = result.engine === "sprites"
+    ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}`
     : " | Engine: Local";
 
   if (result.success) {
     const output = result.stdout || "(no output)";
+    const completion = `✅ **Execution successful** (${result.duration}ms${engineInfo})\n\n\`\`\`\n${output}\n\`\`\``;
     res.write(`data: ${JSON.stringify({ type: "execution", language, success: true, stdout: result.stdout, stderr: result.stderr, duration: result.duration, engine: result.engine, spriteName: result.spriteName })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: "token", content: `✅ **Execution successful** (${result.duration}ms${engineInfo})\n\n\`\`\`\n${output}\n\`\`\`` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+    assistantResponse += completion;
   } else {
+    const errorMsg = result.timedOut ? "⏱️ Execution timed out (30s limit)" : "❌ Execution failed";
+    const completion = `${errorMsg}${engineInfo}\n\n\`\`\`\n${result.stderr || result.stdout || "Unknown error"}\n\`\`\``;
     res.write(`data: ${JSON.stringify({ type: "execution", language, success: false, stdout: result.stdout, stderr: result.stderr, duration: result.duration, timedOut: result.timedOut, engine: result.engine })}\n\n`);
-    const errorMsg = result.timedOut ? "⏱️ Execution timed out (30s limit)" : `❌ Execution failed`;
-    res.write(`data: ${JSON.stringify({ type: "token", content: `${errorMsg}${engineInfo}\n\n\`\`\`\n${result.stderr || result.stdout || "Unknown error"}\n\`\`\`` })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+    assistantResponse += completion;
   }
 
   if (result.stderr && result.success) {
-    res.write(`data: ${JSON.stringify({ type: "token", content: `\n\n⚠️ Warnings:\n\`\`\`\n${result.stderr}\n\`\`\`` })}\n\n`);
+    const warnings = `\n\n⚠️ Warnings:\n\`\`\`\n${result.stderr}\n\`\`\``;
+    res.write(`data: ${JSON.stringify({ type: "token", content: warnings })}\n\n`);
+    assistantResponse += warnings;
   }
+
+  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, {
+    intent: "execute",
+    language,
+    success: result.success,
+  });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
   res.end();
 }
 
-async function handleMultiStepChain(res: Response, message: string, projectId: number | null, memoryContext: string = "") {
-  res.write(`data: ${JSON.stringify({ type: "token", content: "🔗 **Captain Q: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n" })}\n\n`);
+async function handleMultiStepChain(
+  res: Response,
+  message: string,
+  projectId: number | null,
+  memoryContext: string = "",
+  userId: number | null,
+  conversationId: number | null
+) {
+  let assistantResponse = "🔗 **Captain Q: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n";
+  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await executeTaskChain(
     message,
     "Q Workspace project",
-    1, // userId
+    userId || 1,
     projectId,
     (step, index, total) => {
       // Send progress updates
       const statusEmoji = step.status === "completed" ? "✅" : step.status === "running" ? "⏳" : step.status === "failed" ? "❌" : "🔄";
       res.write(`data: ${JSON.stringify({ type: "progress", step: index + 1, total, name: step.name, status: step.status })}\n\n`);
       if (step.status === "running") {
-        res.write(`data: ${JSON.stringify({ type: "token", content: `\n${statusEmoji} **Step ${index + 1}/${total}: ${step.name}**\n_Worker: ${step.worker}_\n\n` })}\n\n`);
+        const progress = `\n${statusEmoji} **Step ${index + 1}/${total}: ${step.name}**\n_Worker: ${step.worker}_\n\n`;
+        res.write(`data: ${JSON.stringify({ type: "token", content: progress })}\n\n`);
+        assistantResponse += progress;
       }
     }
   );
 
   // Send final results
-  res.write(`data: ${JSON.stringify({ type: "token", content: `\n\n---\n\n## Task Chain Results\n\n**Duration:** ${Math.round(result.totalDuration / 1000)}s\n**Steps:** ${result.steps.filter(s => s.status === "completed").length}/${result.steps.length} completed\n\n` })}\n\n`);
+  const summary = `\n\n---\n\n## Task Chain Results\n\n**Duration:** ${Math.round(result.totalDuration / 1000)}s\n**Steps:** ${result.steps.filter(s => s.status === "completed").length}/${result.steps.length} completed\n\n`;
+  res.write(`data: ${JSON.stringify({ type: "token", content: summary })}\n\n`);
+  assistantResponse += summary;
 
   // Send each step's result
   for (const step of result.steps) {
     if (step.result) {
-      res.write(`data: ${JSON.stringify({ type: "token", content: `### ${step.name}\n${step.result.slice(0, 2000)}\n\n` })}\n\n`);
+      const stepResponse = `### ${step.name}\n${step.result.slice(0, 2000)}\n\n`;
+      res.write(`data: ${JSON.stringify({ type: "token", content: stepResponse })}\n\n`);
+      assistantResponse += stepResponse;
     }
   }
+
+  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "complex" });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -761,22 +911,10 @@ async function handleStandardChat(
       if (toolResult.response && toolResult.toolsUsed.length > 0) {
         res.write(`data: ${JSON.stringify({ type: "token", content: toolResult.response })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed: toolResult.toolsUsed })}\n\n`);
-        if (userId && conversationId) {
-          try {
-            await db.addConversationMessage({
-              userId,
-              conversationId,
-              role: "assistant",
-              content: toolResult.response,
-              metadata: { intent, toolsUsed: toolResult.toolsUsed },
-            });
-          } catch (error: any) {
-            logger.error(`[Conversation] Failed to persist tool response: ${error?.message || error}`, {
-              userId,
-              metadata: { conversationId },
-            });
-          }
-        }
+        await persistAssistantConversationMessage(userId, conversationId, toolResult.response, {
+          intent,
+          toolsUsed: toolResult.toolsUsed,
+        });
         res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
@@ -873,22 +1011,7 @@ async function handleStandardChat(
     }
   }
 
-  if (fullResponse && userId && conversationId) {
-    try {
-      await db.addConversationMessage({
-        userId,
-        conversationId,
-        role: "assistant",
-        content: fullResponse,
-        metadata: { intent },
-      });
-    } catch (error: any) {
-      logger.error(`[Conversation] Failed to persist assistant message: ${error?.message || error}`, {
-        userId,
-        metadata: { conversationId },
-      });
-    }
-  }
+  await persistAssistantConversationMessage(userId, conversationId, fullResponse, { intent });
 
   if (!res.writableEnded) {
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);

@@ -278,14 +278,21 @@ export async function upsertUser(user: {
   role?: "user" | "admin";
 }): Promise<void> {
   const db = getDbOrNull();
-  if (!db) { console.warn("[Database] Cannot upsert user: Supabase not available"); return; }
+  if (!db) {
+    console.error("[Database] Cannot upsert user: Supabase not available");
+    throw new Error("Supabase not configured");
+  }
 
-  const { data: existing } = await db
+  const { data: existing, error: lookupError } = await db
     .from("users")
     .select("id")
     .eq("clerk_id", user.clerkId)
     .limit(1)
-    .single();
+    .maybeSingle();
+  if (lookupError) {
+    console.error("[Database] Failed to look up user before upsert:", lookupError.message);
+    throw new Error(`Failed to look up user: ${lookupError.message}`);
+  }
 
   if (existing) {
     // Update existing user
@@ -297,10 +304,14 @@ export async function upsertUser(user: {
     if (user.role !== undefined) updateData.role = user.role;
     if (Object.keys(updateData).length === 0) updateData.last_signed_in = new Date().toISOString();
 
-    await db.from("users").update(updateData).eq("clerk_id", user.clerkId);
+    const { error: updateError } = await db.from("users").update(updateData).eq("clerk_id", user.clerkId);
+    if (updateError) {
+      console.error("[Database] Failed to update user:", updateError.message);
+      throw new Error(`Failed to update user: ${updateError.message}`);
+    }
   } else {
     // Insert new user
-    await db.from("users").insert({
+    const { error: insertError } = await db.from("users").insert({
       clerk_id: user.clerkId,
       name: user.name || null,
       email: user.email || null,
@@ -308,18 +319,29 @@ export async function upsertUser(user: {
       role: user.role || "user",
       last_signed_in: (user.lastSignedIn || new Date()).toISOString(),
     });
+    if (insertError) {
+      console.error("[Database] Failed to insert user:", insertError.message);
+      throw new Error(`Failed to insert user: ${insertError.message}`);
+    }
   }
 }
 
 export async function getUserByClerkId(clerkId: string): Promise<User | undefined> {
   const db = getDbOrNull();
-  if (!db) return undefined;
-  const { data } = await db
+  if (!db) {
+    console.error("[Database] Cannot look up user by Clerk ID: Supabase not available");
+    return undefined;
+  }
+  const { data, error } = await db
     .from("users")
     .select("*")
     .eq("clerk_id", clerkId)
     .limit(1)
-    .single();
+    .maybeSingle();
+  if (error) {
+    console.error("[Database] Failed to look up user by Clerk ID:", error.message);
+    throw new Error(`Failed to look up user by Clerk ID: ${error.message}`);
+  }
   return data || undefined;
 }
 
@@ -328,13 +350,20 @@ export const getUserByOpenId = getUserByClerkId;
 
 export async function getUserById(id: number): Promise<User | undefined> {
   const db = getDbOrNull();
-  if (!db) return undefined;
-  const { data } = await db
+  if (!db) {
+    console.error("[Database] Cannot look up user by ID: Supabase not available");
+    return undefined;
+  }
+  const { data, error } = await db
     .from("users")
     .select("*")
     .eq("id", id)
     .limit(1)
-    .single();
+    .maybeSingle();
+  if (error) {
+    console.error("[Database] Failed to look up user by ID:", error.message);
+    throw new Error(`Failed to look up user by ID: ${error.message}`);
+  }
   return data || undefined;
 }
 
@@ -449,9 +478,12 @@ export async function getConversationForUser(
     .eq("id", conversationId)
     .eq("user_id", userId)
     .limit(1)
-    .single();
-  if (error || !data) return undefined;
-  return data;
+    .maybeSingle();
+  if (error) {
+    console.error("[Database] Failed to look up conversation ownership:", error.message);
+    throw new Error(`Failed to look up conversation ownership: ${error.message}`);
+  }
+  return data || undefined;
 }
 
 export async function updateConversationTitle(
