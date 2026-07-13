@@ -4,7 +4,7 @@
  * Split-pane layout:
  * - Left Sidebar: Project/conversation history (hidden on mobile, accessible via drawer)
  * - Center Panel (Cognitive Zone): Synthesis conversation
- * - Right Panel: Live Preview (when code is generated) OR Neural Orchestration
+ * - Right Panel: Live Preview (when code is generated)
  * - Top Navigation (Command Center): Global navigation + preview toggle
  * 
  * Mobile back button: Drawer states push history entries so back button closes them
@@ -12,26 +12,20 @@
  */
 import { useState, useCallback, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { PanelRightClose, PanelRightOpen, ChevronUp, X, Eye, EyeOff } from "lucide-react";
+import { X, Eye, EyeOff } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { ConversationPanel } from "@/components/panels/ConversationPanel";
-import { OrchestrationPanel } from "@/components/panels/OrchestrationPanel";
 import { WorkspacePreviewPanel, MobilePreviewOverlay } from "@/components/panels/WorkspacePreviewPanel";
-import { NeuralOrchestration } from "@/components/NeuralOrchestration";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
 import { BootScreen } from "@/components/BootScreen";
-import { useUIStore, useConversationStore } from "@/stores";
+import { useUIStore } from "@/stores";
 import { useSettingsStore } from "@/stores/settingsStore";
-import { useOrchestrationEngine } from "@/hooks/useOrchestrationEngine";
 import { duration, ease } from "@/lib/motion";
 import { useAuth } from "@/_core/hooks/useAuth";
 
 export default function Home() {
   const { user, loading } = useAuth();
-  const { rightPanelOpen, toggleRightPanel, previewPanelOpen, previewCode, togglePreviewPanel, closePreview } = useUIStore();
-  const { isTyping } = useConversationStore();
-  const orchestrationEngine = useOrchestrationEngine();
-  const orchestrationPosition = useSettingsStore((s) => s.settings["appearance.orchestrationPosition"] || "side");
+  const { previewPanelOpen, previewCode, togglePreviewPanel } = useUIStore();
   const animationIntensity = useSettingsStore((s) => s.settings["appearance.animationIntensity"] || "full");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [isMobile, setIsMobile] = useState(false);
@@ -87,9 +81,7 @@ export default function Home() {
     sessionStorage.setItem("q-booted", "1");
   }, []);
 
-  // Determine which right panel to show: preview takes priority over orchestration
   const showPreviewPanel = previewPanelOpen && previewCode;
-  const showOrchestrationPanel = rightPanelOpen && !showPreviewPanel && !isMobile && orchestrationPosition !== "hidden";
 
   return (
     <div className="h-screen flex flex-col overflow-hidden surface-base">
@@ -164,7 +156,7 @@ export default function Home() {
           animate={{
             flex: isMobile
               ? "1 1 100%"
-              : (showPreviewPanel || showOrchestrationPanel)
+              : showPreviewPanel
                 ? "0 0 50%"
                 : "1 1 100%",
           }}
@@ -190,29 +182,7 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Right Panel — Neural Orchestration (shown when no preview) */}
-        <AnimatePresence mode="wait">
-          {showOrchestrationPanel && (
-            <motion.div
-              className="flex-col hidden lg:flex flex-1 relative"
-              style={{ backgroundColor: "#0D0D14" }}
-              initial={{ opacity: 0, x: 20, scale: 0.98 }}
-              animate={{ opacity: 1, x: 0, scale: 1 }}
-              exit={{ opacity: 0, x: 20, scale: 0.98 }}
-              transition={{ duration: animationIntensity === "off" ? 0 : duration.normal, ease: ease.out }}
-            >
-              <NeuralOrchestration
-                isProcessing={isTyping}
-                activeWorkers={orchestrationEngine.workers
-                  .filter(w => w.status === "active")
-                  .map(w => w.id)}
-                currentStep={orchestrationEngine.currentThought}
-              />
-            </motion.div>
-          )}
-        </AnimatePresence>
-
-        {/* Panel toggle buttons (desktop only) */}
+        {/* Preview toggle button (desktop only) */}
         <div className="absolute top-3 right-3 z-20 hidden lg:flex items-center gap-1">
           {/* Preview toggle — only visible when there's code to preview */}
           {previewCode && (
@@ -230,18 +200,6 @@ export default function Home() {
               {previewPanelOpen ? <EyeOff size={14} /> : <Eye size={14} />}
             </motion.button>
           )}
-          {/* Orchestration toggle */}
-          {!showPreviewPanel && (
-            <motion.button
-              onClick={toggleRightPanel}
-              className="p-2 rounded-sm surface-elevated border border-border text-muted-foreground hover:text-primary hover:border-primary/30 transition-colors"
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              title={rightPanelOpen ? "Hide orchestration" : "Show orchestration"}
-            >
-              {rightPanelOpen ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
-            </motion.button>
-          )}
         </div>
       </div>
 
@@ -251,13 +209,6 @@ export default function Home() {
           <MobilePreviewOverlay />
         )}
       </AnimatePresence>
-
-      {/* Mobile: Bottom orchestration tab (only when no preview overlay) */}
-      {(!previewPanelOpen || !isMobile) && (
-        <div className="lg:hidden border-t border-border surface-base">
-          <MobileOrchestrationTab />
-        </div>
-      )}
 
       {/* Mobile: Preview toggle button (floating, bottom-right) */}
       {isMobile && previewCode && !previewPanelOpen && (
@@ -277,76 +228,6 @@ export default function Home() {
       {/* System heartbeat bar (hidden when animations off) */}
       {animationIntensity !== "off" && <HeartbeatBar />}
     </div>
-  );
-}
-
-function MobileOrchestrationTab() {
-  const [expanded, setExpanded] = useState(false);
-  const historyPushed = useRef(false);
-
-  const handleToggle = () => {
-    if (!expanded) {
-      if (!historyPushed.current) {
-        window.history.pushState({ orchestrationOpen: true }, "", window.location.href);
-        historyPushed.current = true;
-      }
-    } else {
-      historyPushed.current = false;
-    }
-    setExpanded(!expanded);
-  };
-
-  useEffect(() => {
-    const handlePopState = (e: PopStateEvent) => {
-      if (expanded) {
-        e.preventDefault();
-        setExpanded(false);
-        historyPushed.current = false;
-      }
-    };
-    window.addEventListener("popstate", handlePopState);
-    return () => window.removeEventListener("popstate", handlePopState);
-  }, [expanded]);
-
-  return (
-    <>
-      <button
-        onClick={handleToggle}
-        className="w-full flex items-center justify-between px-4 py-3"
-      >
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <div className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
-            <motion.div
-              className="absolute inset-0 rounded-full bg-[#10B981]"
-              animate={{ scale: [1, 2.5], opacity: [0.5, 0] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-            />
-          </div>
-          <span className="text-[10px] font-medium text-muted-foreground tracking-[0.1em] uppercase">
-            Orchestration
-          </span>
-          <span className="text-[9px] text-[#10B981]/60 font-mono">LIVE</span>
-        </div>
-        <motion.div animate={{ rotate: expanded ? 180 : 0 }} transition={{ duration: 0.2 }}>
-          <ChevronUp size={14} className="text-muted-foreground" />
-        </motion.div>
-      </button>
-
-      <AnimatePresence>
-        {expanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "55vh", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: duration.normal, ease: ease.out }}
-            className="overflow-hidden border-t border-border"
-          >
-            <OrchestrationPanel />
-          </motion.div>
-        )}
-      </AnimatePresence>
-    </>
   );
 }
 
