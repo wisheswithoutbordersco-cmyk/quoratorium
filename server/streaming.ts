@@ -133,7 +133,11 @@ export function registerStreamingRoutes(app: Express) {
 
   // Main streaming chat endpoint
   app.post("/api/stream/chat", async (req: Request, res: Response) => {
-    const { message, projectId, conversationId, history } = req.body;
+    const { message, projectId, conversationId: bodyConversationId, history } = req.body;
+    const queryConversationId =
+      typeof req.query.conversationId === "string"
+        ? Number(req.query.conversationId)
+        : null;
     if (!message) {
       res.status(400).json({ error: "Message required" });
       return;
@@ -193,9 +197,11 @@ export function registerStreamingRoutes(app: Express) {
     if (userId) {
       try {
         const requestedConversationId =
-          typeof conversationId === "number" && Number.isInteger(conversationId) && conversationId > 0
-            ? conversationId
-            : null;
+          typeof queryConversationId === "number" && Number.isInteger(queryConversationId) && queryConversationId > 0
+            ? queryConversationId
+            : typeof bodyConversationId === "number" && Number.isInteger(bodyConversationId) && bodyConversationId > 0
+              ? bodyConversationId
+              : null;
         const normalizedProjectId =
           typeof projectId === "number" && Number.isInteger(projectId) && projectId > 0
             ? projectId
