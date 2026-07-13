@@ -62,6 +62,9 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  // Keep the server-issued ID available synchronously between React renders so
+  // a rapid follow-up cannot accidentally start a second conversation.
+  const activeConversationIdRef = useRef<string | null>(activeConversationId);
   const [livePreviewCode, setLivePreviewCode] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
@@ -80,6 +83,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
       }
     }
   }, [ownerStatus?.isOwner]);
+
+  useEffect(() => {
+    activeConversationIdRef.current = activeConversationId;
+  }, [activeConversationId]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -147,8 +154,8 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     // The streaming endpoint is the single source of truth for persistence.
     // Send the current conversation when present; for a new chat the server
     // creates it and returns its authoritative ID in an SSE event.
-    streamResponse(messageText, safeParseInt(activeConversationId));
-  }, [input, pendingUploads, activeProject, activeConversationId]);
+    streamResponse(messageText, safeParseInt(activeConversationIdRef.current));
+  }, [input, pendingUploads, activeProject]);
 
   const streamResponse = async (messageText: string, conversationId?: number) => {
     const assistantId = nanoid();
@@ -172,7 +179,11 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         .slice(-10)
         .map(m => ({ role: m.role, content: m.content }));
 
-      const response = await fetch("/api/stream/chat", {
+      const streamUrl = conversationId
+        ? `/api/stream/chat?conversationId=${encodeURIComponent(String(conversationId))}`
+        : "/api/stream/chat";
+
+      const response = await fetch(streamUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -180,7 +191,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         body: JSON.stringify({
           message: messageText,
           projectId: safeParseInt(activeProject?.id),
-          conversationId,
           history,
         }),
       });
@@ -217,6 +227,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             if (event.type === "conversation_id") {
               const serverConversationId = safeParseInt(String(event.conversationId));
               if (serverConversationId !== undefined) {
+                activeConversationIdRef.current = String(serverConversationId);
                 setActiveConversationId(String(serverConversationId));
                 // Refresh immediately so the server-created conversation appears
                 // in the sidebar while the assistant response is still streaming.
