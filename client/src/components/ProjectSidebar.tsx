@@ -32,27 +32,6 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
   const { data: projects, isLoading: projectsLoading } = trpc.projects.list.useQuery();
   const { data: conversations, isLoading: convsLoading } = trpc.conversations.list.useQuery(undefined, { refetchInterval: 5000 });
   const utils = trpc.useUtils();
-  const loadConversation = {
-    mutate: async (input: { id: number }) => {
-      try {
-        const res = await fetch(`/api/trpc/conversations.get?input=${encodeURIComponent(JSON.stringify(input))}`, {
-          credentials: "include",
-        });
-        const json = await res.json();
-        const data = json?.result?.data;
-        if (data) {
-          setActiveConversationId(data.id.toString());
-          const msgs = data.messages.map((m: any) => ({
-            id: m.id.toString(),
-            role: m.role as "user" | "assistant",
-            content: m.content,
-            timestamp: new Date(m.createdAt),
-          }));
-          setMessages(msgs);
-        }
-      } catch { /* ignore */ }
-    },
-  };
   const deleteConversation = trpc.conversations.delete.useMutation({
     onSuccess: () => {
       utils.conversations.list.invalidate();
@@ -100,12 +79,43 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
     }
   };
 
-  const handleSelectConversation = (conv: any) => {
-    loadConversation.mutate({ id: conv.id });
+  const handleSelectConversation = async (conv: any) => {
+    const selectedId = Number(conv.id);
+    const selectedIdString = selectedId.toString();
+
+    // Select immediately so the chat never renders another conversation's
+    // messages (or the default welcome message) while history is loading.
+    setActiveConversationId(selectedIdString);
+    setMessages([]);
+
     if (window.location.pathname !== "/workspace") {
       setLocation("/workspace");
     }
     onConversationSelect?.();
+
+    try {
+      // Use the typed tRPC client so SuperJSON input/output envelopes are
+      // handled correctly. The server verifies ownership and returns messages
+      // ordered by created_at ascending.
+      const data = await utils.conversations.get.fetch({ id: selectedId });
+
+      // Ignore a stale response if the user selected a different conversation
+      // before this request completed.
+      if (useConversationStore.getState().activeConversationId !== selectedIdString) return;
+
+      const msgs = (data?.messages ?? []).map((message) => ({
+        id: message.id.toString(),
+        role: message.role as "user" | "assistant" | "system",
+        content: message.content,
+        timestamp: new Date(message.createdAt),
+      }));
+      setMessages(msgs);
+    } catch (error) {
+      console.error("[Conversations] Failed to load conversation history:", error);
+      if (useConversationStore.getState().activeConversationId === selectedIdString) {
+        setMessages([]);
+      }
+    }
   };
 
   const handleDeleteConversation = (e: React.MouseEvent, id: number) => {
@@ -168,7 +178,7 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
           {(conversations || []).slice(0, 6).map((conv: any) => (
             <motion.button
               key={conv.id}
-              onClick={() => handleSelectConversation(conv)}
+              onClick={() => void handleSelectConversation(conv)}
               className={`w-8 h-8 rounded-lg surface-elevated border flex items-center justify-center hover:border-primary/30 transition-colors ${
                 activeConversationId === conv.id.toString() ? "border-primary/50 bg-primary/10" : "border-border"
               }`}
@@ -268,7 +278,7 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                   {filteredConversations.map((conv: any, i: number) => (
                     <motion.button
                       key={conv.id}
-                      onClick={() => handleSelectConversation(conv)}
+                      onClick={() => void handleSelectConversation(conv)}
                       className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors group relative ${
                         activeConversationId === conv.id.toString()
                           ? "bg-primary/10 border border-primary/20"
