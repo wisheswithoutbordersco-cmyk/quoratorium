@@ -418,6 +418,56 @@ export async function updateProject(id: number, userId: number, data: Partial<{
 
 // ─── Conversations ──────────────────────────────────────────────────────────
 
+export async function createConversation(data: {
+  userId: number;
+  title: string;
+  projectId?: number | null;
+}): Promise<number> {
+  const db = getDb();
+  const { data: row, error } = await db
+    .from("conversations")
+    .insert({
+      user_id: data.userId,
+      title: data.title,
+      project_id: data.projectId || null,
+    })
+    .select("id")
+    .single();
+  if (error) throw new Error(`Failed to create conversation: ${error.message}`);
+  return row.id;
+}
+
+export async function getConversationForUser(
+  conversationId: number,
+  userId: number
+): Promise<Conversation | undefined> {
+  const db = getDbOrNull();
+  if (!db) return undefined;
+  const { data, error } = await db
+    .from("conversations")
+    .select("*")
+    .eq("id", conversationId)
+    .eq("user_id", userId)
+    .limit(1)
+    .single();
+  if (error || !data) return undefined;
+  return data;
+}
+
+export async function updateConversationTitle(
+  conversationId: number,
+  userId: number,
+  title: string
+): Promise<void> {
+  const db = getDb();
+  const { error } = await db
+    .from("conversations")
+    .update({ title, updated_at: new Date().toISOString() })
+    .eq("id", conversationId)
+    .eq("user_id", userId);
+  if (error) throw new Error(`Failed to update conversation title: ${error.message}`);
+}
+
 export async function addConversationMessage(data: {
   userId: number;
   conversationId: number;
@@ -438,6 +488,16 @@ export async function addConversationMessage(data: {
     .select("id")
     .single();
   if (error) throw new Error(`Failed to add message: ${error.message}`);
+
+  const { error: touchError } = await db
+    .from("conversations")
+    .update({ updated_at: new Date().toISOString() })
+    .eq("id", data.conversationId)
+    .eq("user_id", data.userId);
+  if (touchError) {
+    console.warn(`[Database] Failed to update conversation timestamp: ${touchError.message}`);
+  }
+
   return row.id;
 }
 

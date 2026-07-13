@@ -6,7 +6,7 @@
 import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
-import { addConversationMessage, addOrchestrationEvent } from "./db";
+import { addOrchestrationEvent } from "./db";
 import { detectIntent, type WorkerIntent } from "./workers";
 import { invokeLLM } from "./_core/llm";
 import { clerkClient } from "@clerk/express";
@@ -133,7 +133,7 @@ export function registerStreamingRoutes(app: Express) {
 
   // Main streaming chat endpoint
   app.post("/api/stream/chat", async (req: Request, res: Response) => {
-    const { message, projectId, history } = req.body;
+    const { message, projectId, conversationId, history } = req.body;
     if (!message) {
       res.status(400).json({ error: "Message required" });
       return;
@@ -182,11 +182,67 @@ export function registerStreamingRoutes(app: Express) {
       }
     }
 
+    // Resolve or create the conversation on the server, then persist the user message.
+    // This deliberately uses the streaming endpoint's authenticated database user rather
+    // than relying on client-side protected tRPC mutations.
+    let persistedConversationId: number | null = null;
+    if (userId) {
+      try {
+        const requestedConversationId =
+          typeof conversationId === "number" && Number.isInteger(conversationId) && conversationId > 0
+            ? conversationId
+            : null;
+        const normalizedProjectId =
+          typeof projectId === "number" && Number.isInteger(projectId) && projectId > 0
+            ? projectId
+            : null;
+        const title = message.trim().replace(/\s+/g, " ").slice(0, 80) || "New conversation";
+
+        if (requestedConversationId) {
+          const existingConversation = await db.getConversationForUser(requestedConversationId, userId);
+          if (existingConversation) {
+            persistedConversationId = existingConversation.id;
+            if (!existingConversation.title) {
+              await db.updateConversationTitle(existingConversation.id, userId, title);
+            }
+          } else {
+            logger.warn(`[Conversation] Ignoring inaccessible conversation ${requestedConversationId}`, {
+              userId,
+            });
+          }
+        }
+
+        if (!persistedConversationId) {
+          persistedConversationId = await db.createConversation({
+            userId,
+            title,
+            projectId: normalizedProjectId,
+          });
+        }
+
+        await db.addConversationMessage({
+          userId,
+          conversationId: persistedConversationId,
+          role: "user",
+          content: message,
+        });
+      } catch (error: any) {
+        logger.error(`[Conversation] Failed to persist user message: ${error?.message || error}`, {
+          userId,
+        });
+        persistedConversationId = null;
+      }
+    }
+
     // Set SSE headers
     res.setHeader("Content-Type", "text/event-stream");
     res.setHeader("Cache-Control", "no-cache");
     res.setHeader("Connection", "keep-alive");
     res.setHeader("X-Accel-Buffering", "no");
+
+    if (persistedConversationId) {
+      res.write(`data: ${JSON.stringify({ type: "conversation_id", conversationId: persistedConversationId })}\n\n`);
+    }
 
     const intent = detectExtendedIntent(message);
     const workerName = getWorkerName(intent);
@@ -421,7 +477,16 @@ export function registerStreamingRoutes(app: Express) {
           await handleMultiStepChain(res, message, projectId, memoryContext + knowledgeContext);
           break;
         default:
-          await handleStandardChat(res, message, intent, history, projectId, memoryContext + knowledgeContext, userId);
+          await handleStandardChat(
+            res,
+            message,
+            intent,
+            history,
+            projectId,
+            memoryContext + knowledgeContext,
+            userId,
+            persistedConversationId
+          );
           break;
       }
     } catch (error: any) {
@@ -638,7 +703,8 @@ async function handleStandardChat(
   history: any,
   projectId: number | null,
   memoryContext: string = "",
-  userId?: number | null
+  userId?: number | null,
+  conversationId?: number | null
 ) {
   const basePrompt = getSystemPrompt(intent);
   const systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
@@ -695,6 +761,22 @@ async function handleStandardChat(
       if (toolResult.response && toolResult.toolsUsed.length > 0) {
         res.write(`data: ${JSON.stringify({ type: "token", content: toolResult.response })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed: toolResult.toolsUsed })}\n\n`);
+        if (userId && conversationId) {
+          try {
+            await db.addConversationMessage({
+              userId,
+              conversationId,
+              role: "assistant",
+              content: toolResult.response,
+              metadata: { intent, toolsUsed: toolResult.toolsUsed },
+            });
+          } catch (error: any) {
+            logger.error(`[Conversation] Failed to persist tool response: ${error?.message || error}`, {
+              userId,
+              metadata: { conversationId },
+            });
+          }
+        }
         res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
@@ -723,35 +805,19 @@ async function handleStandardChat(
           : intent === "research"
             ? "google/gemini-2.5-flash"
             : "deepseek/deepseek-chat";
-      if (isBuildIntent) {
-        fullResponse = await streamOpenRouterCollecting(res, messages, model);
-      } else {
-        await streamOpenRouter(res, messages, model);
-      }
+      fullResponse = await streamOpenRouterCollecting(res, messages, model);
     } else if ((intent === "validate") && process.env.ANTHROPIC_API_KEY) {
-      await streamAnthropic(res, messages, systemPrompt, message, history);
+      fullResponse = await streamAnthropicCollecting(res, systemPrompt, message, history);
     } else if (intent === "research" && process.env.SONAR_API_KEY) {
-      await streamPerplexity(res, messages, message);
+      fullResponse = await streamPerplexityCollecting(res, messages, message);
     } else if (process.env.OPENAI_API_KEY) {
-      if (isBuildIntent) {
-        fullResponse = await streamOpenAICollecting(res, messages);
-      } else {
-        await streamOpenAI(res, messages);
-      }
+      fullResponse = await streamOpenAICollecting(res, messages);
     } else {
-      if (isBuildIntent) {
-        fullResponse = await streamForgeFallbackCollecting(res, messages);
-      } else {
-        await streamForgeFallback(res, messages);
-      }
+      fullResponse = await streamForgeFallbackCollecting(res, messages);
     }
   } catch (primaryError: any) {
     console.warn(`[Stream] Primary provider failed (${intent}), falling back to Forge:`, primaryError?.message || primaryError);
-    if (isBuildIntent) {
-      fullResponse = await streamForgeFallbackCollecting(res, messages);
-    } else {
-      await streamForgeFallback(res, messages);
-    }
+    fullResponse = await streamForgeFallbackCollecting(res, messages);
   }
 
   // ─── Post-Build: Auto-Execute + Persist Files ─────────────────────────────
@@ -805,15 +871,29 @@ async function handleStandardChat(
         }
       }
     }
-    // End the SSE stream after post-build processing
-    if (!res.writableEnded) {
-      res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
-      res.write(`data: [DONE]\n\n`);
-      res.end();
+  }
+
+  if (fullResponse && userId && conversationId) {
+    try {
+      await db.addConversationMessage({
+        userId,
+        conversationId,
+        role: "assistant",
+        content: fullResponse,
+        metadata: { intent },
+      });
+    } catch (error: any) {
+      logger.error(`[Conversation] Failed to persist assistant message: ${error?.message || error}`, {
+        userId,
+        metadata: { conversationId },
+      });
     }
-  } else if (!res.writableEnded) {
-    // Non-build intents: response already ended by streaming functions
-    // (this is a safety net in case a collecting variant was used)
+  }
+
+  if (!res.writableEnded) {
+    res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
+    res.write(`data: [DONE]\n\n`);
+    res.end();
   }
 }
 
@@ -1129,6 +1209,112 @@ async function streamOpenAICollecting(
     inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
     durationMs: Date.now() - startTime, success: true,
   }).catch(() => {});
+  return fullText;
+}
+
+async function streamAnthropicCollecting(
+  res: Response,
+  systemPrompt: string,
+  userMessage: string,
+  history?: Array<{ role: string; content: string }>
+): Promise<string> {
+  const startTime = Date.now();
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+  const anthropicMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  if (history && Array.isArray(history)) {
+    for (const msg of history.slice(-10)) {
+      anthropicMessages.push({ role: msg.role as "user" | "assistant", content: msg.content });
+    }
+  }
+  anthropicMessages.push({ role: "user", content: userMessage });
+
+  const stream = anthropic.messages.stream({
+    model: "claude-sonnet-4-20250514",
+    max_tokens: 4096,
+    system: systemPrompt,
+    messages: anthropicMessages,
+  });
+  let fullText = "";
+  for await (const event of stream) {
+    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+      fullText += event.delta.text;
+      res.write(`data: ${JSON.stringify({ type: "token", content: event.delta.text })}\n\n`);
+    }
+  }
+  const finalMessage = await stream.finalMessage();
+  logApiCall({
+    userId: 0,
+    model: "claude-sonnet-4-20250514",
+    worker: "validator",
+    inputTokens: finalMessage.usage?.input_tokens || 0,
+    outputTokens: finalMessage.usage?.output_tokens || 0,
+    durationMs: Date.now() - startTime,
+    success: true,
+  }).catch(() => {});
+  return fullText;
+}
+
+async function streamPerplexityCollecting(
+  res: Response,
+  messages: Array<{ role: string; content: string }>,
+  query: string
+): Promise<string> {
+  const startTime = Date.now();
+  const perplexity = new OpenAI({
+    apiKey: process.env.SONAR_API_KEY,
+    baseURL: "https://api.perplexity.ai",
+  });
+  let fullText = "";
+
+  try {
+    const stream = await perplexity.chat.completions.create({
+      model: "sonar",
+      messages: messages as any,
+      stream: true,
+      max_tokens: 4096,
+    });
+    for await (const chunk of stream) {
+      const delta = chunk.choices[0]?.delta?.content;
+      if (delta) {
+        fullText += delta;
+        res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+      }
+      if (chunk.choices[0]?.finish_reason === "stop") break;
+    }
+    logApiCall({
+      userId: 0,
+      model: "sonar",
+      worker: "research",
+      inputTokens: Math.round(query.length / 4),
+      outputTokens: Math.round(fullText.length / 4),
+      durationMs: Date.now() - startTime,
+      success: true,
+    }).catch(() => {});
+  } catch (error: any) {
+    console.warn("[Perplexity Stream] Falling back to non-streaming:", error?.message);
+    const response = await perplexity.chat.completions.create({
+      model: "sonar",
+      messages: messages as any,
+      max_tokens: 4096,
+    });
+    const content = response.choices[0]?.message?.content;
+    fullText = typeof content === "string" ? content : "No results found.";
+    const words = fullText.split(" ");
+    for (let i = 0; i < words.length; i += 3) {
+      const chunk = words.slice(i, i + 3).join(" ") + " ";
+      res.write(`data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`);
+    }
+    logApiCall({
+      userId: 0,
+      model: "sonar",
+      worker: "research",
+      inputTokens: response.usage?.prompt_tokens || 0,
+      outputTokens: response.usage?.completion_tokens || 0,
+      durationMs: Date.now() - startTime,
+      success: true,
+    }).catch(() => {});
+  }
+
   return fullText;
 }
 
