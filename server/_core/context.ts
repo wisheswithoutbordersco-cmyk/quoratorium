@@ -20,7 +20,7 @@ export type TrpcContext = {
  */
 let _ownerUserCache: User | null | undefined = undefined;
 
-async function getOwnerUser(): Promise<User | null> {
+export async function getOwnerUser(): Promise<User | null> {
   if (_ownerUserCache !== undefined) return _ownerUserCache;
 
   const ownerOpenId = ENV.ownerOpenId;
@@ -46,8 +46,8 @@ async function getOwnerUser(): Promise<User | null> {
     _ownerUserCache = ownerUser ?? null;
     return _ownerUserCache;
   } catch (error) {
-    console.warn("[Auth] Owner bypass: failed to resolve owner user:", error);
-    _ownerUserCache = null;
+    // Do not cache transient lookup failures; a later request should retry Supabase.
+    console.error("[Auth] Owner bypass: failed to resolve owner user:", error);
     return null;
   }
 }
