@@ -65,8 +65,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   const [livePreviewCode, setLivePreviewCode] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
-  const createConversation = trpc.conversations.create.useMutation();
-  const addConvMessage = trpc.conversations.addMessage.useMutation();
   const utils = trpc.useUtils();
 
   // Owner status: when isOwner=true, bypass all guest limits and sign-up wall
@@ -138,29 +136,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     setActiveMemoryCount(0);
     setActiveKnowledgeSources([]);
 
-    // Create conversation if none active
-    let convId = activeConversationId;
-    if (!convId) {
-      try {
-        const conv = await createConversation.mutateAsync({
-          title: messageText.slice(0, 50),
-          projectId: safeParseInt(activeProject?.id),
-        });
-        convId = conv.id.toString();
-        setActiveConversationId(convId);
-        // Immediately refresh sidebar so new conversation appears without waiting for streaming to finish
-        utils.conversations.list.invalidate();
-      } catch { /* non-critical */ }
-    }
-
-    // Persist user message
-    if (convId) {
-      const convIdNum = safeParseInt(convId);
-      if (convIdNum !== undefined) {
-        addConvMessage.mutate({ conversationId: convIdNum, role: "user", content: messageText });
-      }
-    }
-
     addEvent({
       id: nanoid(),
       projectId: activeProject?.id || "general",
@@ -169,10 +144,13 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
       timestamp: new Date(),
     });
 
-    streamResponse(messageText);
+    // The streaming endpoint is the single source of truth for persistence.
+    // Send the current conversation when present; for a new chat the server
+    // creates it and returns its authoritative ID in an SSE event.
+    streamResponse(messageText, safeParseInt(activeConversationId));
   }, [input, pendingUploads, activeProject, activeConversationId]);
 
-  const streamResponse = async (messageText: string) => {
+  const streamResponse = async (messageText: string, conversationId?: number) => {
     const assistantId = nanoid();
     addMessage({
       id: assistantId,
@@ -202,6 +180,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         body: JSON.stringify({
           message: messageText,
           projectId: safeParseInt(activeProject?.id),
+          conversationId,
           history,
         }),
       });
@@ -235,7 +214,15 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
           try {
             const event = JSON.parse(data);
-            if (event.type === "start") {
+            if (event.type === "conversation_id") {
+              const serverConversationId = safeParseInt(String(event.conversationId));
+              if (serverConversationId !== undefined) {
+                setActiveConversationId(String(serverConversationId));
+                // Refresh immediately so the server-created conversation appears
+                // in the sidebar while the assistant response is still streaming.
+                void utils.conversations.list.invalidate();
+              }
+            } else if (event.type === "start") {
               addEvent({
                 id: nanoid(),
                 projectId: activeProject?.id || "general",
@@ -348,15 +335,9 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         timestamp: new Date(),
       });
 
-      // Persist assistant message
-      const convId = useConversationStore.getState().activeConversationId;
-      if (convId) {
-        const assistantConvIdNum = safeParseInt(convId);
-        if (assistantConvIdNum !== undefined) {
-          addConvMessage.mutate({ conversationId: assistantConvIdNum, role: "assistant", content: accumulated });
-        }
-        utils.conversations.list.invalidate();
-      }
+      // The server persists the complete assistant response before ending the
+      // stream. Refresh the sidebar so its updated timestamp/order is visible.
+      void utils.conversations.list.invalidate();
 
       // Detect code blocks for live preview panel
       // Extracts the first substantial HTML/TSX/JSX code block and opens the workspace preview
