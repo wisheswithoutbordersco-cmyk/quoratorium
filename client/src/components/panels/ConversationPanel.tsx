@@ -100,7 +100,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   }, [input]);
 
   useEffect(() => {
-    if (messages.length === 0) {
+    if (messages.length === 0 && !activeConversationId) {
       addMessage({
         id: nanoid(),
         role: "assistant",
@@ -109,7 +109,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         timestamp: new Date(),
       });
     }
-  }, []);
+  }, [activeConversationId, messages.length, addMessage]);
 
   const handleSend = useCallback(async () => {
     if (!input.trim() && pendingUploads.length === 0) return;
