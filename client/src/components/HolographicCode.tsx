@@ -98,10 +98,10 @@ export function HolographicCode({ code, language = "typescript", isStreaming = f
       className="relative rounded-lg overflow-hidden font-mono text-sm"
       style={{
         background: "linear-gradient(135deg, rgba(15, 15, 35, 0.95), rgba(20, 20, 50, 0.95))",
-        border: "1px solid rgba(99, 102, 241, 0.2)",
+        border: "1px solid rgba(124, 58, 237, 0.2)",
         boxShadow: isLocked
-          ? "0 0 20px rgba(99, 102, 241, 0.1)"
-          : "0 0 30px rgba(99, 102, 241, 0.15), inset 0 0 30px rgba(99, 102, 241, 0.05)",
+          ? "0 0 20px rgba(124, 58, 237, 0.1)"
+          : "0 0 30px rgba(124, 58, 237, 0.15), inset 0 0 30px rgba(124, 58, 237, 0.05)",
         transition: "box-shadow 0.5s cubic-bezier(0.23, 1, 0.32, 1)",
       }}
     >
@@ -170,7 +170,7 @@ export function HolographicCode({ code, language = "typescript", isStreaming = f
                   <span
                     className="absolute inset-0 pointer-events-none"
                     style={{
-                      background: "linear-gradient(90deg, transparent 0%, rgba(99, 102, 241, 0.15) 50%, transparent 100%)",
+                      background: "linear-gradient(90deg, transparent 0%, rgba(124, 58, 237, 0.15) 50%, transparent 100%)",
                       animation: "shimmerSweep 1.5s ease-in-out infinite",
                       animationDelay: `${lineIdx * 100}ms`,
                     }}
@@ -187,7 +187,7 @@ export function HolographicCode({ code, language = "typescript", isStreaming = f
         <div
           className="absolute inset-0 pointer-events-none"
           style={{
-            background: "linear-gradient(180deg, rgba(99, 102, 241, 0.05) 0%, transparent 100%)",
+            background: "linear-gradient(180deg, rgba(124, 58, 237, 0.05) 0%, transparent 100%)",
             animation: "lockFlash 0.6s ease-out forwards",
           }}
         />

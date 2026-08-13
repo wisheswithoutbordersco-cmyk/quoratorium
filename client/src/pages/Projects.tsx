@@ -98,7 +98,7 @@ export default function Projects() {
       createdAt: new Date(project.created_at),
       updatedAt: new Date(project.updated_at),
     });
-    setLocation("/");
+    setLocation("/workspace");
     toast('Switched to "' + project.name + '"');
   };
 
@@ -198,8 +198,8 @@ export default function Projects() {
                             style={{
                               backgroundColor:
                                 i < (project.current_phase || 0)
-                                  ? project.status === "completed" ? "#10B981" : "#6366F1"
-                                  : "#1E1E2A",
+                                  ? project.status === "completed" ? "#10B981" : "#7C3AED"
+                                  : "rgba(255,255,255,0.08)",
                             }}
                           />
                         ))}
@@ -357,7 +357,7 @@ function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
     active: { color: "#10B981", label: "Active" },
     paused: { color: "#F59E0B", label: "Paused" },
-    completed: { color: "#6366F1", label: "Completed" },
+    completed: { color: "#7C3AED", label: "Completed" },
     archived: { color: "#8A8A9A", label: "Archived" },
   };
   const c = config[status] || { color: "#8A8A9A", label: status };

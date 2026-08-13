@@ -5,9 +5,11 @@
 
 /*
  * Q Workspace — Design Tokens
- * Source: MBS Section 3.4 & Appendix 19
- * 
- * Color System: Dark-mode-first, #0A0A0F base
+ * Hyper-translucent black theme
+ *
+ * Color System: Pure-black-first (#000000 base, layered #050505 / #0a0a0a / #0d0d0d for depth)
+ * Borders: near-invisible white at 5-8% opacity
+ * Accent: purple (#7c3aed / #8b5cf6) only — no blue tints anywhere
  * Typography: Inter (UI/body), JetBrains Mono (code/technical)
  * Spacing: 4px base unit
  * Animation: Physics-based via Framer Motion
@@ -52,54 +54,54 @@
   --color-sidebar-ring: var(--sidebar-ring);
 }
 
-/* MBS Section 3.4 — Dark Mode First Color System */
+/* Hyper-translucent black color system */
 :root {
   --radius: 0.5rem;
-  
-  /* MBS Colors */
-  --background: #0A0A0F;
+
+  /* Core surfaces — pure black shades only */
+  --background: #000000;
   --foreground: #F0F0F5;
-  --card: #12121A;
+  --card: #050505;
   --card-foreground: #F0F0F5;
-  --popover: #12121A;
+  --popover: #0a0a0a;
   --popover-foreground: #F0F0F5;
-  --primary: #6366F1;
+  --primary: #7C3AED;
   --primary-foreground: #FFFFFF;
-  --secondary: #1E1E2A;
+  --secondary: #0a0a0a;
   --secondary-foreground: #F0F0F5;
-  --muted: #1E1E2A;
+  --muted: #0a0a0a;
   --muted-foreground: #8A8A9A;
-  --accent: #1E1E2A;
+  --accent: #0d0d0d;
   --accent-foreground: #F0F0F5;
   --destructive: #EF4444;
   --destructive-foreground: #FFFFFF;
-  --border: #1E1E2A;
-  --input: #1E1E2A;
-  --ring: #6366F1;
-  
+  --border: rgba(255, 255, 255, 0.06);
+  --input: rgba(255, 255, 255, 0.08);
+  --ring: #7C3AED;
+
   /* Extended palette */
   --success: #10B981;
   --warning: #F59E0B;
   --error: #EF4444;
-  --surface-elevated: #16161F;
-  --surface-overlay: #1A1A24;
-  
+  --surface-elevated: #0a0a0a;
+  --surface-overlay: #0d0d0d;
+
   /* Chart colors */
-  --chart-1: #6366F1;
-  --chart-2: #10B981;
-  --chart-3: #F59E0B;
-  --chart-4: #8B5CF6;
-  --chart-5: #EC4899;
-  
+  --chart-1: #7C3AED;
+  --chart-2: #8B5CF6;
+  --chart-3: #A78BFA;
+  --chart-4: #6D28D9;
+  --chart-5: #C4B5FD;
+
   /* Sidebar */
-  --sidebar: #0D0D14;
+  --sidebar: #030303;
   --sidebar-foreground: #F0F0F5;
-  --sidebar-primary: #6366F1;
+  --sidebar-primary: #7C3AED;
   --sidebar-primary-foreground: #FFFFFF;
-  --sidebar-accent: #1E1E2A;
+  --sidebar-accent: #0d0d0d;
   --sidebar-accent-foreground: #F0F0F5;
-  --sidebar-border: #1E1E2A;
-  --sidebar-ring: #6366F1;
+  --sidebar-border: rgba(255, 255, 255, 0.05);
+  --sidebar-ring: #7C3AED;
 
   /* Animation tokens (MBS Appendix 19.2) */
   --duration-instant: 100ms;
@@ -107,7 +109,7 @@
   --duration-normal: 300ms;
   --duration-slow: 500ms;
   --duration-cinematic: 800ms;
-  
+
   /* Spacing scale (MBS Appendix 19.1) - 4px base */
   --space-1: 4px;
   --space-2: 8px;
@@ -131,6 +133,7 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Inter', system-ui, -apple-system, sans-serif;
+    background-color: #000000;
   }
   button:not(:disabled),
   [role="button"]:not([aria-disabled="true"]),
@@ -189,18 +192,30 @@
   .tabular-nums {
     font-variant-numeric: tabular-nums;
   }
-  /* Q glow effect */
+  /* Q glow effect — purple */
   .q-glow {
-    box-shadow: 0 0 20px rgba(99, 102, 241, 0.15), 0 0 60px rgba(99, 102, 241, 0.05);
+    box-shadow: 0 0 20px rgba(124, 58, 237, 0.18), 0 0 60px rgba(124, 58, 237, 0.06);
   }
   .q-glow-text {
-    text-shadow: 0 0 20px rgba(99, 102, 241, 0.5), 0 0 40px rgba(99, 102, 241, 0.2);
+    text-shadow: 0 0 20px rgba(124, 58, 237, 0.5), 0 0 40px rgba(124, 58, 237, 0.2);
   }
-  /* Surface elevation */
-  .surface-base { background-color: #0A0A0F; }
-  .surface-elevated { background-color: #12121A; }
-  .surface-overlay { background-color: #16161F; }
-  .surface-raised { background-color: #1A1A24; }
+  /* Surface elevation — layered pure blacks for depth */
+  .surface-base { background-color: #000000; }
+  .surface-elevated { background-color: #050505; }
+  .surface-overlay { background-color: #0a0a0a; }
+  .surface-raised { background-color: #0d0d0d; }
+
+  /* Shake animation (password gate error state) */
+  .animate-shake {
+    animation: shake 0.45s cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
 }
 
 /* Custom scrollbar */
@@ -212,22 +227,22 @@
   background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-  background: #1E1E2A;
+  background: rgba(255, 255, 255, 0.08);
   border-radius: 4px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: #2A2A3A;
+  background: rgba(124, 58, 237, 0.4);
 }
 
 /* Focus ring */
 *:focus-visible {
-  outline: 2px solid #6366F1;
+  outline: 2px solid #7C3AED;
   outline-offset: 2px;
 }
 
 /* Selection */
 ::selection {
-  background: rgba(99, 102, 241, 0.3);
+  background: rgba(124, 58, 237, 0.3);
   color: #F0F0F5;
 }
 

@@ -139,7 +139,7 @@ export default function SharedProject() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
           <p className="text-sm text-white/40">Loading shared project...</p>
@@ -150,7 +150,7 @@ export default function SharedProject() {
 
   if (error || !data) {
     return (
-      <div className="min-h-screen bg-[#0A0A0F] flex items-center justify-center">
+      <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="text-center max-w-md px-6">
           <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/20 flex items-center justify-center mx-auto mb-4">
             <Code2 className="w-8 h-8 text-red-400" />
@@ -165,7 +165,7 @@ export default function SharedProject() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0A0A0F] text-white flex flex-col">
+    <div className="min-h-screen bg-[#000000] text-white flex flex-col">
       {/* Header */}
       <header className="border-b border-white/5 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
@@ -271,7 +271,7 @@ export default function SharedProject() {
                   />
                 </div>
               ) : (
-                <div className="flex-1 overflow-auto bg-[#0D0D14]">
+                <div className="flex-1 overflow-auto bg-[#0a0a0a]">
                   <SyntaxHighlighter
                     code={data.files[activeFile].content}
                     language={data.files[activeFile].language}

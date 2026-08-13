@@ -26,7 +26,7 @@ interface NeuralOrchestrationProps {
 }
 
 const WORKER_CONFIGS: Record<string, { label: string; color: string; glowColor: string }> = {
-  captain: { label: "Captain Q", color: "#6366f1", glowColor: "rgba(99, 102, 241, 0.6)" },
+  captain: { label: "Captain Q", color: "#7c3aed", glowColor: "rgba(124, 58, 237, 0.6)" },
   builder: { label: "Builder", color: "#3b82f6", glowColor: "rgba(59, 130, 246, 0.6)" },
   validator: { label: "Validator", color: "#10b981", glowColor: "rgba(16, 185, 129, 0.6)" },
   research: { label: "Research", color: "#8b5cf6", glowColor: "rgba(139, 92, 246, 0.6)" },
@@ -143,7 +143,7 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
       <svg
         viewBox="0 0 100 100"
         className="w-full h-full"
-        style={{ filter: "drop-shadow(0 0 2px rgba(99, 102, 241, 0.2))" }}
+        style={{ filter: "drop-shadow(0 0 2px rgba(124, 58, 237, 0.2))" }}
       >
         {/* Connection lines from captain to each worker */}
         {nodes.slice(1).map((node) => {

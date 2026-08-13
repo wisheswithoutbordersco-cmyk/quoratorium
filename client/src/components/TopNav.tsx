@@ -2,7 +2,7 @@
  * Q Workspace — Top Navigation (The Command Center)
  * Source: MBS Section 3.2
  * 
- * Global navigation: Projects, Vault, Analytics, Memory, Builders, Deployments, Settings
+ * Global navigation: Projects, Vault, Settings
  * Features: Active project indicator, system status, responsive mobile menu, user avatar
  * Mobile: sidebar button opens the conversation drawer (back button closes it)
  */
@@ -11,22 +11,9 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   FolderKanban,
   Lock,
-  BarChart3,
-  Brain,
-  Hammer,
-  Rocket,
   Settings,
   Menu,
   X,
-  LayoutGrid,
-  Layers,
-  DollarSign,
-  Activity,
-  Shield,
-  BookOpen,
-  GitBranch,
-  Share2,
-  CreditCard,
   PanelLeft,
 } from "lucide-react";
 import { useState, useRef } from "react";
@@ -37,22 +24,9 @@ import { duration, ease } from "@/lib/motion";
 import { SessionHealthIndicator } from "./SessionHealthIndicator";
 
 const navItems = [
-  { path: "/projects", label: "Projects", icon: FolderKanban },
-  { path: "/vault", label: "Vault", icon: Lock },
-  { path: "/analytics", label: "Analytics", icon: BarChart3 },
-  { path: "/memory", label: "Memory", icon: Brain },
-  { path: "/builders", label: "Builders", icon: Hammer },
-  { path: "/deployments", label: "Deployments", icon: Rocket },
-  { path: "/jobs", label: "Jobs", icon: Layers },
-  { path: "/costs", label: "Costs", icon: DollarSign },
-  { path: "/observability", label: "Observability", icon: Activity },
-  { path: "/security", label: "Security", icon: Shield },
-  { path: "/knowledge", label: "Knowledge", icon: BookOpen },
-  { path: "/git", label: "Git", icon: GitBranch },
-  { path: "/sharing", label: "Sharing", icon: Share2 },
-  { path: "/templates", label: "Templates", icon: LayoutGrid },
-  { path: "/billing", label: "Billing", icon: CreditCard },
-  { path: "/settings", label: "Settings", icon: Settings },
+  { path: "/workspace/projects", label: "Projects", icon: FolderKanban },
+  { path: "/workspace/vault", label: "Vault", icon: Lock },
+  { path: "/workspace/settings", label: "Settings", icon: Settings },
 ];
 
 interface TopNavProps {
@@ -124,7 +98,7 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: duration.normal, ease: ease.out }}
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(99,102,241,0.5)]" />
+          <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(124,58,237,0.5)]" />
           <span className="text-[10px] font-medium text-muted-foreground tracking-wide">
             {activeProject.name}
           </span>
@@ -147,7 +121,7 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
                     ? "text-primary"
                     : "text-muted-foreground hover:text-foreground"
                 }`}
-                whileHover={{ backgroundColor: "rgba(30, 30, 42, 0.6)" }}
+                whileHover={{ backgroundColor: "rgba(255, 255, 255, 0.04)" }}
                 whileTap={{ scale: 0.97 }}
                 transition={{ duration: 0.12 }}
               >

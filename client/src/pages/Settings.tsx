@@ -322,9 +322,8 @@ export default function Settings() {
                   {activeSection === "github" && (
                     <div className="py-3">
                       <p className="text-sm text-muted-foreground mb-4">
-                        Manage your GitHub connection. Visit the{" "}
-                        <a href="/git" className="text-blue-400 underline">Git page</a>{" "}
-                        for full repository management.
+                        Manage your GitHub connection here. Repository push and branch
+                        selection are available directly from the workspace.
                       </p>
                     </div>
                   )}

@@ -104,7 +104,7 @@ export function DeployModal({ projectId, projectName, onClose }: DeployModalProp
 
         {/* Modal */}
         <motion.div
-          className="relative w-full max-w-lg mx-4 rounded-2xl border border-white/10 bg-[#0D0D14] shadow-2xl overflow-hidden"
+          className="relative w-full max-w-lg mx-4 rounded-2xl border border-white/10 bg-[#0a0a0a] shadow-2xl overflow-hidden"
           initial={{ opacity: 0, scale: 0.95, y: 20 }}
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 20 }}

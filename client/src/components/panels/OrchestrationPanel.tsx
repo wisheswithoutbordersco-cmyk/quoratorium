@@ -108,9 +108,9 @@ function SystemPulse({ load }: { load: number }) {
   return (
     <div className="relative w-6 h-6 flex items-center justify-center">
       <svg className="w-full h-full -rotate-90" viewBox="0 0 24 24">
-        <circle cx="12" cy="12" r="10" fill="none" stroke="#1E1E2A" strokeWidth="2" />
+        <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
         <motion.circle
-          cx="12" cy="12" r="10" fill="none" stroke="#6366F1" strokeWidth="2"
+          cx="12" cy="12" r="10" fill="none" stroke="#7C3AED" strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={2 * Math.PI * 10}
           animate={{ strokeDashoffset: 2 * Math.PI * 10 * (1 - load / 100) }}
@@ -210,8 +210,8 @@ function PhaseTracker({ phases }: { phases: { id: number; name: string; status: 
             style={{
               backgroundColor:
                 phase.status === "completed" ? "#10B981" :
-                phase.status === "active" ? "#6366F1" :
-                phase.status === "failed" ? "#EF4444" : "#1E1E2A",
+                phase.status === "active" ? "#7C3AED" :
+                phase.status === "failed" ? "#EF4444" : "rgba(255,255,255,0.08)",
             }}
             animate={phase.status === "active" ? { opacity: [0.6, 1, 0.6] } : {}}
             transition={phase.status === "active" ? { duration: 1.5, repeat: Infinity } : {}}
@@ -375,7 +375,7 @@ function WorkerCard({ worker }: { worker: any }) {
   // Color-coded per worker type: Builder=blue, Validator=green, Research=purple, Captain=gold
   const workerColor = getWorkerColor(worker.name);
   const isActive = worker.status === "active";
-  const statusColor = isActive ? workerColor : worker.status === "error" ? "#EF4444" : worker.status === "idle" ? "#6366F1" : "#F59E0B";
+  const statusColor = isActive ? workerColor : worker.status === "error" ? "#EF4444" : worker.status === "idle" ? "#7C3AED" : "#F59E0B";
 
   return (
     <motion.div
@@ -451,7 +451,7 @@ function getWorkerColor(name: string): string {
   if (n.includes("validator")) return "#10B981"; // Green
   if (n.includes("research")) return "#8B5CF6"; // Purple
   if (n.includes("captain")) return "#F59E0B"; // Gold
-  return "#6366F1"; // Default indigo
+  return "#7C3AED"; // Default indigo
 }
 
 // ─── Passive View ───────────────────────────────────────────────────────────
@@ -471,9 +471,9 @@ function PassiveView({ phases, uptime }: { phases: { status: string }[]; uptime:
       {/* Progress ring */}
       <div className="relative w-28 h-28 mb-6">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 112 112">
-          <circle cx="56" cy="56" r="48" fill="none" stroke="#1E1E2A" strokeWidth="4" />
+          <circle cx="56" cy="56" r="48" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
           <motion.circle
-            cx="56" cy="56" r="48" fill="none" stroke="#6366F1" strokeWidth="4"
+            cx="56" cy="56" r="48" fill="none" stroke="#7C3AED" strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={2 * Math.PI * 48}
             animate={{ strokeDashoffset: 2 * Math.PI * 48 * (1 - progress / 100) }}

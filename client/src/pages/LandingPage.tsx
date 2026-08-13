@@ -6,9 +6,9 @@ import { motion } from "framer-motion";
 import { Link } from "wouter";
 import { ArrowRight, Zap, CheckCircle2, Github, Twitter, Mail } from "lucide-react";
 import { useEffect, useState } from "react";
-import { HyperBlackQSmall, HyperBlackQHero } from "@/components/HyperBlackQ";
+import { HyperBlackQSmall } from "@/components/HyperBlackQ";
 
-// Matrix rain background component
+// Ambient purple glow background
 function MatrixBackground() {
   const [chars, setChars] = useState<Array<{ id: string; x: number; y: number; char: string; opacity: number }>>([]);
 
@@ -19,7 +19,7 @@ function MatrixBackground() {
       x: Math.random() * 100,
       y: Math.random() * 100,
       char: matrix[Math.floor(Math.random() * matrix.length)],
-      opacity: Math.random() * 0.15 + 0.02,
+      opacity: Math.random() * 0.12 + 0.02,
     }));
     setChars(newChars);
 
@@ -29,7 +29,7 @@ function MatrixBackground() {
           ...c,
           y: (c.y + Math.random() * 2 - 1) % 100,
           char: matrix[Math.floor(Math.random() * matrix.length)],
-          opacity: Math.random() * 0.15 + 0.02,
+          opacity: Math.random() * 0.12 + 0.02,
         }))
       );
     }, 200);
@@ -38,17 +38,20 @@ function MatrixBackground() {
   }, []);
 
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none">
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black/50" />
+    <div className="fixed inset-0 overflow-hidden pointer-events-none bg-black">
+      <div
+        className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[900px] rounded-full blur-[160px]"
+        style={{ background: "radial-gradient(circle, rgba(124,58,237,0.10) 0%, transparent 70%)" }}
+      />
       {chars.map((c) => (
         <div
           key={c.id}
-          className="absolute font-mono text-[10px] text-emerald-900/40"
+          className="absolute font-mono text-[10px] text-[#7c3aed]/30"
           style={{
             left: `${c.x}%`,
             top: `${c.y}%`,
             opacity: c.opacity,
-            textShadow: "0 0 8px rgba(16, 185, 129, 0.15)",
+            textShadow: "0 0 8px rgba(124, 58, 237, 0.2)",
           }}
         >
           {c.char}
@@ -62,14 +65,14 @@ function MatrixBackground() {
 function GlassTile({ children, className = "" }: { children: React.ReactNode; className?: string }) {
   return (
     <div
-      className={`relative backdrop-blur-xl bg-white/[0.02] border border-white/[0.06] rounded-none overflow-hidden group hover:border-white/[0.12] transition-all duration-300 ${className}`}
+      className={`relative backdrop-blur-xl bg-white/[0.02] border border-white/[0.05] rounded-none overflow-hidden group hover:border-[#7c3aed]/30 transition-all duration-300 ${className}`}
       style={{
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.03)",
+        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.02)",
       }}
     >
       {/* Subtle glow on hover */}
       <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-white/[0.02] via-transparent to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-br from-[#7c3aed]/[0.06] via-transparent to-transparent" />
       </div>
       {children}
     </div>
@@ -78,11 +81,11 @@ function GlassTile({ children, className = "" }: { children: React.ReactNode; cl
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-black text-white overflow-hidden">
+    <div className="min-h-screen bg-[#000000] text-white overflow-hidden">
       <MatrixBackground />
 
       {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/50 border-b border-white/[0.06]">
+      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/[0.05]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <HyperBlackQSmall className="w-8 h-8" />
@@ -90,7 +93,11 @@ export default function LandingPage() {
               Quoratorium
             </span>
           </div>
-          <Link href="/workspace" className="px-4 py-2 rounded-none bg-white/[0.05] border border-white/[0.1] text-white text-xs font-medium hover:bg-white/[0.08] transition-colors">
+          <Link
+            href="/workspace"
+            className="px-4 py-2 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/40 text-white text-xs font-medium hover:border-[#8b5cf6]/70 transition-colors"
+            style={{ boxShadow: "0 0 16px rgba(124, 58, 237, 0.12)" }}
+          >
             Enter Workspace
           </Link>
         </div>
@@ -105,12 +112,29 @@ export default function LandingPage() {
             transition={{ duration: 0.8 }}
             className="text-center"
           >
+            {/* Hero — Q logo */}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.9 }}
+              className="relative flex items-center justify-center mb-10"
+            >
+              <div
+                className="absolute w-[420px] h-[420px] rounded-full blur-[120px] pointer-events-none"
+                style={{ background: "radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)" }}
+              />
+              <img
+                src="/q-logo.jpg"
+                alt="Quoratorium"
+                className="relative w-[240px] sm:w-[300px] h-auto select-none"
+                draggable={false}
+              />
+            </motion.div>
+
             <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl tracking-tight mb-6 leading-tight">
-              <span className="text-white/90">The AI That</span>
+              <span className="text-white">The AI That</span>
               <br />
-              <span className="bg-gradient-to-r from-white via-gray-300 to-white bg-clip-text text-transparent">
-                Builds For You
-              </span>
+              <span className="text-white">Builds For You</span>
             </h1>
             <p className="text-lg sm:text-xl text-white/60 mb-8 max-w-2xl mx-auto leading-relaxed">
               Captain Q orchestrates a neural network of specialized AI agents — Builder, Validator, Researcher — to generate, validate, and deploy real applications in seconds.
@@ -124,28 +148,18 @@ export default function LandingPage() {
             >
               <Link
                 href="/workspace"
-                className="px-8 py-4 rounded-none bg-white text-black font-medium text-sm hover:bg-white/90 transition-all duration-300 flex items-center justify-center gap-2 group"
+                className="px-8 py-4 rounded-none bg-[#7c3aed] text-white font-medium text-sm hover:bg-[#8b5cf6] transition-all duration-300 flex items-center justify-center gap-2 group"
+                style={{ boxShadow: "0 0 28px rgba(124, 58, 237, 0.28)" }}
               >
                 Try It Free
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
               </Link>
-              <button className="px-8 py-4 rounded-none bg-white/[0.05] border border-white/[0.1] text-white font-medium text-sm hover:bg-white/[0.08] transition-all duration-300">
+              <button
+                className="px-8 py-4 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/40 text-white font-medium text-sm hover:border-[#8b5cf6]/70 transition-all duration-300"
+                style={{ boxShadow: "0 0 18px rgba(124, 58, 237, 0.12)" }}
+              >
                 Watch Demo
               </button>
-            </motion.div>
-
-            {/* Hero graphic — animated Q logo */}
-            <motion.div
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.5, duration: 0.8 }}
-              className="relative h-64 sm:h-80 flex items-center justify-center"
-            >
-              <div className="absolute inset-0 bg-gradient-to-b from-white/[0.05] via-transparent to-transparent rounded-full blur-3xl" />
-              <div className="relative w-48 h-48 rounded-full border border-white/[0.08] flex items-center justify-center">
-                <div className="absolute inset-0 rounded-full border border-white/[0.05] animate-pulse" />
-                <HyperBlackQHero className="w-40 h-40" />
-              </div>
             </motion.div>
           </motion.div>
         </div>
@@ -288,8 +302,8 @@ export default function LandingPage() {
               <div className="relative aspect-video bg-gradient-to-br from-white/[0.02] via-black to-black flex items-center justify-center">
                 <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIE0gMCA2MCBMIDYwIDYwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4wMykiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-30" />
                 <div className="relative text-center">
-                  <div className="w-16 h-16 rounded-none bg-white/[0.08] border border-white/[0.1] flex items-center justify-center mx-auto mb-4">
-                    <Zap size={32} className="text-white/60 animate-pulse" />
+                  <div className="w-16 h-16 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/30 flex items-center justify-center mx-auto mb-4">
+                    <Zap size={32} className="text-[#8b5cf6]/70 animate-pulse" />
                   </div>
                   <p className="text-white/60 text-sm">Live workspace preview coming soon</p>
                 </div>
@@ -371,8 +385,8 @@ export default function LandingPage() {
                   <button
                     className={`w-full py-3 rounded-none font-medium text-sm transition-all duration-300 ${
                       i === 1
-                        ? "bg-white text-black hover:bg-white/90"
-                        : "bg-white/[0.05] border border-white/[0.1] text-white hover:bg-white/[0.08]"
+                        ? "bg-[#7c3aed] text-white hover:bg-[#8b5cf6]"
+                        : "bg-[#0a0a0a] border border-[#7c3aed]/30 text-white hover:border-[#8b5cf6]/60"
                     }`}
                   >
                     {plan.cta}
@@ -401,7 +415,8 @@ export default function LandingPage() {
               </p>
               <Link
                 href="/workspace"
-                className="inline-flex px-8 py-4 rounded-none bg-white text-black font-medium text-sm hover:bg-white/90 transition-all duration-300 gap-2 group"
+                className="inline-flex px-8 py-4 rounded-none bg-[#7c3aed] text-white font-medium text-sm hover:bg-[#8b5cf6] transition-all duration-300 gap-2 group"
+                style={{ boxShadow: "0 0 28px rgba(124, 58, 237, 0.28)" }}
               >
                 Start Building Now
                 <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />

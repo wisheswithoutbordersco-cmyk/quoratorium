@@ -31,7 +31,7 @@ export function CreditExhaustedBanner({ plan, dailyLimit }: CreditExhaustedBanne
             You've used all {dailyLimit} credits for today on the <span className="text-amber-300 font-medium capitalize">{plan}</span> plan.
             Credits reset at midnight UTC.
           </p>
-          <Link href="/billing">
+          <Link href="/workspace/settings">
             <motion.span
               className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-xs font-medium cursor-pointer hover:bg-primary/15 transition-colors"
               whileTap={{ scale: 0.97 }}
