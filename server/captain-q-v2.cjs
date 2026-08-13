@@ -150,9 +150,10 @@ router.post('/api/generate-image', express.json(), async (req, res) => {
     let imageUrl, metadata = {};
 
     if (provider === 'openai') {
+      const openaiBase = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
       const response = await axios.post(
-        'https://api.openai.com/v1/images/generations',
-        { model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'standard', style: 'vivid' },
+        `${openaiBase}/images/generations`,
+        { model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'auto' },
         { headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' } }
       );
       imageUrl = response.data.data[0].url;
