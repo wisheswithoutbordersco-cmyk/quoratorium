@@ -669,7 +669,7 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
           )}
           {/* Voice TTS button - shown on assistant messages */}
           {!isUser && !isStreaming && message.content && (
-            <VoiceButton text={message.content} />
+            <VoiceButton text={message.content} autoPlay={true} />
           )}
           {/* Push to GitHub button - shown after code generation */}
           {hasCode && !isStreaming && (
@@ -701,10 +701,11 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
   );
 }
 
-function VoiceButton({ text }: { text: string }) {
+function VoiceButton({ text, autoPlay }: { text: string; autoPlay?: boolean }) {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const hasAutoPlayed = useRef(false);
 
   const handlePlay = async () => {
     if (playing && audioRef.current) {
@@ -713,21 +714,17 @@ function VoiceButton({ text }: { text: string }) {
       setPlaying(false);
       return;
     }
-
     setLoading(true);
     try {
       // Strip markdown for cleaner speech
       const cleanText = text.replace(/```[\s\S]*?```/g, 'code block omitted')
         .replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').slice(0, 4000);
-
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: cleanText, voice: 'nova' }),
       });
-
       if (!res.ok) throw new Error('TTS failed');
-
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
@@ -741,6 +738,16 @@ function VoiceButton({ text }: { text: string }) {
       setLoading(false);
     }
   };
+
+  // Auto-play voice when message appears (no button needed)
+  useEffect(() => {
+    if (autoPlay && !hasAutoPlayed.current && text && text.length > 0) {
+      hasAutoPlayed.current = true;
+      // Small delay to let the UI render first
+      const timer = setTimeout(() => handlePlay(), 500);
+      return () => clearTimeout(timer);
+    }
+  }, [autoPlay, text]);
 
   return (
     <div className="mt-2 pt-1.5 border-t border-white/5">

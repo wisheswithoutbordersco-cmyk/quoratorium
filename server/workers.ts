@@ -458,7 +458,7 @@ export async function callCaptainPlan(task: string, projectDescription: string):
 
 // ─── Intent Detection ───────────────────────────────────────────────────────
 
-export type WorkerIntent = "chat" | "build" | "research" | "validate";
+export type WorkerIntent = "chat" | "build" | "research" | "validate" | "image_gen" | "social";
 
 /**
  * Detect user intent to route to appropriate worker
@@ -485,6 +485,25 @@ export function detectIntent(message: string): WorkerIntent {
     return "validate";
   }
 
+    // Image generation indicators (check before build)
+  const imageKeywords = [
+    "generate image", "generate a image", "generate an image", "create image", "make image",
+    "draw", "picture of", "illustration of", "art of", "generate art",
+    "wall art", "coloring page", "poster of", "logo of", "generate a picture",
+    "make a picture", "create a picture", "make me a", "generate me a",
+  ];
+  if (imageKeywords.some(kw => lower.includes(kw))) {
+    return "image_gen";
+  }
+  // Social media posting indicators
+  const socialKeywords = [
+    "post to instagram", "post on instagram", "instagram post",
+    "post to facebook", "post on facebook", "social media post",
+    "queue post", "schedule post", "post this",
+  ];
+  if (socialKeywords.some(kw => lower.includes(kw))) {
+    return "social";
+  }
   // Build indicators
   const buildKeywords = [
     "build", "create", "generate", "make", "code", "develop",
@@ -494,6 +513,5 @@ export function detectIntent(message: string): WorkerIntent {
   if (buildKeywords.some(kw => lower.includes(kw))) {
     return "build";
   }
-
   return "chat";
 }

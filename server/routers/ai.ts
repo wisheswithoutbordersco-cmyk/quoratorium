@@ -132,6 +132,48 @@ export const aiRouter = router({
           break;
         }
 
+        case "image_gen": {
+          // Generate image via Captain Q API endpoint
+          workerUsed = "Image Generator (fal.ai/DALL-E)";
+          try {
+            const imgRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/generate-image`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ prompt: input.message, provider: 'fal' }),
+            });
+            const imgData = await imgRes.json() as any;
+            if (imgData.success && imgData.imageUrl) {
+              response = `Here's your generated image:\n\n![Generated Image](${imgData.imageUrl})\n\nPrompt used: ${imgData.prompt}`;
+            } else {
+              response = `Image generation failed: ${imgData.error || 'Unknown error'}. Make sure FAL_API_KEY is configured.`;
+            }
+          } catch (e: any) {
+            response = `Image generation error: ${e.message}`;
+          }
+          break;
+        }
+
+        case "social": {
+          // Queue a social media post
+          workerUsed = "Social Media (Instagram/Facebook)";
+          try {
+            const postRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/social/queue`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ platform: 'instagram', caption: input.message, hashtags: '' }),
+            });
+            const postData = await postRes.json() as any;
+            if (postData.success) {
+              response = `Post queued for Instagram! ID: ${postData.queued?.id}. It will be posted when Make.com picks it up from the queue.`;
+            } else {
+              response = `Failed to queue post: ${postData.error || 'Supabase not configured'}`;
+            }
+          } catch (e: any) {
+            response = `Social posting error: ${e.message}`;
+          }
+          break;
+        }
+
         default: {
           // General chat — Captain handles directly
           workerUsed = "Captain Q (OpenAI GPT-4o)";
