@@ -13,6 +13,8 @@ import {
   File,
   Github,
   PanelLeft,
+  Volume2,
+  Square,
 } from "lucide-react";
 import { PushToGitHub } from "@/components/PushToGitHub";
 import { Streamdown } from "streamdown";
@@ -665,6 +667,10 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
               ))}
             </div>
           )}
+          {/* Voice TTS button - shown on assistant messages */}
+          {!isUser && !isStreaming && message.content && (
+            <VoiceButton text={message.content} />
+          )}
           {/* Push to GitHub button - shown after code generation */}
           {hasCode && !isStreaming && (
             <div className="mt-3 pt-2 border-t border-white/5">
@@ -692,6 +698,61 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
         </p>
       </div>
     </motion.div>
+  );
+}
+
+function VoiceButton({ text }: { text: string }) {
+  const [playing, setPlaying] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  const handlePlay = async () => {
+    if (playing && audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setPlaying(false);
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Strip markdown for cleaner speech
+      const cleanText = text.replace(/```[\s\S]*?```/g, 'code block omitted')
+        .replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').slice(0, 4000);
+
+      const res = await fetch('/api/tts', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: cleanText, voice: 'nova' }),
+      });
+
+      if (!res.ok) throw new Error('TTS failed');
+
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      audioRef.current = audio;
+      audio.onended = () => { setPlaying(false); URL.revokeObjectURL(url); };
+      audio.play();
+      setPlaying(true);
+    } catch (e) {
+      console.error('[TTS]', e);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 pt-1.5 border-t border-white/5">
+      <button
+        onClick={handlePlay}
+        disabled={loading}
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/20 text-[11px] text-white/60 hover:text-cyan-300 transition-all disabled:opacity-50"
+      >
+        {playing ? <Square className="w-3 h-3" /> : <Volume2 className="w-3.5 h-3.5" />}
+        {loading ? 'Generating...' : playing ? 'Stop' : 'Listen'}
+      </button>
+    </div>
   );
 }
 
