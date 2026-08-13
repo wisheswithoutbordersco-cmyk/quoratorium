@@ -143,6 +143,10 @@ async function startServer() {
     stripeWebhookRouter
   );
 
+  // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
+  // so /api/test and /api/tts are not blocked by auth
+  if (cqRouter) app.use(cqRouter);
+
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
@@ -171,8 +175,7 @@ async function startServer() {
   // Clerk webhook endpoint
   app.use("/api/webhooks/clerk", clerkWebhookRouter);
 
-  // Captain Q endpoints (TTS, image gen, social queue)
-  if (cqRouter) app.use(cqRouter);
+
 
   // tRPC API
   app.use(
