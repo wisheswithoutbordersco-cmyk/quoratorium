@@ -27,12 +27,31 @@ import { serveStatic, setupVite } from "./vite";
 import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
 import { createRequire } from "module";
+import path from "path";
+import { fileURLToPath } from "url";
 const require = createRequire(import.meta.url);
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 let cqRouter: any = null;
 try {
-  const cqModule = require("../captain-q-v2.cjs");
-  cqRouter = cqModule.router;
-  console.log('[Server] Captain Q router loaded');
+  // Try multiple paths since build output is in dist/ but source is in server/
+  const possiblePaths = [
+    path.resolve(__dirname, '../server/captain-q-v2.cjs'),
+    path.resolve(__dirname, './captain-q-v2.cjs'),
+    path.resolve(__dirname, '../captain-q-v2.cjs'),
+    path.resolve(process.cwd(), 'server/captain-q-v2.cjs'),
+  ];
+  let loaded = false;
+  for (const p of possiblePaths) {
+    try {
+      const cqModule = require(p);
+      cqRouter = cqModule.router;
+      console.log('[Server] Captain Q router loaded from:', p);
+      loaded = true;
+      break;
+    } catch { /* try next path */ }
+  }
+  if (!loaded) console.warn('[Server] Captain Q not found at any path');
 } catch (e: any) {
   console.warn('[Server] Captain Q failed to load:', e.message);
 }
