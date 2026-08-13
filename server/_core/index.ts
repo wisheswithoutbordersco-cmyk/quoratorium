@@ -26,9 +26,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
-import { createRequire } from "module";
-const require = createRequire(import.meta.url);
-const { router: cqRouter } = require("../captain-q-v2.cjs");
+
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
@@ -164,8 +162,8 @@ async function startServer() {
   // Clerk webhook endpoint
   app.use("/api/webhooks/clerk", clerkWebhookRouter);
 
-  // Captain Q endpoints (TTS, image gen, social queue)
-  app.use(cqRouter);
+  
+  
 
   // tRPC API
   app.use(
