@@ -8,6 +8,7 @@ import { Route, Switch } from "wouter";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SettingsInitializer } from "./components/SettingsInitializer";
 import { ThemeProvider } from "./contexts/ThemeContext";
+import { PasswordGate } from "./components/PasswordGate";
 
 // Landing Page
 import LandingPage from "./pages/LandingPage";
@@ -87,24 +88,26 @@ function Router() {
 
 function App() {
   return (
-    <ErrorBoundary>
-      <ThemeProvider defaultTheme="dark">
-        <TooltipProvider>
-          <Toaster
-            position="bottom-right"
-            toastOptions={{
-              style: {
-                background: "#12121A",
-                border: "1px solid #1E1E2A",
-                color: "#F0F0F5",
-              },
-            }}
-          />
-          <SettingsInitializer />
-          <Router />
-        </TooltipProvider>
-      </ThemeProvider>
-    </ErrorBoundary>
+    <PasswordGate>
+      <ErrorBoundary>
+        <ThemeProvider defaultTheme="dark">
+          <TooltipProvider>
+            <Toaster
+              position="bottom-right"
+              toastOptions={{
+                style: {
+                  background: "#12121A",
+                  border: "1px solid #1E1E2A",
+                  color: "#F0F0F5",
+                },
+              }}
+            />
+            <SettingsInitializer />
+            <Router />
+          </TooltipProvider>
+        </ThemeProvider>
+      </ErrorBoundary>
+    </PasswordGate>
   );
 }
 
