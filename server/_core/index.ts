@@ -28,7 +28,7 @@ import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const cqRouter = require("../captain-q-v2.cjs");
+const { router: cqRouter } = require("../captain-q-v2.cjs");
 
 function isPortAvailable(port: number): Promise<boolean> {
   return new Promise(resolve => {
