@@ -98,6 +98,25 @@ export async function runToolLoop(
   // Clone messages to avoid mutating the original
   const conversationMessages = [...messages];
 
+  // Ensure the tool-calling model knows it MUST use tools for real-time info
+  const toolSystemMessage = {
+    role: "system" as const,
+    content: `You are Captain Q, an AI assistant with access to tools. You MUST use your available tools (web_search, run_code, create_file, deploy_project) when appropriate.
+
+CRITICAL RULES:
+- For ANY question about current events, weather, news, sports scores, stock prices, or anything that changes over time: ALWAYS call web_search first. Do NOT answer from memory.
+- For ANY math calculation, data analysis, or code execution request: ALWAYS call run_code.
+- NEVER say "I cannot search the web" or "I don't have access to real-time data" — you DO have these tools. USE THEM.
+- If unsure whether information is current, search first.`
+  };
+
+  // Prepend tool instructions (replace any existing system message or add before user messages)
+  if (conversationMessages[0]?.role === "system") {
+    conversationMessages[0] = { ...conversationMessages[0], content: toolSystemMessage.content + "\n\n" + (conversationMessages[0] as any).content };
+  } else {
+    conversationMessages.unshift(toolSystemMessage as any);
+  }
+
   while (iteration < MAX_TOOL_ITERATIONS) {
     iteration++;
 
