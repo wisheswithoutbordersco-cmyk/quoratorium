@@ -877,7 +877,7 @@ async function handleStandardChat(
 
   // ─── Autonomous Tool Use (for build intent) ───────────────────────────────
   // When Captain Q is building, he can autonomously create files, run code, deploy
-  if (intent === "build" && userId) {
+  if (userId) {
     try {
       const { runToolLoop } = await import("./tools/index");
       const toolContext: import("./tools/index").ToolContext = {
