@@ -101,11 +101,40 @@ export async function runToolLoop(
   while (iteration < MAX_TOOL_ITERATIONS) {
     iteration++;
 
-    const result = await invokeLLM({
-      messages: conversationMessages,
-      tools: tools.length > 0 ? tools : undefined,
-      toolChoice: tools.length > 0 ? "auto" : undefined,
-    });
+    // Use OpenRouter directly for tool calling (invokeLLM uses Gemini which doesn't reliably call tools)
+    const openrouterKey = process.env.OPENROUTER_API_KEY;
+    const toolModel = model || process.env.ORCHESTRATOR_MODEL || "openai/gpt-4o";
+
+    let result: any;
+    if (openrouterKey) {
+      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${openrouterKey}`,
+          "Content-Type": "application/json",
+          "HTTP-Referer": "https://quoratorium.com",
+          "X-Title": "Captain Q Tools",
+        },
+        body: JSON.stringify({
+          model: toolModel,
+          messages: conversationMessages,
+          tools: tools.length > 0 ? tools : undefined,
+          tool_choice: tools.length > 0 ? "auto" : undefined,
+        }),
+      });
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`OpenRouter tool call failed (${response.status}): ${errText}`);
+      }
+      result = await response.json();
+    } else {
+      // Fallback to built-in LLM if no OpenRouter key
+      result = await invokeLLM({
+        messages: conversationMessages,
+        tools: tools.length > 0 ? tools : undefined,
+        toolChoice: tools.length > 0 ? "auto" : undefined,
+      });
+    }
 
     const choice = result?.choices?.[0];
     if (!choice) {
