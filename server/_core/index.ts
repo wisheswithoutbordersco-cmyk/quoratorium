@@ -26,6 +26,7 @@ import { createContext } from "./context";
 import { serveStatic, setupVite } from "./vite";
 import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
+import { handleAgentChat, handleRunCode } from "../agent-tools";
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -165,6 +166,8 @@ async function startServer() {
   // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth
   if (cqRouter) app.use(cqRouter);
+  app.post('/api/agent/chat', handleAgentChat);
+  app.post('/api/tools/run-code', handleRunCode);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
