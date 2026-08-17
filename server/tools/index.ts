@@ -12,12 +12,6 @@ import type { Tool, ToolCall, Message } from "../_core/llm";
 import { invokeLLM } from "../_core/llm";
 import type { Response } from "express";
 
-// Import tool modules to trigger side-effect registration
-import "./fileCreate";
-import "./codeExecute";
-import "./webResearch";
-import "./deploy";
-
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ToolDefinition {
@@ -90,6 +84,18 @@ export async function runToolLoop(
   onToolStart?: (toolName: string, args: Record<string, any>) => void,
   onToolResult?: (toolName: string, result: ToolResult) => void,
 ): Promise<{ response: string; toolsUsed: string[]; artifacts: ToolArtifact[] }> {
+  // Lazy-load tool modules to avoid circular dependency issues with esbuild bundling
+  if (toolRegistry.size === 0) {
+    try {
+      await import("./fileCreate");
+      await import("./codeExecute");
+      await import("./webResearch");
+      await import("./deploy");
+    } catch (regErr: any) {
+      console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
+    }
+  }
+
   const tools = getRegisteredTools();
   const toolsUsed: string[] = [];
   const allArtifacts: ToolArtifact[] = [];
