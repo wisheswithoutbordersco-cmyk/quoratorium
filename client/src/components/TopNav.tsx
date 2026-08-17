@@ -10,6 +10,7 @@ import { useLocation, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FolderKanban,
+  Rocket,
   Lock,
   Settings,
   Menu,
