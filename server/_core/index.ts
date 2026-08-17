@@ -27,6 +27,7 @@ import { serveStatic, setupVite } from "./vite";
 import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
 import { handleAgentChat, handleRunCode } from "../agent-tools";
+import { handleSmartChat, handleListModels } from '../model-router';
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -168,6 +169,8 @@ async function startServer() {
   if (cqRouter) app.use(cqRouter);
   app.post('/api/agent/chat', handleAgentChat);
   app.post('/api/tools/run-code', handleRunCode);
+  app.post('/api/smart-chat', handleSmartChat);
+  app.get('/api/models', handleListModels);
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
