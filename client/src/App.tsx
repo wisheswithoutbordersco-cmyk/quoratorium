@@ -5,6 +5,7 @@
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch } from "wouter";
+import Launchpad from "./pages/Launchpad";
 import ErrorBoundary from "./components/ErrorBoundary";
 import { SettingsInitializer } from "./components/SettingsInitializer";
 import { ThemeProvider } from "./contexts/ThemeContext";
@@ -32,11 +33,13 @@ function Router() {
       <Route path="/workspace" component={Home} />
       <Route path="/workspace/projects" component={Projects} />
       <Route path="/workspace/vault" component={Vault} />
+      <Route path="/workspace/launchpad" component={Launchpad} />
       <Route path="/workspace/settings" component={Settings} />
 
       {/* Legacy routes */}
       <Route path="/projects" component={Projects} />
       <Route path="/vault" component={Vault} />
+      <Route path="/launchpad" component={Launchpad} />
       <Route path="/settings" component={Settings} />
 
       <Route component={NotFound} />

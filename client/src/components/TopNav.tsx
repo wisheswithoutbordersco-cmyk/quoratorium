@@ -25,6 +25,7 @@ import { SessionHealthIndicator } from "./SessionHealthIndicator";
 
 const navItems = [
   { path: "/workspace/projects", label: "Projects", icon: FolderKanban },
+  { path: "/workspace/launchpad", label: "Launchpad", icon: Rocket },
   { path: "/workspace/vault", label: "Vault", icon: Lock },
   { path: "/workspace/settings", label: "Settings", icon: Settings },
 ];
