@@ -20,7 +20,7 @@ export async function generateImage(
   prompt: string,
   options: {
     size?: "1024x1024" | "1792x1024" | "1024x1792";
-    quality?: "standard" | "hd";
+    quality?: "auto" | "low" | "medium" | "high";
     style?: "vivid" | "natural";
   } = {}
 ): Promise<ImageGenerationResult> {
@@ -53,7 +53,7 @@ export async function generateImage(
       prompt,
       n: 1,
       size: options.size || "1024x1024",
-      quality: options.quality || "standard",
+      quality: options.quality || "auto",
       style: options.style || "vivid",
       response_format: "b64_json",
     });
