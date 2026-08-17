@@ -916,7 +916,7 @@ async function handleStandardChat(
       const toolResult = await runToolLoop(
         messages as any,
         toolContext,
-        process.env.OPENROUTER_API_KEY ? "deepseek/deepseek-chat" : undefined,
+        process.env.ORCHESTRATOR_MODEL || "openai/gpt-4o",
         // onToken: stream tokens as they arrive
         (token: string) => {
           res.write(`data: ${JSON.stringify({ type: "token", content: token })}\n\n`);
