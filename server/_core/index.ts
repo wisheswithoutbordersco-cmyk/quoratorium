@@ -164,6 +164,10 @@ async function startServer() {
     stripeWebhookRouter
   );
 
+  // Configure body parser with larger size limit for file uploads
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
   // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth
   if (cqRouter) app.use(cqRouter);
@@ -171,10 +175,6 @@ async function startServer() {
   app.post('/api/tools/run-code', handleRunCode);
   app.post('/api/smart-chat', handleSmartChat);
   app.get('/api/models', handleListModels);
-
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
   // Clerk middleware — scoped to /api/* only so it never intercepts HTML page loads.
   // Static files and the SPA index.html are served without Clerk involvement.

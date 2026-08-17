@@ -150,7 +150,7 @@ router.post('/api/generate-image', express.json(), async (req, res) => {
     let imageUrl, metadata = {};
 
     if (provider === 'openai') {
-      const openaiBase = process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1';
+      const openaiBase = 'https://api.openai.com/v1';
       const response = await axios.post(
         `${openaiBase}/images/generations`,
         { model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'auto' },
@@ -161,34 +161,15 @@ router.post('/api/generate-image', express.json(), async (req, res) => {
 
     } else {
       if (!process.env.FAL_API_KEY) return res.status(400).json({ error: 'FAL_API_KEY not set' });
-
-      const sizeMap = { '1:1': 'square', '16:9': 'landscape_16_9', '9:16': 'portrait_16_9', '4:3': 'landscape_4_3' };
-
-      const submit = await axios.post(
-        'https://queue.fal.run/fal-ai/flux-pro/v1.1',
-        { prompt, image_size: sizeMap[aspect_ratio] || 'square', num_inference_steps: 28, guidance_scale: 3.5 },
-        { headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' } }
+      const sizeMap = { '1:1': { width: 1024, height: 1024 }, '16:9': { width: 1792, height: 1024 }, '9:16': { width: 1024, height: 1792 }, '4:3': { width: 1365, height: 1024 } };
+      const imageSize = sizeMap[aspect_ratio] || sizeMap['1:1'];
+      const response = await axios.post(
+        'https://fal.run/fal-ai/flux-pro/v1.1',
+        { prompt, image_size: imageSize, num_inference_steps: 28, guidance_scale: 3.5 },
+        { headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 120000 }
       );
-
-      const requestId = submit.data.request_id;
-      let result, attempts = 0;
-      while (attempts < 30) {
-        await new Promise(r => setTimeout(r, 2000));
-        const status = await axios.get(
-          `https://queue.fal.run/fal-ai/flux-pro/v1.1/requests/${requestId}/status`,
-          { headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}` } }
-        );
-        if (status.data.status === 'COMPLETED') {
-          result = await axios.get(
-            `https://queue.fal.run/fal-ai/flux-pro/v1.1/requests/${requestId}`,
-            { headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}` } }
-          );
-          break;
-        }
-        attempts++;
-      }
-      imageUrl = result.data.images[0].url;
-      metadata = { provider: 'fal-flux-pro', seed: result.data.seed };
+      imageUrl = response.data.images[0].url;
+      metadata = { provider: 'fal-flux-pro', seed: response.data.seed };
     }
 
     // Save to Supabase Storage

@@ -26,7 +26,7 @@ const supabase = createClient(
 // Use OpenAI directly for embeddings (OpenRouter doesn't support embeddings)
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
-  baseURL: process.env.OPENAI_BASE_URL || 'https://api.openai.com/v1',
+  baseURL: 'https://api.openai.com/v1',
 });
 
 // ─── Embedding Generation ──────────────────────────────
