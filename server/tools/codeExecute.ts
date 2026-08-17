@@ -31,6 +31,35 @@ registerTool({
       return { success: false, output: "Missing code or language" };
     }
 
+    // Priority 1: E2B sandbox (if available)
+    if (process.env.E2B_API_KEY && language === "python") {
+      try {
+        const { Sandbox } = await import("e2b");
+        const sandbox = await Sandbox.create({ apiKey: process.env.E2B_API_KEY });
+        try {
+          const result = await sandbox.commands.run(`python3 -c ${JSON.stringify(code)}`, { timeoutMs: 30000 });
+          const output = result.stdout;
+          const errors = result.stderr || result.error || "";
+          return {
+            success: result.exitCode === 0,
+            output: `Execution successful (E2B sandbox):\n${output || "(no output)"}${errors ? `\nErrors: ${errors}` : ""}`,
+            data: { stdout: output, stderr: errors, duration: 0, engine: "e2b" },
+            stdout: output || "",
+            stderr: errors,
+            exitCode: result.exitCode,
+            duration: 0,
+            language,
+            engine: "e2b" as any,
+          } as any;
+        } finally {
+          await sandbox.kill();
+        }
+      } catch (e2bErr: any) {
+        console.warn("[CodeExecute] E2B failed, falling back:", e2bErr?.message);
+        // Fall through to existing execution methods
+      }
+    }
+
     const validLangs = ["javascript", "typescript", "python"];
     if (!validLangs.includes(language)) {
       return { success: false, output: `Unsupported language: ${language}. Use: ${validLangs.join(", ")}` };
