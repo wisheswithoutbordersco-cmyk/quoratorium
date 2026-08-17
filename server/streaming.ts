@@ -15,6 +15,7 @@ import { executeBrowserTask, parseBrowserTask } from "./browserWorker";
 import { generateImage, isImageRequest, extractImagePrompt } from "./imageWorker";
 import { executeTaskChain } from "./taskChain";
 import { retrieveRelevantMemories, buildMemoryContext, extractMemoriesFromMessage, persistExtractedMemories } from "./memoryService";
+import { saveToMemory, buildMemoryContext as buildSemanticMemoryContext } from "./memory-service";
 import { logApiCall, canAffordRequest, trackTaskCall, startTaskTracking, endTaskTracking } from "./costService";
 import { analyzeComplexity, selectModel } from "./modelRouter";
 import { createStateMachine, removeStateMachine } from "./stateMachine";
@@ -280,6 +281,16 @@ export function registerStreamingRoutes(app: Express) {
       res.write(`data: ${JSON.stringify({ type: "conversation_id", conversationId: persistedConversationId })}\n\n`);
     }
 
+    // ─── Memory: Retrieve relevant context ─────────────────────
+    let semanticMemoryContext = "";
+    if (userId) {
+      try {
+        semanticMemoryContext = await buildSemanticMemoryContext(userId, message);
+      } catch (e) {
+        // Non-blocking
+      }
+    }
+
     const intent = detectExtendedIntent(message);
     const workerName = getWorkerName(intent);
 
@@ -520,6 +531,7 @@ export function registerStreamingRoutes(app: Express) {
             history,
             projectId,
             memoryContext + knowledgeContext,
+            semanticMemoryContext,
             userId,
             persistedConversationId
           );
@@ -859,14 +871,26 @@ async function handleStandardChat(
   history: any,
   projectId: number | null,
   memoryContext: string = "",
+  semanticMemoryContext: string = "",
   userId?: number | null,
   conversationId?: number | null
 ) {
   const basePrompt = getSystemPrompt(intent);
-  const systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
+  let systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
   const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
     { role: "system", content: systemPrompt },
   ];
+
+  if (semanticMemoryContext) {
+    // Inject memory context into the system prompt
+    const memoryNote = `\n\nYou have access to memory of past conversations. Use this context when relevant:\n${semanticMemoryContext}`;
+    systemPrompt += memoryNote;
+    if (messages[0]?.role === "system") {
+      messages[0].content += memoryNote;
+    } else {
+      messages.unshift({ role: "system", content: memoryNote });
+    }
+  }
 
   if (history && Array.isArray(history)) {
     for (const msg of history.slice(-10)) {
@@ -921,6 +945,13 @@ async function handleStandardChat(
           intent,
           toolsUsed: toolResult.toolsUsed,
         });
+
+        // ─── Memory: Save messages for future recall ─────────────
+        if (userId) {
+          saveToMemory({ userId, conversationId: conversationId || undefined, role: "user", content: message }).catch(() => {});
+          saveToMemory({ userId, conversationId: conversationId || undefined, role: "assistant", content: toolResult.response }).catch(() => {});
+        }
+
         res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
         res.write(`data: [DONE]\n\n`);
         res.end();
@@ -1018,6 +1049,14 @@ async function handleStandardChat(
   }
 
   await persistAssistantConversationMessage(userId, conversationId, fullResponse, { intent });
+
+  // ─── Memory: Save messages for future recall ─────────────
+  if (userId) {
+    saveToMemory({ userId, conversationId: conversationId || undefined, role: "user", content: message }).catch(() => {});
+    if (fullResponse) {
+      saveToMemory({ userId, conversationId: conversationId || undefined, role: "assistant", content: fullResponse }).catch(() => {});
+    }
+  }
 
   if (!res.writableEnded) {
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
