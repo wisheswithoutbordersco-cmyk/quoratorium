@@ -116,26 +116,33 @@ Include: subject, lighting, color palette, mood, art style, composition, texture
 });
 
 // ───────────────────────────────────────────────
-// 2. TEXT-TO-SPEECH (Voice for driving)
+// 2. TEXT-TO-SPEECH (ElevenLabs — Ruby Roo voice)
 // ───────────────────────────────────────────────
 router.post('/api/tts', express.json(), async (req, res) => {
   try {
-    const { text, voice = 'onyx', speed = 1.0 } = req.body;
+    const { text, voice, speed = 1.0 } = req.body;
     if (!text) return res.status(400).json({ error: 'Text is required' });
-
-    const response = await axios.post(
-      'https://api.openai.com/v1/audio/speech',
-      { model: 'tts-1', voice, input: text, speed, response_format: 'mp3' },
-      {
-        headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' },
-        responseType: 'stream'
-      }
-    );
-
-    res.setHeader('Content-Type', 'audio/mpeg');
-    res.setHeader('Content-Disposition', 'inline; filename="captain-q.mp3"');
-    response.data.pipe(res);
-
+    const apiKey = process.env.ELEVENLABS_API_KEY;
+    if (apiKey) {
+      const voiceId = voice || 'b8gbDO0ybjX1VA89pBdX';
+      const response = await axios.post(
+        `https://api.elevenlabs.io/v1/text-to-speech/${voiceId}`,
+        { text, model_id: 'eleven_monolingual_v1', voice_settings: { stability: 0.5, similarity_boost: 0.75 } },
+        { headers: { 'xi-api-key': apiKey, 'Content-Type': 'application/json' }, responseType: 'stream' }
+      );
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', 'inline; filename="captain-q.mp3"');
+      response.data.pipe(res);
+    } else {
+      const response = await axios.post(
+        'https://api.openai.com/v1/audio/speech',
+        { model: 'tts-1', voice: voice || 'onyx', input: text, speed, response_format: 'mp3' },
+        { headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' }, responseType: 'stream' }
+      );
+      res.setHeader('Content-Type', 'audio/mpeg');
+      res.setHeader('Content-Disposition', 'inline; filename="captain-q.mp3"');
+      response.data.pipe(res);
+    }
   } catch (err) { handleError(res, err, 'TTS'); }
 });
 
