@@ -1,5 +1,5 @@
 /**
- * Image Generation Worker — Uses built-in Forge ImageService (primary) with OpenAI DALL-E 3 fallback
+ * Image Generation Worker — Scriptorium (primary), fal.ai (fallback), OpenAI DALL-E 3 (last resort)
  * Generates images from text prompts and stores them
  */
 import { storagePut } from "./storage";
@@ -38,7 +38,66 @@ export async function generateImage(
     console.warn("[ImageWorker] Forge ImageService failed, trying OpenAI DALL-E:", forgeError?.message);
   }
 
-  // Fallback 1: fal.ai Flux Pro (preferred - fast and high quality)
+  // Primary Fallback: Scriptorium (composition layer + GPT-Image-2 = premium quality)
+  const scriptoriumUrl = process.env.PRODUCTION_STUDIO_URL;
+  if (scriptoriumUrl) {
+    try {
+      console.log("[ImageWorker] Trying Scriptorium at", scriptoriumUrl);
+      const scriptResp = await fetch(`${scriptoriumUrl}/api/quick-create/generate`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          prompt,
+          pages: 1,
+          style: "full-color",
+          size: "1024x1024",
+          upscale: false,
+        }),
+      });
+      if (scriptResp.ok) {
+        const contentType = scriptResp.headers.get("content-type") || "";
+        let imageUrl: string | undefined;
+        if (contentType.includes("text/event-stream")) {
+          const text = await scriptResp.text();
+          const lines = text.split("\n");
+          for (const line of lines) {
+            if (line.startsWith("data: ")) {
+              try {
+                const data = JSON.parse(line.slice(6));
+                if (data.imageUrl || data.image_url || data.url) {
+                  imageUrl = data.imageUrl || data.image_url || data.url;
+                }
+                if (data.pages && Array.isArray(data.pages)) {
+                  for (const page of data.pages) {
+                    if (page.imageUrl || page.image_url || page.url) {
+                      imageUrl = page.imageUrl || page.image_url || page.url;
+                    }
+                  }
+                }
+              } catch {}
+            }
+          }
+        } else {
+          const data = await scriptResp.json() as any;
+          imageUrl = data?.imageUrl || data?.image_url || data?.url || data?.pages?.[0]?.imageUrl || data?.pages?.[0]?.url;
+        }
+        if (imageUrl) {
+          console.log("[ImageWorker] Scriptorium generated image:", imageUrl);
+          return {
+            success: true,
+            imageUrl,
+            revisedPrompt: prompt,
+          };
+        }
+      } else {
+        console.warn("[ImageWorker] Scriptorium failed:", scriptResp.status);
+      }
+    } catch (scriptError: any) {
+      console.warn("[ImageWorker] Scriptorium error:", scriptError?.message);
+    }
+  }
+
+  // Fallback 2: fal.ai Flux Pro (fast, no restrictions)
   const falKey = process.env.FAL_API_KEY;
   if (falKey) {
     try {
