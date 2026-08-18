@@ -1,5 +1,5 @@
 /**
- * Image Generation Worker — Uses built-in Forge ImageService (primary) with OpenAI DALL-E 3 fallback
+ * Image Generation Worker — Scriptorium (primary), fal.ai (fallback), DALL-E 3 (last resort)
  * Generates images from text prompts and stores them
  */
 import { storagePut } from "./storage";
@@ -38,7 +38,34 @@ export async function generateImage(
     console.warn("[ImageWorker] Forge ImageService failed, trying OpenAI DALL-E:", forgeError?.message);
   }
 
-  // Fallback 1: fal.ai Flux Pro (preferred - fast and high quality)
+  // Primary: Scriptorium (composition layer + GPT-Image-2 = premium quality)
+  const studioUrl = process.env.PRODUCTION_STUDIO_URL;
+  if (studioUrl) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 120000);
+      const sr = await fetch(studioUrl + "/api/quick-create/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt, pages: 1, style: "full-color", size: "1024x1024", upscale: false }),
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (sr.ok) {
+        const txt = await sr.text();
+        let imgUrl: string | undefined;
+        for (const ln of txt.split("\n")) {
+          if (ln.startsWith("data: ")) {
+            try { const d = JSON.parse(ln.slice(6)); imgUrl = d?.imageUrl || d?.image_url || d?.url || d?.pages?.[0]?.imageUrl || imgUrl; } catch {}
+          }
+        }
+        if (!imgUrl) { try { const d = JSON.parse(txt); imgUrl = d?.imageUrl || d?.image_url || d?.url || d?.pages?.[0]?.imageUrl; } catch {} }
+        if (imgUrl) return { success: true, imageUrl: imgUrl, revisedPrompt: prompt };
+      }
+    } catch (e: any) { console.warn("[ImageWorker] Scriptorium:", e?.message); }
+  }
+
+  // Fallback: fal.ai Flux Pro (fast, no restrictions)
   const falKey = process.env.FAL_API_KEY;
   if (falKey) {
     try {
