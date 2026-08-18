@@ -103,11 +103,12 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
   useEffect(() => {
     if (messages.length === 0 && !activeConversationId) {
+      const hour = new Date().getHours();
+      const greeting = hour < 12 ? "Morning, Lee." : hour < 17 ? "What's up, Lee." : "Evening, Lee.";
       addMessage({
         id: nanoid(),
         role: "assistant",
-        content:
-          "Welcome to Q Workspace. I'm Captain Q - your AI orchestration intelligence.\n\nI coordinate builders, validators, and researchers using **real AI workers**:\n\n- **Builder** (OpenAI GPT-4o) - Code generation & project creation\n- **Validator** (Anthropic Claude) - Code review & quality assurance\n- **Research** (Perplexity Sonar) - Intelligence & market research\n\nThe orchestration panel shows real-time worker activity. What would you like to build?",
+        content: greeting + " What can I do for you?",
         timestamp: new Date(),
       });
     }
