@@ -310,6 +310,24 @@ router.post('/api/social/mark-posted', express.json(), async (req, res) => {
     if (error) throw error;
     res.json({ success: true, post: data });
 
+// ─── PINTEREST AUTO-PIN (via Zapier webhook) ───
+router.post('/api/pinterest/pin', express.json(), async (req, res) => {
+  try {
+    const { image_url, title, description, link, board } = req.body;
+    if (!image_url) return res.status(400).json({ error: 'image_url is required' });
+    const webhookUrl = process.env.ZAPIER_PINTEREST_WEBHOOK;
+    if (!webhookUrl) return res.status(500).json({ error: 'ZAPIER_PINTEREST_WEBHOOK not configured' });
+    const resp = await axios.post(webhookUrl, {
+      image_url,
+      title: title || 'Untitled',
+      description: description || '',
+      link: link || 'https://wisheswithoutbordersco.com',
+      board: board || 'Scrippy'
+    }, { timeout: 15000 });
+    res.json({ success: true, message: 'Pin queued via Zapier', zapier_response: resp.data });
+  } catch (err) { handleError(res, err, 'Pinterest pin'); }
+});
+
   } catch (err) { handleError(res, err, 'Mark posted'); }
 });
 
