@@ -90,6 +90,7 @@ export async function runToolLoop(
       await import("./fileCreate");
       await import("./codeExecute");
       await import("./webResearch");
+      await import("./scriptorium");
       await import("./deploy");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
