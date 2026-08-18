@@ -717,9 +717,25 @@ function VoiceButton({ text, autoPlay }: { text: string; autoPlay?: boolean }) {
     }
     setLoading(true);
     try {
-      // Strip markdown for cleaner speech
-      const cleanText = text.replace(/```[\s\S]*?```/g, 'code block omitted')
-        .replace(/\*\*/g, '').replace(/[#*_~`]/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').slice(0, 4000);
+      // Strip markdown AND tool status messages for cleaner speech
+      const cleanText = text
+        .replace(/```[\s\S]*?```/g, 'code block omitted')
+        .replace(/🛠️\s*Using tools autonomously\.\.\.?\n?/g, '')
+        .replace(/🔍\s*Researching\.\.\.?\s*✅?\s*Done\s*/g, '')
+        .replace(/🔧\s*\w+\.\.\.?\s*✅?\s*Done\s*/g, '')
+        .replace(/✅\s*Tools used:.*$/gm, '')
+        .replace(/🎨\s*Generating image:.*?\.\.\.\n?/g, '')
+        .replace(/✅\s*Image generated successfully\.\n?/g, '')
+        .replace(/\*\*Prompt used:\*\*.*$/gm, '')
+        .replace(/\*\*Storage:\*\*.*$/gm, '')
+        .replace(/\*\*Image:\*\*.*$/gm, '')
+        .replace(/https?:\/\/[^\s]+/g, '')
+        .replace(/\*\*/g, '')
+        .replace(/[#*_~`]/g, '')
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
+        .replace(/\n{3,}/g, '\n')
+        .trim()
+        .slice(0, 4000);
       const res = await fetch('/api/tts', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
