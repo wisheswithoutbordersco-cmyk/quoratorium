@@ -38,6 +38,42 @@ export async function generateImage(
     console.warn("[ImageWorker] Forge ImageService failed, trying OpenAI DALL-E:", forgeError?.message);
   }
 
+  // Fallback 1: fal.ai Flux Pro (preferred - fast and high quality)
+  const falKey = process.env.FAL_API_KEY;
+  if (falKey) {
+    try {
+      const falResponse = await fetch("https://fal.run/fal-ai/flux-pro/v1.1-ultra", {
+        method: "POST",
+        headers: {
+          "Authorization": `Key ${falKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          aspect_ratio: options.size === "1792x1024" ? "16:9" : options.size === "1024x1792" ? "9:16" : "1:1",
+          output_format: "png",
+          safety_tolerance: "5",
+        }),
+      });
+      if (falResponse.ok) {
+        const falData = await falResponse.json() as any;
+        const imageUrl = falData?.images?.[0]?.url;
+        if (imageUrl) {
+          return {
+            success: true,
+            imageUrl,
+            revisedPrompt: prompt,
+          };
+        }
+      } else {
+        const errText = await falResponse.text();
+        console.warn("[ImageWorker] fal.ai failed:", falResponse.status, errText);
+      }
+    } catch (falError: any) {
+      console.warn("[ImageWorker] fal.ai error:", falError?.message);
+    }
+  }
+
   // Fallback: OpenAI DALL-E 3
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
