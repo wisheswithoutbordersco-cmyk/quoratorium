@@ -301,10 +301,24 @@ export default function Settings() {
                                     return;
                                   }
                                   const reader = new FileReader();
-                                  reader.onload = () => {
+                                  reader.onload = async () => {
                                     const base64 = reader.result as string;
                                     updateSetting("appearance.pwaIcon", base64);
-                                    toast.success("Icon updated! Reinstall the app to see changes.");
+                                    // Also save to app_settings table so /api/pwa-icon serves it
+                                    try {
+                                      const resp = await fetch("/api/settings/pwa-icon", {
+                                        method: "POST",
+                                        headers: { "Content-Type": "application/json" },
+                                        body: JSON.stringify({ icon: base64 }),
+                                      });
+                                      if (resp.ok) {
+                                        toast.success("PWA icon saved! Reinstall the app to see changes.");
+                                      } else {
+                                        toast.error("Icon preview updated but failed to save to server.");
+                                      }
+                                    } catch {
+                                      toast.error("Icon preview updated but failed to save to server.");
+                                    }
                                   };
                                   reader.readAsDataURL(file);
                                 }}

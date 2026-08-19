@@ -28,6 +28,7 @@ import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
 import { handleAgentChat, handleRunCode } from "../agent-tools";
 import { handleSmartChat, handleListModels } from '../model-router';
+import { pwaIconRouter } from '../pwaIconRoute';
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -167,6 +168,9 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // PWA icon route — public, no auth required
+  app.use(pwaIconRouter);
 
   // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth
