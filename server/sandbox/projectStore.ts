@@ -139,9 +139,11 @@ export async function deploySandbox(
  * Get the live URL for a sandbox
  */
 export function getSandboxUrl(sandboxId: string): string {
-  // The sandbox is served via our Express route at /sandbox/:id
-  // In production, this becomes the full domain URL
-  return `/sandbox/${sandboxId}/`;
+  // Return full URL so frontend can display it correctly
+  const baseUrl = process.env.NODE_ENV === "production" 
+    ? "https://quoratorium.com" 
+    : "http://localhost:3000";
+  return `${baseUrl}/sandbox/${sandboxId}/`;
 }
 
 /**
