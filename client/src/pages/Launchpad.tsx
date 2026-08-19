@@ -11,42 +11,42 @@ const apps = [
     letter: "S",
     description: "AI Image Generator — Create print-ready art and PDFs",
     url: "https://app.scriptoriumdesign.com",
-    color: "#1e6fff",
+    color: "#1a1a2e",
   },
   {
     name: "Templatorium",
     letter: "T",
     description: "Template Editor — Upload, edit text, export clean PDFs",
     url: "https://templatorium-production.up.railway.app",
-    color: "#7c3aed",
+    color: "#2d2d44",
   },
   {
     name: "Extractorium",
     letter: "E",
     description: "Vision & OCR — Reverse-prompt images, extract text",
     url: "https://extractorium-production.up.railway.app",
-    color: "#10b981",
+    color: "#1a1a2e",
   },
   {
     name: "Colloquiorium",
     letter: "C",
     description: "AI Boardroom — Multi-AI advisory conversations",
     url: "https://colloquiorium-production.up.railway.app",
-    color: "#f59e0b",
+    color: "#2d2d44",
   },
   {
     name: "Deployorium",
     letter: "D",
     description: "Zip Deployer — Drag & drop to Cloudflare Pages",
     url: "https://deployorium-production.up.railway.app",
-    color: "#ef4444",
+    color: "#1a1a2e",
   },
   {
     name: "Repositorium",
     letter: "R",
     description: "Credential Vault — Secure storage for keys & files",
     url: "https://repositorium-production.up.railway.app",
-    color: "#ec4899",
+    color: "#2d2d44",
   },
 ];
 
@@ -79,7 +79,7 @@ export default function Launchpad() {
               >
                 <div className="flex items-center justify-between">
                   <div
-                    className="w-12 h-12 rounded-lg flex items-center justify-center text-xl font-bold text-white"
+                    className="w-12 h-12 rounded-lg flex items-center justify-center text-xl font-bold text-silver-200 border border-zinc-600/50 shadow-inner"
                     style={{ backgroundColor: app.color }}
                   >
                     {app.letter}

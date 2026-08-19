@@ -269,6 +269,50 @@ export default function Settings() {
                           { value: "hidden", label: "Hidden" },
                         ]}
                       />
+                      <Card className="mt-4">
+                        <CardHeader>
+                          <CardTitle className="text-sm">App Icon (PWA)</CardTitle>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-xs text-muted-foreground mb-3">
+                            Upload a 512x512 PNG to use as the home screen icon when installed as an app.
+                          </p>
+                          <div className="flex items-center gap-4">
+                            {settings["appearance.pwaIcon"] && (
+                              <img
+                                src={settings["appearance.pwaIcon"]}
+                                alt="Current icon"
+                                className="w-16 h-16 rounded-lg border border-border"
+                              />
+                            )}
+                            <label className="cursor-pointer">
+                              <div className="px-4 py-2 rounded-md bg-primary/10 border border-primary/30 text-primary text-sm hover:bg-primary/20 transition-colors">
+                                Upload Icon
+                              </div>
+                              <input
+                                type="file"
+                                accept="image/png"
+                                className="hidden"
+                                onChange={async (e) => {
+                                  const file = e.target.files?.[0];
+                                  if (!file) return;
+                                  if (file.size > 1024 * 1024) {
+                                    toast.error("Icon must be under 1MB");
+                                    return;
+                                  }
+                                  const reader = new FileReader();
+                                  reader.onload = () => {
+                                    const base64 = reader.result as string;
+                                    updateSetting("appearance.pwaIcon", base64);
+                                    toast.success("Icon updated! Reinstall the app to see changes.");
+                                  };
+                                  reader.readAsDataURL(file);
+                                }}
+                              />
+                            </label>
+                          </div>
+                        </CardContent>
+                      </Card>
                     </>
                   )}
 
