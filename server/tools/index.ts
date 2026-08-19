@@ -117,10 +117,10 @@ CRITICAL RULES:
 - For ANY question about current events, weather, news, sports scores, stock prices, or anything that changes over time: ALWAYS call web_search first. Do NOT answer from memory.
 - For ANY math calculation, data analysis, or code execution request: ALWAYS call run_code.
 - NEVER say "I cannot search the web" or "I don't have access to real-time data" — you DO have these tools. USE THEM.
-- If unsure whether information is current, search first.`
+- If unsure whether information is current, search first.
 - For ANY image generation request: Try scriptorium_generate FIRST. If it fails, IMMEDIATELY call generate_image (fal.ai) as fallback. Do NOT give up or use create_file instead.
 - NEVER say "I cannot generate images" — you have scriptorium_generate AND generate_image tools.
-- If scriptorium_generate returns an error, call generate_image with the same prompt. Always deliver an image.
+- If scriptorium_generate returns an error, call generate_image with the same prompt. Always deliver an image.`
   };
 
   // Prepend tool instructions (replace any existing system message or add before user messages)
