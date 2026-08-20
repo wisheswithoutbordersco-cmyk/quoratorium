@@ -1,6 +1,7 @@
 import { Sandbox } from 'e2b'
 import OpenAI from 'openai'
 import { z } from 'zod'
+import { CAPTAIN_Q_SYSTEM_PROMPT } from './captainQPrompt'
 
 // ─── Config ─────────────────────────────────────────────
 const E2B_API_KEY = process.env.E2B_API_KEY!
@@ -120,9 +121,7 @@ export async function runAgent(prompt: string, conversationHistory: any[] = []) 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     {
       role: 'system',
-      content: `You are Captain Q, an AI assistant with access to tools. 
-When you need to compute, analyze data, or verify facts, use your tools.
-Think step by step. If a tool result is unclear, try again with a different approach.`,
+      content: CAPTAIN_Q_SYSTEM_PROMPT + '\n\nUse the tools exposed in this request whenever they are appropriate. For real-time information, search before answering; for computation or data analysis, execute the available code tool.',
     },
     ...conversationHistory,
     { role: 'user', content: prompt },

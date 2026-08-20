@@ -9,6 +9,7 @@
  * - Streaming status events back to the client
  */
 import type { Tool, ToolCall, Message } from "../_core/llm";
+import { CAPTAIN_Q_SYSTEM_PROMPT } from "../captainQPrompt";
 import { invokeLLM } from "../_core/llm";
 import type { Response } from "express";
 
@@ -109,18 +110,14 @@ export async function runToolLoop(
   // Ensure the tool-calling model knows it MUST use tools for real-time info
   const toolSystemMessage = {
     role: "system" as const,
-    content: `You are Captain Q, an AI assistant with access to tools. You MUST use your available tools when appropriate.
-
-AVAILABLE TOOLS: web_search, run_code, create_file, deploy_project, scriptorium_generate, generate_image
-
-CRITICAL RULES:
-- For ANY question about current events, weather, news, sports scores, stock prices, or anything that changes over time: ALWAYS call web_search first. Do NOT answer from memory.
-- For ANY math calculation, data analysis, or code execution request: ALWAYS call run_code.
-- NEVER say "I cannot search the web" or "I don't have access to real-time data" — you DO have these tools. USE THEM.
-- If unsure whether information is current, search first.
-- For ANY image generation request: Try scriptorium_generate FIRST. If it fails, IMMEDIATELY call generate_image (fal.ai) as fallback. Do NOT give up or use create_file instead.
-- NEVER say "I cannot generate images" — you have scriptorium_generate AND generate_image tools.
-- If scriptorium_generate returns an error, call generate_image with the same prompt. Always deliver an image.`
+    content:
+      CAPTAIN_Q_SYSTEM_PROMPT +
+      "\n\nTOOL USE REQUIREMENTS:\n" +
+      "- For current events, weather, news, sports scores, stock prices, or anything that can change over time: always call web_search first.\n" +
+      "- For math calculations, data analysis, or code execution: always call run_code.\n" +
+      "- If information might be current, search first; never claim real-time information is unavailable when web_search is available.\n" +
+      "- For every image request, use scriptorium_generate first. If it fails or times out, immediately call generate_image with the same prompt.\n" +
+      "- Do not substitute create_file for image generation, and never say image generation is unavailable when either image tool can be used.",
   };
 
   // Prepend tool instructions (replace any existing system message or add before user messages)
