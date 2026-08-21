@@ -116,8 +116,10 @@ export async function runToolLoop(
       "- For current events, weather, news, sports scores, stock prices, or anything that can change over time: always call web_search first.\n" +
       "- For math calculations, data analysis, or code execution: always call run_code.\n" +
       "- If information might be current, search first; never claim real-time information is unavailable when web_search is available.\n" +
-      "- For every image request, use scriptorium_generate first. If it fails or times out, immediately call generate_image with the same prompt.\n" +
-      "- Do not substitute create_file for image generation, and never say image generation is unavailable when either image tool can be used.",
+      "- For ANY visual request (poster, flyer, business card, wall art, menu, brochure, landing page design, social media graphic, banner, or logo concept): use scriptorium_generate FIRST. If it fails or times out, immediately call generate_image with the same prompt.\n" +
+      "- Do NOT use create_file to make an HTML page for a visual request. Only use create_file + deploy_project when the user specifically asks for a working interactive website or web application with functionality.\n" +
+      "- Treat a request to build a landing page as a request for a designed image unless the user explicitly requests a functioning website.\n" +
+      "- Never say image generation is unavailable when either image tool can be used, and never dump raw code, HTML, CSS, or JavaScript into the chat for a visual request.",
   };
 
   // Prepend tool instructions (replace any existing system message or add before user messages)
