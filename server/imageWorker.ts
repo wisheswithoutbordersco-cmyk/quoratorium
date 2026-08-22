@@ -1,20 +1,20 @@
 /**
- * Image Generation Worker — Scriptorium (primary), fal.ai (fallback), DALL-E 3 (last resort)
- * Generates images from text prompts and stores them
+ * Image Generation Worker — OpenAI primary, fal.ai reliability fallback.
  */
-import { storagePut } from "./storage";
-import { generateImage as forgeGenerateImage } from "./_core/imageGeneration";
+import { generateImageWithFallback } from "./imageGenerationService";
 
 export interface ImageGenerationResult {
   success: boolean;
   imageUrl?: string; // Storage URL for display
   storageKey?: string; // Key for R2/S3 storage
-  revisedPrompt?: string; // DALL-E's revised prompt
+  revisedPrompt?: string;
+  provider?: "openai" | "fal.ai";
+  fallbackUsed?: boolean;
   error?: string;
 }
 
 /**
- * Generate an image — tries built-in Forge ImageService first, falls back to OpenAI DALL-E 3
+ * Generate an image with OpenAI first and fal.ai only as fallback.
  */
 export async function generateImage(
   prompt: string,
@@ -24,138 +24,20 @@ export async function generateImage(
     style?: "vivid" | "natural";
   } = {}
 ): Promise<ImageGenerationResult> {
-  // Primary: Built-in Forge ImageService (always available)
-  try {
-    const result = await forgeGenerateImage({ prompt });
-    if (result.url) {
-      return {
-        success: true,
-        imageUrl: result.url,
-        revisedPrompt: prompt,
-      };
-    }
-  } catch (forgeError: any) {
-    console.warn("[ImageWorker] Forge ImageService failed, trying OpenAI DALL-E:", forgeError?.message);
-  }
+  const result = await generateImageWithFallback(prompt, {
+    size: options.size,
+    quality: options.quality,
+  });
 
-  // Primary: Scriptorium (composition layer + GPT-Image-2 = premium quality)
-  const studioUrl = process.env.PRODUCTION_STUDIO_URL;
-  if (studioUrl) {
-    try {
-      const ctrl = new AbortController();
-      const timer = setTimeout(() => ctrl.abort(), 120000);
-      const sr = await fetch(studioUrl + "/api/quick-create/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt, pages: 1, style: "full-color", size: "1024x1024", upscale: false }),
-        signal: ctrl.signal,
-      });
-      clearTimeout(timer);
-      if (sr.ok) {
-        const txt = await sr.text();
-        let imgUrl: string | undefined;
-        for (const ln of txt.split("\n")) {
-          if (ln.startsWith("data: ")) {
-            try { const d = JSON.parse(ln.slice(6)); imgUrl = d?.imageUrl || d?.image_url || d?.url || d?.pages?.[0]?.imageUrl || imgUrl; } catch {}
-          }
-        }
-        if (!imgUrl) { try { const d = JSON.parse(txt); imgUrl = d?.imageUrl || d?.image_url || d?.url || d?.pages?.[0]?.imageUrl; } catch {} }
-        if (imgUrl) return { success: true, imageUrl: imgUrl, revisedPrompt: prompt };
-      }
-    } catch (e: any) { console.warn("[ImageWorker] Scriptorium:", e?.message); }
-  }
-
-  // Fallback: fal.ai Flux Pro (fast, no restrictions)
-  const falKey = process.env.FAL_API_KEY;
-  if (falKey) {
-    try {
-      const falResponse = await fetch("https://fal.run/fal-ai/flux-pro/v1.1-ultra", {
-        method: "POST",
-        headers: {
-          "Authorization": `Key ${falKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt,
-          aspect_ratio: options.size === "1792x1024" ? "16:9" : options.size === "1024x1792" ? "9:16" : "1:1",
-          output_format: "png",
-          safety_tolerance: "5",
-        }),
-      });
-      if (falResponse.ok) {
-        const falData = await falResponse.json() as any;
-        const imageUrl = falData?.images?.[0]?.url;
-        if (imageUrl) {
-          return {
-            success: true,
-            imageUrl,
-            revisedPrompt: prompt,
-          };
-        }
-      } else {
-        const errText = await falResponse.text();
-        console.warn("[ImageWorker] fal.ai failed:", falResponse.status, errText);
-      }
-    } catch (falError: any) {
-      console.warn("[ImageWorker] fal.ai error:", falError?.message);
-    }
-  }
-
-  // Fallback: OpenAI DALL-E 3
-  const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) {
-    return { success: false, error: "Image generation service temporarily unavailable" };
-  }
-
-  try {
-    const { default: OpenAI } = await import("openai");
-    const openai = new OpenAI({ apiKey });
-
-    const response = await openai.images.generate({
-      model: "dall-e-3",
-      prompt,
-      n: 1,
-      size: options.size || "1024x1024",
-      quality: options.quality || "auto",
-      style: options.style || "vivid",
-      response_format: "b64_json",
-    });
-
-    const imageData = response.data?.[0];
-    if (!imageData?.b64_json) {
-      return { success: false, error: "No image data returned from DALL-E" };
-    }
-
-    const revisedPrompt = imageData.revised_prompt || prompt;
-
-    // Convert base64 to buffer and store
-    const buffer = Buffer.from(imageData.b64_json, "base64");
-    const filename = `generated-images/${Date.now()}-${prompt.slice(0, 30).replace(/[^a-z0-9]/gi, "-")}.png`;
-
-    try {
-      const { key, url } = await storagePut(filename, buffer, "image/png");
-      return {
-        success: true,
-        imageUrl: url,
-        storageKey: key,
-        revisedPrompt,
-      };
-    } catch (storageError: any) {
-      // If storage fails, return as base64 data URL
-      console.warn("[ImageWorker] Storage failed, returning base64:", storageError?.message);
-      return {
-        success: true,
-        imageUrl: `data:image/png;base64,${imageData.b64_json}`,
-        revisedPrompt,
-      };
-    }
-  } catch (error: any) {
-    console.error("[ImageWorker] DALL-E generation failed:", error?.message);
-    return {
-      success: false,
-      error: error?.message || "Image generation failed",
-    };
-  }
+  return {
+    success: result.success,
+    imageUrl: result.imageUrl,
+    storageKey: result.storageKey,
+    revisedPrompt: result.revisedPrompt,
+    provider: result.provider,
+    fallbackUsed: result.fallbackUsed,
+    error: result.error,
+  };
 }
 
 /**

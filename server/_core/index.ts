@@ -29,6 +29,7 @@ import { stripeWebhookRouter } from "../webhooks/stripe";
 import { handleAgentChat, handleRunCode } from "../agent-tools";
 import { handleSmartChat, handleListModels } from '../model-router';
 import { pwaIconRouter } from '../pwaIconRoute';
+import { imageGenerationRouter } from '../imageGenerationRoute';
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -171,6 +172,10 @@ async function startServer() {
 
   // PWA icon route — public, no auth required
   app.use(pwaIconRouter);
+
+  // OpenAI-first image route. Register before the legacy Captain Q router so
+  // its historical fal-first handler cannot intercept this endpoint.
+  app.use(imageGenerationRouter);
 
   // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth

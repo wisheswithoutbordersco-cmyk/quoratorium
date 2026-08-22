@@ -134,18 +134,18 @@ export const aiRouter = router({
 
         case "image_gen": {
           // Generate image via Captain Q API endpoint
-          workerUsed = "Image Generator (fal.ai/DALL-E)";
+          workerUsed = "Image Generator (OpenAI, fal.ai fallback)";
           try {
             const imgRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/generate-image`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ prompt: input.message, provider: 'fal' }),
+              body: JSON.stringify({ prompt: input.message }),
             });
             const imgData = await imgRes.json() as any;
             if (imgData.success && imgData.imageUrl) {
-              response = `Here's your generated image:\n\n![Generated Image](${imgData.imageUrl})\n\nPrompt used: ${imgData.prompt}`;
+              response = `Here's your generated image:\n\n![Generated Image](${imgData.imageUrl})\n\nPrompt used: ${imgData.prompt}\n\nProvider: ${imgData.provider}${imgData.fallbackUsed ? ' (fallback)' : ''}`;
             } else {
-              response = `Image generation failed: ${imgData.error || 'Unknown error'}. Make sure FAL_API_KEY is configured.`;
+              response = `Image generation failed: ${imgData.error || 'Unknown error'}. OpenAI was attempted first; provider details are available in the server logs.`;
             }
           } catch (e: any) {
             response = `Image generation error: ${e.message}`;

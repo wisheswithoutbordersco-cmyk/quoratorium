@@ -1,13 +1,13 @@
 /**
  * Tool: generate_image
- * Generate images using fal.ai Flux Pro (fast, no restrictions)
- * This is the fallback when Scriptorium is unavailable
+ * Generate images directly with OpenAI; fal.ai is the reliability fallback.
  */
 import { registerTool, type ToolContext, type ToolResult } from "./index";
+import { generateImageWithFallback, type ImageAspectRatio } from "../imageGenerationService";
 
 registerTool({
   name: "generate_image",
-  description: "Generate an AI image using fal.ai Flux Pro. Fast generation with no content restrictions. Use this as a fallback if scriptorium_generate fails, or for quick images.",
+  description: "Generate an AI image with OpenAI GPT Image first. fal.ai is used automatically only if OpenAI fails or is unavailable.",
   parameters: {
     type: "object",
     properties: {
@@ -29,48 +29,25 @@ registerTool({
       return { success: false, output: "Missing image prompt." };
     }
 
-    const falKey = process.env.FAL_API_KEY;
-    if (!falKey) {
-      return { success: false, output: "FAL_API_KEY not configured." };
+    const result = await generateImageWithFallback(prompt, {
+      aspectRatio: (args.aspect_ratio || "1:1") as ImageAspectRatio,
+    });
+
+    if (!result.success || !result.imageUrl) {
+      const details = result.providerErrors?.map(error => `${error.provider}: ${error.message}`).join("; ");
+      return { success: false, output: `${result.error || "Image generation failed"}${details ? ` (${details})` : ""}` };
     }
 
-    const aspect_ratio = args.aspect_ratio || "1:1";
-
-    try {
-      const response = await fetch("https://fal.run/fal-ai/flux-pro/v1.1-ultra", {
-        method: "POST",
-        headers: {
-          "Authorization": `Key ${falKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          prompt,
-          aspect_ratio,
-          output_format: "png",
-          safety_tolerance: "5",
-        }),
-      });
-
-      if (!response.ok) {
-        const errText = await response.text();
-        return { success: false, output: `fal.ai error (${response.status}): ${errText.slice(0, 200)}` };
-      }
-
-      const data = await response.json() as any;
-      const imageUrl = data?.images?.[0]?.url;
-
-      if (!imageUrl) {
-        return { success: false, output: "fal.ai returned no image URL." };
-      }
-
-      return {
-        success: true,
-        output: `Image generated successfully!\n\nImage URL: ${imageUrl}\n\nPrompt used: ${prompt}`,
-        data: { imageUrl, provider: "fal.ai" },
-        artifacts: [{ type: "image", name: "Generated image", url: imageUrl }],
-      };
-    } catch (err: any) {
-      return { success: false, output: `Image generation failed: ${err?.message || "Unknown error"}` };
-    }
+    return {
+      success: true,
+      output: `Image generated successfully with ${result.provider}${result.fallbackUsed ? " fallback" : ""}!\n\nImage URL: ${result.imageUrl}\n\nPrompt used: ${prompt}`,
+      data: {
+        imageUrl: result.imageUrl,
+        provider: result.provider,
+        model: result.model,
+        fallbackUsed: result.fallbackUsed,
+      },
+      artifacts: [{ type: "image", name: "Generated image", url: result.imageUrl }],
+    };
   },
 });

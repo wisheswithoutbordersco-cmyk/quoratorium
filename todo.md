@@ -737,3 +737,15 @@
 - [x] Verify Use Template flow creates a project (owner bypass covers all protectedProcedures)
 - [x] Add Coming Soon states to Knowledge and Analytics pages (Beta badge on Knowledge, empty state on Analytics)
 - [x] Animate orchestration panel agents during chat responses (wired isTyping + orchestrationEngine to NeuralOrchestration)
+
+## Fix: OpenAI-First Image Generation Routing (Aug 22 2026)
+
+- [x] Trace every active image-generation endpoint and tool path that currently selects fal.ai before OpenAI.
+- [x] Route primary image generation directly through the configured `OPENAI_API_KEY` and OpenAI Images API.
+- [x] Retain fal.ai exclusively as fallback after an OpenAI request fails or OpenAI is unavailable.
+- [x] Return clear provider metadata and provider-specific failure details without exposing credentials.
+- [x] Update Captain Q image tool and orchestration route so neither can force fal.ai as the primary provider.
+- [x] Add targeted Vitest coverage proving OpenAI is attempted first and fal.ai runs only after OpenAI failure.
+- [x] Run TypeScript checks and the relevant test suite, then record the validation results here.
+
+Validation status: `server/imageGenerationService.test.ts` passes 4/4 tests, `pnpm check` passes with zero TypeScript errors, and `pnpm build` completes successfully. The repository-wide integration suite was also attempted; its unrelated credential-validation tests require production secrets that are not present in this isolated checkout, so those environment-dependent tests fail before exercising this routing change.

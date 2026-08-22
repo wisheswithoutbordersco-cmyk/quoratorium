@@ -5,7 +5,7 @@
  * Features:
  *   POST /api/analyze-image         → Upload image, get detailed prompt
  *   POST /api/tts                   → Text to speech (MP3)
- *   POST /api/generate-image        → Direct image gen (fal.ai / OpenAI)
+ *   POST /api/generate-image        → Registered by imageGenerationRoute.ts (OpenAI first, fal.ai fallback)
  *   POST /api/studio/generate       → Proxy to your Production Studio
  *   POST /api/social/queue          → Queue post for IG/TikTok/Threads/FB
  *   GET  /api/social/pending        → Make.com polls this for new posts
@@ -144,58 +144,6 @@ router.post('/api/tts', express.json(), async (req, res) => {
       response.data.pipe(res);
     }
   } catch (err) { handleError(res, err, 'TTS'); }
-});
-
-// ───────────────────────────────────────────────
-// 3. IMAGE GENERATION (Direct — fal.ai or OpenAI)
-// ───────────────────────────────────────────────
-router.post('/api/generate-image', express.json(), async (req, res) => {
-  try {
-    const { prompt, provider = 'fal', aspect_ratio = '1:1' } = req.body;
-    if (!prompt) return res.status(400).json({ error: 'Prompt is required' });
-
-    let imageUrl, metadata = {};
-
-    if (provider === 'openai') {
-      const openaiBase = 'https://api.openai.com/v1';
-      const response = await axios.post(
-        `${openaiBase}/images/generations`,
-        { model: 'dall-e-3', prompt, n: 1, size: '1024x1024', quality: 'auto' },
-        { headers: { 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`, 'Content-Type': 'application/json' } }
-      );
-      imageUrl = response.data.data[0].url;
-      metadata = { revised_prompt: response.data.data[0].revised_prompt, provider: 'dall-e-3' };
-
-    } else {
-      if (!process.env.FAL_API_KEY) return res.status(400).json({ error: 'FAL_API_KEY not set' });
-      const sizeMap = { '1:1': { width: 1024, height: 1024 }, '16:9': { width: 1792, height: 1024 }, '9:16': { width: 1024, height: 1792 }, '4:3': { width: 1365, height: 1024 } };
-      const imageSize = sizeMap[aspect_ratio] || sizeMap['1:1'];
-      const response = await axios.post(
-        'https://fal.run/fal-ai/flux-pro/v1.1',
-        { prompt, image_size: imageSize, num_inference_steps: 28, guidance_scale: 3.5 },
-        { headers: { 'Authorization': `Key ${process.env.FAL_API_KEY}`, 'Content-Type': 'application/json' }, timeout: 120000 }
-      );
-      imageUrl = response.data.images[0].url;
-      metadata = { provider: 'fal-flux-pro', seed: response.data.seed };
-    }
-
-    // Save to Supabase Storage
-    if (imageUrl) {
-      try {
-        const imgRes = await axios.get(imageUrl, { responseType: 'arraybuffer' });
-        const fileName = `generated/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.png`;
-        const { error: upErr } = await supabase.storage.from('wall-art').upload(fileName, imgRes.data, { contentType: 'image/png' });
-        if (!upErr) {
-          const { data: { publicUrl } } = supabase.storage.from('wall-art').getPublicUrl(fileName);
-          imageUrl = publicUrl;
-          metadata.hosted = 'supabase';
-        }
-      } catch (e) { console.warn('Storage upload failed, using original URL'); }
-    }
-
-    res.json({ success: true, imageUrl, metadata, prompt });
-
-  } catch (err) { handleError(res, err, 'Image generation'); }
 });
 
 // ───────────────────────────────────────────────
@@ -348,8 +296,8 @@ const CAPTAIN_Q_TOOLS = [
   },
   {
     name: 'generate_image',
-    description: 'Generate an image from a text prompt. Use fal.ai (provider: fal) for highest quality wall art. Use OpenAI (provider: openai) for speed. Always confirm the prompt with the user before generating if they did not explicitly say "generate it".',
-    parameters: { type: 'object', properties: { prompt: { type: 'string' }, provider: { type: 'string', enum: ['fal','openai'], default: 'fal' }, aspect_ratio: { type: 'string', enum: ['1:1','16:9','9:16','4:3'], default: '1:1' } }, required: ['prompt'] }
+    description: 'Generate an image from a text prompt through OpenAI first. fal.ai is used automatically only if OpenAI fails or is unavailable. Always confirm the prompt with the user before generating if they did not explicitly say "generate it".',
+    parameters: { type: 'object', properties: { prompt: { type: 'string' }, aspect_ratio: { type: 'string', enum: ['1:1','16:9','9:16','4:3'], default: '1:1' } }, required: ['prompt'] }
   },
   {
     name: 'studio_generate',
