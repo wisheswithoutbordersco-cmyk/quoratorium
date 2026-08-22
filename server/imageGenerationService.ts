@@ -148,6 +148,15 @@ export async function generateImageWithFallback(
           };
         } catch (storageError) {
           providerErrors.push(providerFailure("openai", "storage_failed", storageError));
+          return {
+            success: true,
+            imageUrl: `data:image/png;base64,${image.b64_json}`,
+            revisedPrompt: image.revised_prompt || normalizedPrompt,
+            provider: "openai",
+            model: openAiModel,
+            fallbackUsed: false,
+            providerErrors,
+          };
         }
       }
     } catch (openAiError) {

@@ -749,3 +749,8 @@
 - [x] Run TypeScript checks and the relevant test suite, then record the validation results here.
 
 Validation status: `server/imageGenerationService.test.ts` passes 4/4 tests, `pnpm check` passes with zero TypeScript errors, and `pnpm build` completes successfully. The repository-wide integration suite was also attempted; its unrelated credential-validation tests require production secrets that are not present in this isolated checkout, so those environment-dependent tests fail before exercising this routing change.
+
+- [x] Fix live regression: when OpenAI generation succeeds but durable storage is unavailable, return the OpenAI image directly instead of invoking fal.ai.
+- [ ] Add regression coverage and re-verify the deployed endpoint reports `provider: openai` with `fallbackUsed: false`.
+
+Regression validation status: targeted routing coverage passes 5/5 tests, including OpenAI success with unavailable storage; `pnpm check` passes; and the production build completes successfully. Live endpoint verification remains pending until the correction is deployed.

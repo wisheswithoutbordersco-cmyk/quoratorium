@@ -87,6 +87,38 @@ describe("generateImageWithFallback", () => {
     });
   });
 
+  it("returns the OpenAI image directly when storage fails instead of calling fal.ai", async () => {
+    const encodedImage = Buffer.from("openai-image-without-storage").toString("base64");
+    const fetchImpl = vi.fn().mockResolvedValue(
+      jsonResponse({ data: [{ b64_json: encodedImage }] }),
+    );
+    const storeImage = vi.fn().mockRejectedValue(new Error("Storage credentials unavailable"));
+
+    const result = await generateImageWithFallback(
+      "A direct OpenAI result",
+      {},
+      {
+        fetchImpl,
+        storeImage,
+        openAiApiKey: "openai-test-key",
+        falApiKey: "fal-test-key",
+      },
+    );
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/images/generations");
+    expect(result).toMatchObject({
+      success: true,
+      provider: "openai",
+      fallbackUsed: false,
+      imageUrl: `data:image/png;base64,${encodedImage}`,
+    });
+    expect(result.providerErrors?.[0]).toMatchObject({
+      provider: "openai",
+      code: "storage_failed",
+    });
+  });
+
   it("treats a missing OpenAI key as unavailable before using fal.ai", async () => {
     const fetchImpl = vi.fn().mockResolvedValue(
       jsonResponse({ images: [{ url: "https://fal.media/key-fallback.png" }] }),
