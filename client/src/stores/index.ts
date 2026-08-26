@@ -67,6 +67,7 @@ export interface Message {
   timestamp: Date;
   reasoning?: string[];
   attachments?: FileAttachment[];
+  images?: MessageImage[];
   isStreaming?: boolean;
   // Patent 2: Synthesis Verification
   verificationBadge?: {
@@ -78,12 +79,18 @@ export interface Message {
   heartbeatStatus?: "healthy" | "warning" | "interrupted";
 }
 
+export interface MessageImage {
+  url: string;
+  title?: string;
+}
+
 export interface FileAttachment {
   id: string;
   name: string;
   type: string;
   size: number;
   url?: string;
+  dataUrl?: string;
 }
 
 export interface PhaseState {

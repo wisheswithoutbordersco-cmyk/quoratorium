@@ -87,15 +87,15 @@ describe("generateImageWithFallback", () => {
     });
   });
 
-  it("returns the OpenAI image directly when storage fails instead of calling fal.ai", async () => {
+  it("uses the hosted fal.ai fallback when OpenAI storage is unavailable", async () => {
     const encodedImage = Buffer.from("openai-image-without-storage").toString("base64");
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ data: [{ b64_json: encodedImage }] }),
-    );
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [{ b64_json: encodedImage }] }))
+      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/storage-fallback.png" }] }));
     const storeImage = vi.fn().mockRejectedValue(new Error("Storage credentials unavailable"));
 
     const result = await generateImageWithFallback(
-      "A direct OpenAI result",
+      "A hosted fallback result",
       {},
       {
         fetchImpl,
@@ -105,18 +105,45 @@ describe("generateImageWithFallback", () => {
       },
     );
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
     expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/images/generations");
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://fal.run/fal-ai/flux-pro/v1.1-ultra");
+    expect(result).toMatchObject({
+      success: true,
+      provider: "fal.ai",
+      fallbackUsed: true,
+      imageUrl: "https://fal.media/storage-fallback.png",
+    });
+    expect(result.providerErrors?.[0]).toMatchObject({
+      provider: "openai",
+      code: "storage_failed",
+    });
+  });
+
+  it("keeps the OpenAI image as a last resort when storage and fal.ai both fail", async () => {
+    const encodedImage = Buffer.from("openai-final-fallback").toString("base64");
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: [{ b64_json: encodedImage }] }))
+      .mockResolvedValueOnce(jsonResponse({ error: "fal unavailable" }, 503));
+
+    const result = await generateImageWithFallback(
+      "A final fallback result",
+      {},
+      {
+        fetchImpl,
+        storeImage: vi.fn().mockRejectedValue(new Error("Storage credentials unavailable")),
+        openAiApiKey: "openai-test-key",
+        falApiKey: "fal-test-key",
+      },
+    );
+
     expect(result).toMatchObject({
       success: true,
       provider: "openai",
       fallbackUsed: false,
       imageUrl: `data:image/png;base64,${encodedImage}`,
     });
-    expect(result.providerErrors?.[0]).toMatchObject({
-      provider: "openai",
-      code: "storage_failed",
-    });
+    expect(result.providerErrors?.map((error) => error.code)).toEqual(["storage_failed", "request_failed"]);
   });
 
   it("treats a missing OpenAI key as unavailable before using fal.ai", async () => {

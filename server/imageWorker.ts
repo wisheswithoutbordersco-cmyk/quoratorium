@@ -44,33 +44,25 @@ export async function generateImage(
  * Detect if a message is an image generation request
  */
 export function isImageRequest(message: string): boolean {
-  const lower = message.toLowerCase();
-  const imageKeywords = [
-    "generate an image",
-    "create an image",
-    "make an image",
-    "draw",
-    "illustrate",
-    "design a logo",
-    "create a logo",
-    "make a logo",
-    "generate a picture",
-    "create artwork",
-    "make art",
-    "generate art",
-    "create a visual",
-    "dall-e",
-    "dalle",
-    "image of",
-    "picture of",
-    "illustration of",
-    "generate a banner",
-    "create a banner",
-    "design a",
-    "create a mockup",
-    "generate a thumbnail",
+  const normalized = message.toLowerCase().replace(/\s+/g, " ").trim();
+
+  // Talking about image generation is not the same as asking Q to generate.
+  // These phrases cover the reported false positive as well as common follow-ups.
+  const nonGenerationContexts = [
+    /\b(?:without|not|don't|do not|didn't|did not|isn't|is not|wasn't|was not|stop|avoid)\b[^.!?]{0,80}\b(?:generate|create|make|draw|design|illustrate)(?:d|s|ing)?\b[^.!?]{0,40}\b(?:image|picture|art|artwork|visual|logo|banner|mockup|thumbnail)\b/i,
+    /\b(?:can|could|do) you (?:see|view|read|analy[sz]e|describe|inspect|look at)\b[^.!?]{0,80}\b(?:image|picture|photo|file|attachment|upload)\b/i,
+    /\b(?:prompt|instructions?)\b[^.!?]{0,80}\b(?:generator|image generator)\b/i,
   ];
-  return imageKeywords.some(kw => lower.includes(kw));
+  if (nonGenerationContexts.some((pattern) => pattern.test(normalized))) return false;
+
+  const explicitImageRequests = [
+    /\b(?:generate|create|make)\s+(?:me\s+)?(?:an?\s+)?(?:image|picture|artwork|illustration|visual|logo|banner|mockup|thumbnail)\b/i,
+    /\b(?:draw|illustrate)\s+(?:me\s+)?(?:an?\s+)?/i,
+    /\b(?:image|picture|illustration|poster|logo|banner|thumbnail)\s+of\b/i,
+    /\b(?:dall-e|dalle)\b/i,
+  ];
+
+  return explicitImageRequests.some((pattern) => pattern.test(normalized));
 }
 
 /**

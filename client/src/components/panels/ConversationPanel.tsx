@@ -19,6 +19,7 @@ import {
 import { PushToGitHub } from "@/components/PushToGitHub";
 import { Streamdown } from "streamdown";
 import { trpc } from "@/lib/trpc";
+import { toast } from "sonner";
 import { HolographicCode } from "@/components/HolographicCode";
 import { LivePreview } from "@/components/LivePreview";
 import { DeployModal } from "@/components/DeployModal";
@@ -40,6 +41,19 @@ const safeParseInt = (val: string | null | undefined): number | undefined => {
   const n = parseInt(val, 10);
   return isNaN(n) ? undefined : n;
 };
+
+const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
+const MAX_CHAT_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
+const SUPPORTED_CHAT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+    reader.readAsDataURL(file);
+  });
+}
 
 interface ConversationPanelProps {
   /** Called when the mobile sidebar button is pressed */
@@ -157,10 +171,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     // The streaming endpoint is the single source of truth for persistence.
     // Send the current conversation when present; for a new chat the server
     // creates it and returns its authoritative ID in an SSE event.
-    streamResponse(messageText, safeParseInt(activeConversationIdRef.current));
+    streamResponse(messageText, safeParseInt(activeConversationIdRef.current), userMessage.attachments);
   }, [input, pendingUploads, activeProject]);
 
-  const streamResponse = async (messageText: string, conversationId?: number) => {
+  const streamResponse = async (messageText: string, conversationId?: number, attachments = pendingUploads) => {
     const assistantId = nanoid();
     addMessage({
       id: assistantId,
@@ -180,7 +194,22 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
       const history = messages
         .filter(m => m.role === "user" || m.role === "assistant")
         .slice(-10)
-        .map(m => ({ role: m.role, content: m.content }));
+        .map(m => {
+          const imageAttachments = m.attachments?.filter((attachment) => attachment.dataUrl && attachment.type.startsWith("image/")) || [];
+          if (m.role === "user" && imageAttachments.length > 0) {
+            return {
+              role: m.role,
+              content: [
+                { type: "text", text: m.content || "Please describe the attached image." },
+                ...imageAttachments.map((attachment) => ({
+                  type: "image_url",
+                  image_url: { url: attachment.dataUrl, detail: "high" },
+                })),
+              ],
+            };
+          }
+          return { role: m.role, content: m.content };
+        });
 
       const streamUrl = conversationId
         ? `/api/stream/chat?conversationId=${encodeURIComponent(String(conversationId))}`
@@ -195,6 +224,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
           message: messageText,
           projectId: safeParseInt(activeProject?.id),
           history,
+          attachments,
         }),
       });
 
@@ -207,6 +237,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
       const decoder = new TextDecoder();
       let accumulated = "";
+      let accumulatedImages: Array<{ url: string; title?: string }> = [];
       // Buffer for incomplete SSE lines that span multiple network reads
       let lineBuffer = "";
 
@@ -266,9 +297,12 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
               accumulated += event.content;
               updateMessage(assistantId, { content: accumulated });
             } else if (event.type === "image") {
-              // Inline image from DALL-E or browser screenshot
-              accumulated += `\n\n![Generated Image](${event.url})\n\n`;
-              updateMessage(assistantId, { content: accumulated });
+              // Keep image payloads structured. Markdown renderers commonly reject
+              // data URLs, and embedding base64 in text exposes the raw payload.
+              if (typeof event.url === "string" && event.url) {
+                accumulatedImages = [...accumulatedImages, { url: event.url, title: event.title || "Generated image" }];
+                updateMessage(assistantId, { content: accumulated, images: accumulatedImages });
+              }
             } else if (event.type === "execution") {
               // Code execution result
               const execIcon = event.success ? "✅" : "❌";
@@ -312,10 +346,20 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 timestamp: new Date(),
               });
             } else if (event.type === "tool_result") {
-              // Tool completed
+              // Tool completed. Image artifacts are transported separately from
+              // prose so they render reliably even when their source is a data URL.
+              const imageArtifacts = Array.isArray(event.artifacts)
+                ? event.artifacts.filter((artifact: any) => artifact?.type === "image" && typeof artifact.url === "string")
+                : [];
+              if (imageArtifacts.length > 0) {
+                accumulatedImages = [
+                  ...accumulatedImages,
+                  ...imageArtifacts.map((artifact: any) => ({ url: artifact.url, title: artifact.name || "Generated image" })),
+                ];
+              }
               const icon = event.success ? "✅" : "❌";
               accumulated += `${icon} Done\n`;
-              updateMessage(assistantId, { content: accumulated });
+              updateMessage(assistantId, { content: accumulated, images: accumulatedImages });
             } else if (event.type === "sandbox_url") {
               // A live sandbox URL was produced — open it in preview
               accumulated += `\n\n🌐 **Live Preview:** [${event.name || "View Project"}](${event.url})\n`;
@@ -383,20 +427,44 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     }
   };
 
+  const queueFiles = useCallback(async (files: File[]) => {
+    let queuedImageBytes = pendingUploads
+      .filter((attachment) => attachment.type.startsWith("image/"))
+      .reduce((total, attachment) => total + attachment.size, 0);
+
+    for (const file of files.slice(0, 4)) {
+      if (file.type.startsWith("image/") && !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)) {
+        toast.error("That image type is not supported. Please use PNG, JPG, WEBP, or GIF.");
+        continue;
+      }
+      if (file.type.startsWith("image/") && file.size > MAX_CHAT_IMAGE_BYTES) {
+        toast.error("That image is too large. Please choose one under 10 MB.");
+        continue;
+      }
+      if (file.type.startsWith("image/") && queuedImageBytes + file.size > MAX_CHAT_TOTAL_IMAGE_BYTES) {
+        toast.error("Those images are too large together. Please keep attachments under 20 MB total.");
+        continue;
+      }
+
+      try {
+        const dataUrl = file.type.startsWith("image/") ? await readFileAsDataUrl(file) : undefined;
+        addUpload({ id: nanoid(), name: file.name, type: file.type, size: file.size, dataUrl });
+        if (file.type.startsWith("image/")) queuedImageBytes += file.size;
+      } catch {
+        toast.error(`I couldn't read ${file.name}. Please try attaching it again.`);
+      }
+    }
+  }, [addUpload, pendingUploads]);
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
-    const files = Array.from(e.dataTransfer.files);
-    files.forEach((file) => {
-      addUpload({ id: nanoid(), name: file.name, type: file.type, size: file.size });
-    });
-  }, []);
+    void queueFiles(Array.from(e.dataTransfer.files));
+  }, [queueFiles]);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      addUpload({ id: nanoid(), name: file.name, type: file.type, size: file.size });
-    });
+    void queueFiles(Array.from(e.target.files || []));
+    e.target.value = "";
   };
 
   return (
@@ -562,7 +630,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
           <button onClick={() => fileInputRef.current?.click()} className="p-2 sm:p-1.5 text-muted-foreground hover:text-primary transition-colors">
             <Paperclip size={16} className="sm:w-3.5 sm:h-3.5" />
           </button>
-          <input ref={fileInputRef} type="file" multiple className="hidden" onChange={handleFileSelect} />
+          <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileSelect} />
           <textarea
             ref={textareaRef}
             value={input}
@@ -647,6 +715,26 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
               ) : (
                 <>
                   <Streamdown>{message.content || (isStreaming ? " " : "")}</Streamdown>
+                  {message.images && message.images.length > 0 && (
+                    <div className="mt-3 space-y-2 not-prose">
+                      {message.images.map((image, index) => (
+                        <a
+                          key={`${image.url.slice(0, 80)}-${index}`}
+                          href={image.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block overflow-hidden rounded-lg border border-white/10 bg-black/40"
+                        >
+                          <img
+                            src={image.url}
+                            alt={image.title || `Generated image ${index + 1}`}
+                            className="block w-full h-auto object-contain"
+                            loading="lazy"
+                          />
+                        </a>
+                      ))}
+                    </div>
+                  )}
                   {isStreaming && (
                     <motion.span
                       className="inline-block w-0.5 h-3.5 bg-white/60 ml-0.5 align-middle"
@@ -661,9 +749,14 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.attachments.map((att: any) => (
-                <div key={att.id} className="flex items-center gap-1 px-2 py-0.5 rounded bg-white/10 text-[10px]">
-                  <FileIcon type={att.type} />
-                  <span className="truncate max-w-[80px]">{att.name}</span>
+                <div key={att.id} className="overflow-hidden rounded bg-white/10 text-[10px]">
+                  {att.dataUrl && att.type?.startsWith("image/") && (
+                    <img src={att.dataUrl} alt={att.name} className="block max-h-48 w-auto max-w-full object-contain" />
+                  )}
+                  <div className="flex items-center gap-1 px-2 py-1">
+                    <FileIcon type={att.type} />
+                    <span className="truncate max-w-[120px]">{att.name}</span>
+                  </div>
                 </div>
               ))}
             </div>

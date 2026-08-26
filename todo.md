@@ -754,3 +754,17 @@ Validation status: `server/imageGenerationService.test.ts` passes 4/4 tests, `pn
 - [x] Add regression coverage and re-verify the deployed endpoint reports `provider: openai` with `fallbackUsed: false`.
 
 Regression validation status: targeted routing coverage passes 5/5 tests, including OpenAI success with unavailable storage; `pnpm check` passes; and the production build completes successfully. Railway deployed commit `d21b241`, and the live endpoint returned `provider: openai`, `model: gpt-image-2`, and `fallbackUsed: false`. Because Railway does not provide the Manus storage credentials, the successful OpenAI image is returned as a PNG data URL instead of falling through to fal.ai.
+
+## Captain Q Image Attachment and Rendering Repair (Aug 26 2026)
+- [x] Target the deployed Quoratorium/Captain Q codebase that matches the reported mobile interface.
+- [x] Send supported PNG, JPG, WEBP, and GIF attachment bytes to the streaming backend instead of storing only filename metadata.
+- [x] Build validated multimodal messages so GPT-4o can inspect the current upload and recent in-session image context.
+- [x] Prevent negated or conversational phrases such as “without trying to generate a picture” and “can you see the picture?” from entering image-generation mode.
+- [x] Restrict the autonomous tool loop to explicit build requests so ordinary prompt-writing and image questions stay in normal chat.
+- [x] Route ordinary and image-attached Captain Q conversation through GPT-4o for stronger general and vision responses.
+- [x] Render generated images as structured chat media, persist image metadata, and remove raw image URLs/base64 payloads from visible response text.
+- [x] When OpenAI image storage is unavailable, try the hosted fal.ai fallback before using inline base64 as a final safety net.
+- [x] Enforce 10 MB per image, 20 MB total, four-attachment, and supported MIME-type limits on both client and server.
+- [x] Verify the exact reported prompt with an attached PNG at a 390×844 mobile viewport; attachment bytes were submitted, the image rendered in chat, and raw base64 was not visible.
+- [x] Validation: 30/30 focused regression tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
+- [ ] Push the repair and confirm the Railway production deployment and live endpoint behavior.

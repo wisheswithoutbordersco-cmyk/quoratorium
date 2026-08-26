@@ -101,6 +101,7 @@ export async function generateImageWithFallback(
   const openAiModel = dependencies.openAiModel ?? process.env.OPENAI_IMAGE_MODEL ?? DEFAULT_OPENAI_IMAGE_MODEL;
   const aspectRatio = resolveAspectRatio(options);
   const providerErrors: ImageProviderFailure[] = [];
+  let openAiInlineFallback: GenerateImageResult | null = null;
 
   if (!openAiApiKey) {
     providerErrors.push(providerFailure("openai", "unavailable", "OPENAI_API_KEY is not configured"));
@@ -148,7 +149,9 @@ export async function generateImageWithFallback(
           };
         } catch (storageError) {
           providerErrors.push(providerFailure("openai", "storage_failed", storageError));
-          return {
+          // A data URL can be several megabytes and is fragile over an SSE stream.
+          // Keep it only as a last resort while trying the hosted fal.ai fallback.
+          openAiInlineFallback = {
             success: true,
             imageUrl: `data:image/png;base64,${image.b64_json}`,
             revisedPrompt: image.revised_prompt || normalizedPrompt,
@@ -205,6 +208,10 @@ export async function generateImageWithFallback(
     } catch (falError) {
       providerErrors.push(providerFailure("fal.ai", "request_failed", falError));
     }
+  }
+
+  if (openAiInlineFallback) {
+    return { ...openAiInlineFallback, providerErrors };
   }
 
   return {

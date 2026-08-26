@@ -9,6 +9,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { addOrchestrationEvent } from "./db";
 import { detectIntent, type WorkerIntent } from "./workers";
 import { invokeLLM } from "./_core/llm";
+import type { Message as LLMMessage } from "./_core/llm";
 import * as db from "./db";
 import { executeCode, getExecutionEngineStatus } from "./codeExecutor";
 import { executeBrowserTask, parseBrowserTask } from "./browserWorker";
@@ -34,6 +35,13 @@ import { verifyResponse, shouldVerify, generateBadge } from "./synthesisVerifica
 import { createHeartbeatState, feedTokens, getHeartbeatStatus, getProgressPercent } from "./heartbeatInterrupt";
 import { OWNER_CONTEXT } from "./ownerContext";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
+import {
+  attachmentMetadata,
+  buildChatUserContent,
+  normalizeChatHistory,
+  parseChatAttachments,
+  type ChatAttachment,
+} from "./chatAttachments";
 
 const CAPTAIN_SYSTEM_PROMPT = CAPTAIN_Q_SYSTEM_PROMPT;
 
@@ -62,20 +70,21 @@ function getWorkerName(intent: ExtendedIntent): string {
     case "research": return hasOpenRouter ? "Research (Gemini 2.5 Flash)" : "Research (Perplexity Sonar)";
     case "browser": return "Browser (Playwright)";
     case "execute": return `Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
-    case "image": return "Artist (DALL-E 3)";
+    case "image": return "Artist (OpenAI Images)";
     case "complex": return "Captain Q (Multi-Step)";
-    default: return hasOpenRouter ? "Captain Q (DeepSeek)" : "Captain Q (OpenAI GPT-4o)";
+    default: return "Captain Q (OpenAI GPT-4o)";
   }
 }
 
 /**
  * Extended intent detection that includes new workers
  */
-function detectExtendedIntent(message: string): ExtendedIntent {
+export function detectExtendedIntent(message: string, hasImageAttachment = false): ExtendedIntent {
   const lower = message.toLowerCase();
 
-  // Image generation
-  if (isImageRequest(message)) return "image";
+  // An attached image means the user is asking Q to inspect or discuss that
+  // upload. Do not silently replace it with a newly generated image.
+  if (!hasImageAttachment && isImageRequest(message)) return "image";
 
   // Browser tasks (must contain a URL)
   if (parseBrowserTask(message) !== null) return "browser";
@@ -111,13 +120,24 @@ export function registerStreamingRoutes(app: Express) {
 
   // Main streaming chat endpoint
   app.post("/api/stream/chat", async (req: Request, res: Response) => {
-    const { message, projectId, conversationId: bodyConversationId, history } = req.body;
+    const {
+      message: rawMessage,
+      projectId,
+      conversationId: bodyConversationId,
+      history,
+      attachments: rawAttachments,
+    } = req.body || {};
+    const parsedAttachments = parseChatAttachments(rawAttachments);
+    let message = typeof rawMessage === "string" ? rawMessage.trim() : "";
+    if (!message && parsedAttachments.imageAttachments.length > 0) {
+      message = "Please describe the attached image.";
+    }
     const queryConversationId =
       typeof req.query.conversationId === "string"
         ? Number(req.query.conversationId)
         : null;
     if (!message) {
-      res.status(400).json({ error: "Message required" });
+      res.status(400).json({ error: "Message or supported image attachment required" });
       return;
     }
 
@@ -228,6 +248,9 @@ export function registerStreamingRoutes(app: Express) {
           conversationId: persistedConversationId,
           role: "user",
           content: message,
+          metadata: parsedAttachments.attachments.length > 0
+            ? { attachments: attachmentMetadata(parsedAttachments.attachments) }
+            : undefined,
         });
         console.log("[Conversation] User message saved", {
           userId,
@@ -268,7 +291,7 @@ export function registerStreamingRoutes(app: Express) {
       }
     }
 
-    const intent = detectExtendedIntent(message);
+    const intent = detectExtendedIntent(message, parsedAttachments.imageAttachments.length > 0);
     const workerName = getWorkerName(intent);
 
     // ─── Budget Check ────────────────────────────────────────────────
@@ -510,7 +533,8 @@ export function registerStreamingRoutes(app: Express) {
             memoryContext + knowledgeContext,
             semanticMemoryContext,
             userId,
-            persistedConversationId
+            persistedConversationId,
+            parsedAttachments.imageAttachments
           );
           break;
       }
@@ -671,8 +695,8 @@ async function handleImageGeneration(
   const result = await generateImage(prompt);
 
   if (result.success && result.imageUrl) {
-    const completion = `\n\n✅ Image generated successfully.\n\n**Prompt used:** ${result.revisedPrompt || prompt}\n\n**Storage:** ${result.storageKey ? "Saved to vault" : "Inline display"}\n\n**Image:** ${result.imageUrl}`;
-    res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, revisedPrompt: result.revisedPrompt })}\n\n`);
+    const completion = `\n\n✅ Image generated successfully.\n\n**Prompt used:** ${result.revisedPrompt || prompt}`;
+    res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, title: "Generated image", revisedPrompt: result.revisedPrompt })}\n\n`);
     res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
     assistantResponse += completion;
   } else {
@@ -681,7 +705,12 @@ async function handleImageGeneration(
     assistantResponse += failure;
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "image" });
+  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, {
+    intent: "image",
+    images: result.success && result.imageUrl
+      ? [{ url: result.imageUrl, title: "Generated image" }]
+      : [],
+  });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -850,11 +879,12 @@ async function handleStandardChat(
   memoryContext: string = "",
   semanticMemoryContext: string = "",
   userId?: number | null,
-  conversationId?: number | null
+  conversationId?: number | null,
+  imageAttachments: ChatAttachment[] = []
 ) {
   const basePrompt = getSystemPrompt(intent);
   let systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
-  const messages: Array<{ role: "system" | "user" | "assistant"; content: string }> = [
+  const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
   ];
 
@@ -869,16 +899,13 @@ async function handleStandardChat(
     }
   }
 
-  if (history && Array.isArray(history)) {
-    for (const msg of history.slice(-10)) {
-      messages.push({ role: msg.role as "user" | "assistant", content: msg.content });
-    }
-  }
-  messages.push({ role: "user", content: message });
+  messages.push(...normalizeChatHistory(history));
+  messages.push({ role: "user", content: buildChatUserContent(message, imageAttachments) });
 
   // ─── Autonomous Tool Use (for build intent) ───────────────────────────────
-  // When Captain Q is building, he can autonomously create files, run code, deploy
-  if (userId) {
+  // Do not announce or invoke tools for ordinary chat. The previous unconditional
+  // loop made simple writing and attachment questions look like build requests.
+  if (userId && intent === "build" && imageAttachments.length === 0) {
     try {
       const { runToolLoop } = await import("./tools/index");
       const toolContext: import("./tools/index").ToolContext = {
@@ -918,9 +945,13 @@ async function handleStandardChat(
       if (toolResult.response && toolResult.toolsUsed.length > 0) {
         res.write(`data: ${JSON.stringify({ type: "token", content: toolResult.response })}\n\n`);
         res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed: toolResult.toolsUsed })}\n\n`);
+        const generatedImages = toolResult.artifacts
+          .filter((artifact) => artifact.type === "image" && artifact.url)
+          .map((artifact) => ({ url: artifact.url!, title: artifact.name }));
         await persistAssistantConversationMessage(userId, conversationId, toolResult.response, {
           intent,
           toolsUsed: toolResult.toolsUsed,
+          images: generatedImages,
         });
 
         // ─── Memory: Save messages for future recall ─────────────
@@ -950,13 +981,15 @@ async function handleStandardChat(
   try {
     if (process.env.OPENROUTER_API_KEY) {
       // Use OpenRouter as primary for all intents
-      const model = intent === "build"
-        ? "deepseek/deepseek-chat"
-        : intent === "validate"
-          ? "google/gemini-2.5-flash"
-          : intent === "research"
+      const model = imageAttachments.length > 0
+        ? "openai/gpt-4o"
+        : intent === "build"
+          ? "deepseek/deepseek-chat"
+          : intent === "validate"
             ? "google/gemini-2.5-flash"
-            : "deepseek/deepseek-chat";
+            : intent === "research"
+              ? "google/gemini-2.5-flash"
+              : "openai/gpt-4o";
       fullResponse = await streamOpenRouterCollecting(res, messages, model);
     } else if ((intent === "validate") && process.env.ANTHROPIC_API_KEY) {
       fullResponse = await streamAnthropicCollecting(res, systemPrompt, message, history);
@@ -1279,7 +1312,7 @@ async function streamForgeFallback(res: Response, messages: Array<{ role: string
 
 async function streamOpenRouterCollecting(
   res: Response,
-  messages: Array<{ role: string; content: string }>,
+  messages: LLMMessage[],
   model: string = "deepseek/deepseek-chat"
 ): Promise<string> {
   const startTime = Date.now();
@@ -1323,7 +1356,7 @@ async function streamOpenRouterCollecting(
 
 async function streamOpenAICollecting(
   res: Response,
-  messages: Array<{ role: string; content: string }>
+  messages: LLMMessage[]
 ): Promise<string> {
   const startTime = Date.now();
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -1401,7 +1434,7 @@ async function streamAnthropicCollecting(
 
 async function streamPerplexityCollecting(
   res: Response,
-  messages: Array<{ role: string; content: string }>,
+  messages: LLMMessage[],
   query: string
 ): Promise<string> {
   const startTime = Date.now();
@@ -1465,7 +1498,7 @@ async function streamPerplexityCollecting(
 
 async function streamForgeFallbackCollecting(
   res: Response,
-  messages: Array<{ role: string; content: string }>
+  messages: LLMMessage[]
 ): Promise<string> {
   const startTime = Date.now();
   const result = await invokeLLM({ messages: messages as any });

@@ -157,7 +157,7 @@ registerTool({
 
             return {
               success: true,
-              output: `Scriptorium generated the image: ${imageUrl}`,
+              output: "Scriptorium generated the image successfully. The image is attached as a structured artifact.",
               data: { imageUrl, provider: "scriptorium", jobId },
               artifacts: [{ type: "image", name: "Scriptorium generated image", url: imageUrl }],
             };

@@ -40,7 +40,7 @@ registerTool({
 
     return {
       success: true,
-      output: `Image generated successfully with ${result.provider}${result.fallbackUsed ? " fallback" : ""}!\n\nImage URL: ${result.imageUrl}\n\nPrompt used: ${prompt}`,
+      output: `Image generated successfully with ${result.provider}${result.fallbackUsed ? " fallback" : ""}. The image is attached as a structured artifact. Prompt used: ${prompt}`,
       data: {
         imageUrl: result.imageUrl,
         provider: result.provider,

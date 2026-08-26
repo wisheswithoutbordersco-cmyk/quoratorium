@@ -103,12 +103,26 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
       // before this request completed.
       if (useConversationStore.getState().activeConversationId !== selectedIdString) return;
 
-      const msgs = (data?.messages ?? []).map((message) => ({
-        id: message.id.toString(),
-        role: message.role as "user" | "assistant" | "system",
-        content: message.content,
-        timestamp: new Date(message.createdAt),
-      }));
+      const msgs = (data?.messages ?? []).map((message) => {
+        const metadata = message.metadata && typeof message.metadata === "object"
+          ? message.metadata as Record<string, unknown>
+          : {};
+        const images = Array.isArray(metadata.images)
+          ? metadata.images.filter((image: any) => image && typeof image.url === "string")
+          : undefined;
+        const attachments = Array.isArray(metadata.attachments)
+          ? metadata.attachments.filter((attachment: any) => attachment && typeof attachment.name === "string")
+          : undefined;
+
+        return {
+          id: message.id.toString(),
+          role: message.role as "user" | "assistant" | "system",
+          content: message.content,
+          timestamp: new Date(message.createdAt),
+          images,
+          attachments,
+        };
+      });
       setMessages(msgs);
     } catch (error) {
       console.error("[Conversations] Failed to load conversation history:", error);

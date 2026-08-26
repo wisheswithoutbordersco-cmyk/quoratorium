@@ -13,6 +13,7 @@ import type { Message } from "./_core/llm";
 import { logApiCall } from "./costService";
 import { analyzeComplexity, selectModel } from "./modelRouter";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
+import { isImageRequest } from "./imageWorker";
 
 // ─── Client Initialization ─────────────────────────────────────────────────
 
@@ -451,14 +452,9 @@ export function detectIntent(message: string): WorkerIntent {
     return "validate";
   }
 
-    // Image generation indicators (check before build)
-  const imageKeywords = [
-    "generate image", "generate a image", "generate an image", "create image", "make image",
-    "draw", "picture of", "illustration of", "art of", "generate art",
-    "wall art", "coloring page", "poster of", "logo of", "generate a picture",
-    "make a picture", "create a picture", "make me a", "generate me a",
-  ];
-  if (imageKeywords.some(kw => lower.includes(kw))) {
+  // Image generation indicators (check before build). Use the shared,
+  // negation-aware detector so questions about an upload stay in chat.
+  if (isImageRequest(message)) {
     return "image_gen";
   }
   // Social media posting indicators
@@ -470,13 +466,15 @@ export function detectIntent(message: string): WorkerIntent {
   if (socialKeywords.some(kw => lower.includes(kw))) {
     return "social";
   }
-  // Build indicators
-  const buildKeywords = [
-    "build", "create", "generate", "make", "code", "develop",
-    "website", "app", "dashboard", "api", "component", "page",
-    "implement", "write code", "scaffold", "design",
+  // Build indicators must describe an actual implementation task. Broad words
+  // such as "create", "generate", "make", and "design" caused normal writing
+  // requests to enter the autonomous tool loop.
+  const buildPatterns = [
+    /\b(?:build|develop|implement|scaffold)\b[^.!?]{0,80}\b(?:website|web app|application|dashboard|api|component|page|feature|project)\b/i,
+    /\b(?:write|fix|debug|review|refactor|run|execute)\b[^.!?]{0,50}\b(?:code|script|function|component|api)\b/i,
+    /\b(?:website|web app|dashboard|api|component)\b[^.!?]{0,50}\b(?:build|develop|implement|code)\b/i,
   ];
-  if (buildKeywords.some(kw => lower.includes(kw))) {
+  if (buildPatterns.some((pattern) => pattern.test(message))) {
     return "build";
   }
   return "chat";
