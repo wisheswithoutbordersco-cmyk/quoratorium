@@ -776,4 +776,4 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Require direct answers to harmless questions such as “How many people are in this picture?” without mentioning identity limitations unless identity was actually requested.
 - [x] Keep text-only Captain Q prompts unchanged.
 - [x] Validation: 31/31 focused regressions pass, `pnpm check` passes, and `pnpm build` completes successfully.
-- [ ] Push and confirm the Railway production deployment.
+- [x] Push commit `1870a55` and confirm Railway reports successful deployment to `quoratorium.com`.
