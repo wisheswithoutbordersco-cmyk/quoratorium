@@ -768,3 +768,12 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Verify the exact reported prompt with an attached PNG at a 390×844 mobile viewport; attachment bytes were submitted, the image rendered in chat, and raw base64 was not visible.
 - [x] Validation: 30/30 focused regression tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push commit `4bd9ef9` and confirm Railway reports successful deployment to `quoratorium.com`.
+
+## Captain Q Vision Over-Refusal Correction (Aug 26 2026)
+- [x] Confirm the image reaches Captain Q and the remaining failure is an overbroad model refusal, not attachment transport.
+- [x] Add image-only guidance that permits counting and describing visible people, characters, artwork, objects, text, and scenes.
+- [x] Preserve the restriction on naming unknown real people, confirming facial identity, or performing biometric matching.
+- [x] Require direct answers to harmless questions such as “How many people are in this picture?” without mentioning identity limitations unless identity was actually requested.
+- [x] Keep text-only Captain Q prompts unchanged.
+- [x] Validation: 31/31 focused regressions pass, `pnpm check` passes, and `pnpm build` completes successfully.
+- [ ] Push and confirm the Railway production deployment.

@@ -1,12 +1,28 @@
 import { describe, expect, it } from "vitest";
 import {
   MAX_CHAT_ATTACHMENTS,
+  addImageAnalysisGuidance,
   buildChatUserContent,
   normalizeChatHistory,
   parseChatAttachments,
 } from "./chatAttachments";
 
 const tinyPng = `data:image/png;base64,${Buffer.from("tiny-image").toString("base64")}`;
+
+describe("image analysis guidance", () => {
+  it("requires harmless people counting and description without enabling identification", () => {
+    const prompt = addImageAnalysisGuidance("You are Captain Q.", 1);
+
+    expect(prompt).toContain("allowed to count visible people or characters");
+    expect(prompt).toContain("Counting or describing someone is not identity recognition");
+    expect(prompt).toContain("Do NOT identify an unknown real person by name");
+    expect(prompt).toContain("How many people are in this picture?");
+  });
+
+  it("does not alter text-only system prompts", () => {
+    expect(addImageAnalysisGuidance("You are Captain Q.", 0)).toBe("You are Captain Q.");
+  });
+});
 
 describe("chat attachments", () => {
   it("converts a valid uploaded image into multimodal chat content", () => {

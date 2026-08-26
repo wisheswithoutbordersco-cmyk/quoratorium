@@ -4,6 +4,23 @@ export const MAX_CHAT_ATTACHMENTS = 4;
 export const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_CHAT_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
 
+export const IMAGE_ANALYSIS_GUIDANCE = `
+
+IMAGE ANALYSIS RULES — APPLY WHEN AN IMAGE IS ATTACHED:
+- Inspect the attached image and answer the user's actual visual question directly.
+- You ARE allowed to count visible people or characters and state the count.
+- You ARE allowed to describe visible people or characters, including clothing, pose, expression, approximate age range, composition, and actions.
+- You ARE allowed to analyze illustrations, fictional characters, stylized art, screenshots, objects, text, and scenes.
+- Do NOT refuse merely because an image contains a person or face. Counting or describing someone is not identity recognition.
+- Do NOT identify an unknown real person by name, confirm that a face belongs to a named real person, or perform biometric matching.
+- If identity was not requested, do not mention identity-recognition limitations.
+- For questions such as "How many people are in this picture?", answer with the number first and briefly explain what is visible.
+- If the image is ambiguous, give the best visual estimate and state the uncertainty instead of refusing.`;
+
+export function addImageAnalysisGuidance(systemPrompt: string, imageCount: number): string {
+  return imageCount > 0 ? `${systemPrompt}${IMAGE_ANALYSIS_GUIDANCE}` : systemPrompt;
+}
+
 const SUPPORTED_IMAGE_TYPES = new Set([
   "image/jpeg",
   "image/png",

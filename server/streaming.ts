@@ -36,6 +36,7 @@ import { createHeartbeatState, feedTokens, getHeartbeatStatus, getProgressPercen
 import { OWNER_CONTEXT } from "./ownerContext";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
 import {
+  addImageAnalysisGuidance,
   attachmentMetadata,
   buildChatUserContent,
   normalizeChatHistory,
@@ -884,6 +885,7 @@ async function handleStandardChat(
 ) {
   const basePrompt = getSystemPrompt(intent);
   let systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
+  systemPrompt = addImageAnalysisGuidance(systemPrompt, imageAttachments.length);
   const messages: LLMMessage[] = [
     { role: "system", content: systemPrompt },
   ];
