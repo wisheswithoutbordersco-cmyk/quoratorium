@@ -767,4 +767,4 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Enforce 10 MB per image, 20 MB total, four-attachment, and supported MIME-type limits on both client and server.
 - [x] Verify the exact reported prompt with an attached PNG at a 390×844 mobile viewport; attachment bytes were submitted, the image rendered in chat, and raw base64 was not visible.
 - [x] Validation: 30/30 focused regression tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
-- [ ] Push the repair and confirm the Railway production deployment and live endpoint behavior.
+- [x] Push commit `4bd9ef9` and confirm Railway reports successful deployment to `quoratorium.com`.
