@@ -1,11 +1,13 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "crypto";
 import * as db from "./db";
 
-export const BUSINESS_CONNECTION_ENTRY_TYPE = "business_connection";
+export const BUSINESS_CONNECTION_ENTRY_TYPE = "credential";
+export const BUSINESS_CONNECTION_RECORD_KIND = "business_connection";
 const SHOPIFY_PROVIDER = "shopify";
 
 interface StoredShopifyConnection {
   schemaVersion: 1;
+  recordKind: typeof BUSINESS_CONNECTION_RECORD_KIND;
   provider: typeof SHOPIFY_PROVIDER;
   shopDomain: string;
   ciphertext: string;
@@ -72,6 +74,7 @@ function isStoredShopifyConnection(value: unknown): value is StoredShopifyConnec
   if (!value || typeof value !== "object") return false;
   const metadata = value as Record<string, unknown>;
   return metadata.schemaVersion === 1 &&
+    metadata.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
     metadata.provider === SHOPIFY_PROVIDER &&
     typeof metadata.shopDomain === "string" &&
     typeof metadata.ciphertext === "string" &&
@@ -93,6 +96,7 @@ export async function saveShopifyConnection(input: {
   const encrypted = encryptAccessToken(accessToken);
   const metadata: StoredShopifyConnection = {
     schemaVersion: 1,
+    recordKind: BUSINESS_CONNECTION_RECORD_KIND,
     provider: SHOPIFY_PROVIDER,
     shopDomain,
     ...encrypted,
@@ -101,7 +105,10 @@ export async function saveShopifyConnection(input: {
   const existing = (await db.getUserVaultEntriesByType(
     input.userId,
     BUSINESS_CONNECTION_ENTRY_TYPE,
-  )).find(entry => entry.metadata?.provider === SHOPIFY_PROVIDER);
+  )).find(entry =>
+    entry.metadata?.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
+    entry.metadata?.provider === SHOPIFY_PROVIDER,
+  );
 
   if (existing) {
     await db.updateVaultEntry({
@@ -129,7 +136,10 @@ export async function getStoredShopifyConnection(
   const entry = (await db.getUserVaultEntriesByType(
     userId,
     BUSINESS_CONNECTION_ENTRY_TYPE,
-  )).find(candidate => candidate.metadata?.provider === SHOPIFY_PROVIDER);
+  )).find(candidate =>
+    candidate.metadata?.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
+    candidate.metadata?.provider === SHOPIFY_PROVIDER,
+  );
   if (!entry || !isStoredShopifyConnection(entry.metadata)) return null;
 
   return {
@@ -143,7 +153,10 @@ export async function deleteShopifyConnection(userId: number): Promise<boolean> 
     userId,
     BUSINESS_CONNECTION_ENTRY_TYPE,
   );
-  const matching = entries.filter(entry => entry.metadata?.provider === SHOPIFY_PROVIDER);
+  const matching = entries.filter(entry =>
+    entry.metadata?.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
+    entry.metadata?.provider === SHOPIFY_PROVIDER,
+  );
   await Promise.all(matching.map(entry => db.deleteVaultEntry(entry.id, userId)));
   return matching.length > 0;
 }

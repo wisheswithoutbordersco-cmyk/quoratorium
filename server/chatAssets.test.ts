@@ -16,6 +16,7 @@ import * as db from "./db";
 import { storageDelete, storageGetSignedUrl, storagePut } from "./storage";
 import {
   CHAT_ASSET_ENTRY_TYPE,
+  CHAT_ASSET_RECORD_KIND,
   CHAT_ASSET_RETENTION,
   deleteConversationAssetReferences,
   persistConversationAttachments,
@@ -146,8 +147,8 @@ describe("durable conversation assets", () => {
 
   it("signs only requested owner-scoped assets for a confirmed external action", async () => {
     vi.mocked(db.getUserVault).mockResolvedValue([
-      { id: 77, entry_type: CHAT_ASSET_ENTRY_TYPE, file_key: "conversation-assets/1/42/photo-a.png" },
-      { id: 78, entry_type: CHAT_ASSET_ENTRY_TYPE, file_key: "conversation-assets/1/42/photo-b.png" },
+      { id: 77, entry_type: CHAT_ASSET_ENTRY_TYPE, file_key: "conversation-assets/1/42/photo-a.png", metadata: { recordKind: CHAT_ASSET_RECORD_KIND } },
+      { id: 78, entry_type: CHAT_ASSET_ENTRY_TYPE, file_key: "conversation-assets/1/42/photo-b.png", metadata: { recordKind: CHAT_ASSET_RECORD_KIND } },
       { id: 79, entry_type: "file", file_key: "vault/private.pdf" },
     ] as any);
     vi.mocked(storageGetSignedUrl).mockResolvedValue(
@@ -167,9 +168,9 @@ describe("durable conversation assets", () => {
         id: 1,
         entry_type: CHAT_ASSET_ENTRY_TYPE,
         file_key: "supabase:conversation-assets/8/42/photo.png",
-        metadata: { conversationId: 42 },
+        metadata: { recordKind: CHAT_ASSET_RECORD_KIND, conversationId: 42 },
       },
-      { id: 2, entry_type: CHAT_ASSET_ENTRY_TYPE, metadata: { conversationId: 99 } },
+      { id: 2, entry_type: CHAT_ASSET_ENTRY_TYPE, metadata: { recordKind: CHAT_ASSET_RECORD_KIND, conversationId: 99 } },
       { id: 3, entry_type: "file", metadata: { conversationId: 42 } },
     ] as any);
 

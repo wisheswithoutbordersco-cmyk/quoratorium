@@ -46,9 +46,10 @@ describe("Vault internal record protection", () => {
     vi.mocked(getUserVault).mockResolvedValue([
       { id: 1, user_id: 1, name: "Product photo", entry_type: "file" },
       { id: 2, user_id: 1, name: "Private note", entry_type: "note" },
-      { id: 3, user_id: 1, name: "Encrypted Shopify", entry_type: "business_connection", metadata: { ciphertext: "secret" } },
-      { id: 4, user_id: 1, name: "Draft action", entry_type: "business_action" },
-      { id: 5, user_id: 1, name: "Chat upload", entry_type: "conversation_asset", file_key: "internal/key" },
+      { id: 3, user_id: 1, name: "Encrypted Shopify", entry_type: "credential", metadata: { recordKind: "business_connection", ciphertext: "secret" } },
+      { id: 4, user_id: 1, name: "Draft action", entry_type: "config", metadata: { recordKind: "business_action" } },
+      { id: 5, user_id: 1, name: "Chat upload", entry_type: "file", metadata: { recordKind: "conversation_asset" }, file_key: "internal/key" },
+      { id: 6, user_id: 1, name: "Legacy encrypted Shopify", entry_type: "business_connection", metadata: { ciphertext: "secret" } },
     ] as any);
 
     await expect(caller().list()).resolves.toEqual([

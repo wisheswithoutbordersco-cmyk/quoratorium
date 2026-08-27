@@ -1,7 +1,8 @@
 import { createHash } from "crypto";
 import * as db from "./db";
 
-export const BUSINESS_ACTION_ENTRY_TYPE = "business_action";
+export const BUSINESS_ACTION_ENTRY_TYPE = "config";
+export const BUSINESS_ACTION_RECORD_KIND = "business_action";
 export const BUSINESS_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
 
 export type BusinessActionStatus =
@@ -37,6 +38,7 @@ export interface BusinessAction<TPayload = Record<string, unknown>, TResult = un
 
 interface StoredActionMetadata extends Omit<BusinessAction, "id" | "userId"> {
   schemaVersion: 1;
+  recordKind: typeof BUSINESS_ACTION_RECORD_KIND;
 }
 
 const transitionLocks = new Map<string, Promise<unknown>>();
@@ -67,7 +69,7 @@ function createIdempotencyKey(input: {
 function parseAction(entry: db.VaultEntry): BusinessAction | null {
   if (entry.entry_type !== BUSINESS_ACTION_ENTRY_TYPE) return null;
   const metadata = entry.metadata as Partial<StoredActionMetadata> | null;
-  if (!metadata || metadata.schemaVersion !== 1) return null;
+  if (!metadata || metadata.schemaVersion !== 1 || metadata.recordKind !== BUSINESS_ACTION_RECORD_KIND) return null;
   if (!metadata.type || !metadata.status || !metadata.idempotencyKey) return null;
 
   return {
@@ -92,7 +94,7 @@ function parseAction(entry: db.VaultEntry): BusinessAction | null {
 }
 
 function toMetadata(action: Omit<BusinessAction, "id" | "userId">): StoredActionMetadata {
-  return { schemaVersion: 1, ...action };
+  return { schemaVersion: 1, recordKind: BUSINESS_ACTION_RECORD_KIND, ...action };
 }
 
 async function withActionLock<T>(actionId: string, operation: () => Promise<T>): Promise<T> {

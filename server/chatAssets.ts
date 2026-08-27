@@ -2,7 +2,8 @@ import * as db from "./db";
 import { storageDelete, storageGetSignedUrl, storagePut } from "./storage";
 import type { ChatAttachment } from "./chatAttachments";
 
-export const CHAT_ASSET_ENTRY_TYPE = "chat_attachment";
+export const CHAT_ASSET_ENTRY_TYPE = "file";
+export const CHAT_ASSET_RECORD_KIND = "conversation_asset";
 export const CHAT_ASSET_RETENTION = "until_conversation_deleted";
 
 export interface DurableChatAttachment {
@@ -70,12 +71,14 @@ export async function persistConversationAttachments(input: {
       continue;
     }
 
+    let storedKey: string | null = null;
     try {
       const stored = await storagePut(
         `conversation-assets/${input.userId}/${input.conversationId}/${sanitizeFileName(attachment.name)}`,
         bytes,
         attachment.type,
       );
+      storedKey = stored.key;
 
       const entry = await db.createVaultEntry({
         user_id: input.userId,
@@ -85,6 +88,7 @@ export async function persistConversationAttachments(input: {
         file_key: stored.key,
         mime_type: attachment.type,
         metadata: {
+          recordKind: CHAT_ASSET_RECORD_KIND,
           conversationId: input.conversationId,
           messageId: input.messageId,
           size: bytes.byteLength,
@@ -104,6 +108,7 @@ export async function persistConversationAttachments(input: {
         retention: CHAT_ASSET_RETENTION,
       });
     } catch (error) {
+      if (storedKey) await storageDelete(storedKey).catch(() => undefined);
       console.warn("[ChatAssets] Failed to persist one attachment", {
         conversationId: input.conversationId,
         messageId: input.messageId,
@@ -177,6 +182,7 @@ export async function resolveChatAssetSignedUrls(
   const entries = await db.getUserVault(userId);
   const matching = entries.filter(entry =>
     entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+    entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
     allowedIds.has(String(entry.id)) &&
     Boolean(entry.file_key),
   );
@@ -218,7 +224,7 @@ export async function getChatAssetPipelineHealth(
       file_url: "private://health-probe",
       file_key: storedKey,
       mime_type: "image/png",
-      metadata: { healthProbe: true },
+      metadata: { recordKind: CHAT_ASSET_RECORD_KIND, healthProbe: true },
     });
     entryId = entry.id;
   } catch {
@@ -244,6 +250,7 @@ export async function deleteConversationAssetReferences(
   const entries = await db.getUserVault(userId);
   const matching = entries.filter(entry =>
     entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+    entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
     Number(entry.metadata?.conversationId) === conversationId,
   );
 

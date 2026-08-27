@@ -11,11 +11,19 @@ const INTERNAL_ENTRY_TYPES = new Set([
   "business_connection",
   "conversation_asset",
 ]);
+const INTERNAL_RECORD_KINDS = new Set([
+  "business_action",
+  "business_connection",
+  "conversation_asset",
+]);
 
 export const vaultRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
     const entries = await getUserVault(ctx.user.id);
-    return entries.filter(entry => !INTERNAL_ENTRY_TYPES.has(entry.entry_type));
+    return entries.filter(entry =>
+      !INTERNAL_ENTRY_TYPES.has(entry.entry_type) &&
+      !INTERNAL_RECORD_KINDS.has(String(entry.metadata?.recordKind || "")),
+    );
   }),
 
   create: protectedProcedure
