@@ -22,15 +22,14 @@ import {
   createGeneratedFile,
 } from "../db";
 import {
-  callCaptain,
   callBuilder,
   callValidator,
   callResearch,
   callCaptainPlan,
-  detectIntent,
-  type WorkerIntent,
 } from "../workers";
 import { getGlobalMemoryContext } from "../supabaseMemoryService";
+import { runToolLoop } from "../tools/index";
+import { CAPTAIN_OPENROUTER_MODEL } from "../assistantConfig";
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
@@ -49,8 +48,7 @@ export const aiRouter = router({
       // Save user message
       // Conversation persistence handled by frontend ConversationPanel
 
-      // Detect intent to route to appropriate worker
-      const intent = detectIntent(input.message);
+      const intent = "chat" as const;
 
       // Get conversation history for context
       const history = await getConversationHistory(userId, input.projectId, 20);
@@ -74,113 +72,15 @@ export const aiRouter = router({
         messages.push({ role: "user", content: input.message });
       }
 
-      let response: string;
-      let workerUsed: string;
-
-      switch (intent) {
-        case "research": {
-          // Route to Perplexity Sonar
-          workerUsed = "Research (Perplexity Sonar)";
-      await addOrchestrationEvent({
-        user_id: userId,
-        project_id: input.projectId ?? null,
-        event_type: "research_start",
-        agent_name: "Research Worker",
-        summary: `Researching: ${input.message.slice(0, 100)}`,
-      });
-
-          response = await callResearch(input.message);
-
-          await addOrchestrationEvent({
-            user_id: userId,
-            project_id: input.projectId ?? null,
-            event_type: "research_complete",
-            agent_name: "Research Worker",
-            summary: response.slice(0, 200),
-          });
-          break;
-        }
-
-        case "build": {
-          // For build requests in chat, Captain provides the plan
-          // Actual code generation happens via the build endpoint
-          workerUsed = "Captain Q (OpenAI GPT-4o)";
-          response = await callCaptain(messages);
-          break;
-        }
-
-        case "validate": {
-          // Route to Anthropic Claude for validation
-          workerUsed = "Validator (Anthropic Claude)";
-          await addOrchestrationEvent({
-            user_id: userId,
-            project_id: input.projectId ?? null,
-            event_type: "validator_start",
-            agent_name: "Validator",
-            summary: `Validating: ${input.message.slice(0, 100)}`,
-          });
-
-          response = await callValidator(input.message, "User-requested validation");
-
-          await addOrchestrationEvent({
-            user_id: userId,
-            project_id: input.projectId ?? null,
-            event_type: "validator_complete",
-            agent_name: "Validator",
-            summary: response.slice(0, 200),
-          });
-          break;
-        }
-
-        case "image_gen": {
-          // Generate image via Captain Q API endpoint
-          workerUsed = "Image Generator (OpenAI, fal.ai fallback)";
-          try {
-            const imgRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/generate-image`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ prompt: input.message }),
-            });
-            const imgData = await imgRes.json() as any;
-            if (imgData.success && imgData.imageUrl) {
-              response = `Here's your generated image:\n\n![Generated Image](${imgData.imageUrl})\n\nPrompt used: ${imgData.prompt}\n\nProvider: ${imgData.provider}${imgData.fallbackUsed ? ' (fallback)' : ''}`;
-            } else {
-              response = `Image generation failed: ${imgData.error || 'Unknown error'}. OpenAI was attempted first; provider details are available in the server logs.`;
-            }
-          } catch (e: any) {
-            response = `Image generation error: ${e.message}`;
-          }
-          break;
-        }
-
-        case "social": {
-          // Queue a social media post
-          workerUsed = "Social Media (Instagram/Facebook)";
-          try {
-            const postRes = await fetch(`http://localhost:${process.env.PORT || 3000}/api/social/queue`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ platform: 'instagram', caption: input.message, hashtags: '' }),
-            });
-            const postData = await postRes.json() as any;
-            if (postData.success) {
-              response = `Post queued for Instagram! ID: ${postData.queued?.id}. It will be posted when Make.com picks it up from the queue.`;
-            } else {
-              response = `Failed to queue post: ${postData.error || 'Supabase not configured'}`;
-            }
-          } catch (e: any) {
-            response = `Social posting error: ${e.message}`;
-          }
-          break;
-        }
-
-        default: {
-          // General chat — Captain handles directly
-          workerUsed = "Captain Q (OpenAI GPT-4o)";
-          response = await callCaptain(messages);
-          break;
-        }
-      }
+      const assistantResult = await runToolLoop(
+        messages,
+        { userId: String(userId), projectId: input.projectId || null },
+        CAPTAIN_OPENROUTER_MODEL,
+      );
+      const response = assistantResult.response?.trim() || "I couldn't produce a useful response. Please try that again.";
+      const workerUsed = assistantResult.toolsUsed.length > 0
+        ? `Captain Q · ${assistantResult.toolsUsed.join(", ")}`
+        : "Captain Q";
 
       // Save assistant response
       // Conversation persistence handled by frontend ConversationPanel
@@ -200,6 +100,7 @@ export const aiRouter = router({
         timestamp: Date.now(),
         workerUsed,
         intent,
+        artifacts: assistantResult.artifacts,
       };
     }),
 

@@ -56,12 +56,17 @@ export type ToolChoice =
   | ToolChoiceExplicit;
 
 export type InvokeParams = {
+  model?: string;
   messages: Message[];
   tools?: Tool[];
   toolChoice?: ToolChoice;
   tool_choice?: ToolChoice;
   maxTokens?: number;
   max_tokens?: number;
+  max_completion_tokens?: number;
+  temperature?: number;
+  reasoning?: { effort?: "minimal" | "low" | "medium" | "high" };
+  thinking?: { type?: "enabled"; budget_tokens?: number };
   outputSchema?: OutputSchema;
   output_schema?: OutputSchema;
   responseFormat?: ResponseFormat;
@@ -269,6 +274,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   assertApiKey();
 
   const {
+    model = "gpt-5-mini",
     messages,
     tools,
     toolChoice,
@@ -280,7 +286,7 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
   } = params;
 
   const payload: Record<string, unknown> = {
-    model: "gemini-2.5-flash",
+    model,
     messages: messages.map(normalizeMessage),
   };
 
@@ -296,9 +302,21 @@ export async function invokeLLM(params: InvokeParams): Promise<InvokeResult> {
     payload.tool_choice = normalizedToolChoice;
   }
 
-  payload.max_tokens = 32768
-  payload.thinking = {
-    "budget_tokens": 128
+  const requestedMaxTokens =
+    params.max_completion_tokens || params.maxTokens || params.max_tokens || 8192;
+  if (/^gpt-5(?:[.\-]|$)/i.test(model)) {
+    payload.max_completion_tokens = requestedMaxTokens;
+  } else {
+    payload.max_tokens = requestedMaxTokens;
+  }
+  if (typeof params.temperature === "number") {
+    payload.temperature = params.temperature;
+  }
+  if (params.reasoning) {
+    payload.reasoning = params.reasoning;
+  }
+  if (params.thinking) {
+    payload.thinking = params.thinking;
   }
 
   const normalizedResponseFormat = normalizeResponseFormat({

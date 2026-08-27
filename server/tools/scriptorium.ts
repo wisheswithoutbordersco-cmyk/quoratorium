@@ -66,7 +66,7 @@ function sleep(milliseconds: number): Promise<void> {
 registerTool({
   name: "scriptorium_generate",
   description:
-    "Generate a high-quality AI image using Scriptorium's composition layer. Use this first for premium image requests.",
+    "Create a new premium AI image through Scriptorium. Use only when the user explicitly asks Captain Q to generate or create a visual. Do not use for identifying, counting, describing, or discussing an attached image, and do not use when the user asks only for a prompt to paste elsewhere. If this tool fails, generate_image is the fallback.",
   parameters: {
     type: "object",
     properties: {

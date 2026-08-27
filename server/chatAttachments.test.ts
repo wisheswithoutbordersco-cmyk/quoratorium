@@ -14,8 +14,10 @@ describe("image analysis guidance", () => {
     const prompt = addImageAnalysisGuidance("You are Captain Q.", 1);
 
     expect(prompt).toContain("allowed to count visible people or characters");
-    expect(prompt).toContain("Counting or describing someone is not identity recognition");
-    expect(prompt).toContain("Do NOT identify an unknown real person by name");
+    expect(prompt).toContain("identify recognizable fictional characters");
+    expect(prompt).toContain("Examples include Chucky");
+    expect(prompt).toContain("naming a fictional character is not real-person identity recognition");
+    expect(prompt).toContain("Do NOT identify an unknown real human by name");
     expect(prompt).toContain("How many people are in this picture?");
   });
 

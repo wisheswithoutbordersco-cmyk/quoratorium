@@ -7,7 +7,7 @@ import { generateImageWithFallback, type ImageAspectRatio } from "../imageGenera
 
 registerTool({
   name: "generate_image",
-  description: "Generate an AI image with OpenAI GPT Image first. fal.ai is used automatically only if OpenAI fails or is unavailable.",
+  description: "Create a new AI image with OpenAI, with fal.ai as its provider fallback. Use only for an explicit image-creation request, normally after scriptorium_generate fails or when the user specifically requests direct OpenAI generation. Never use for attached-image analysis, character identification, counting, description, or a request that asks only for a reusable prompt.",
   parameters: {
     type: "object",
     properties: {

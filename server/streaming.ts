@@ -7,13 +7,13 @@ import type { Express, Request, Response } from "express";
 import OpenAI from "openai";
 import Anthropic from "@anthropic-ai/sdk";
 import { addOrchestrationEvent } from "./db";
-import { detectIntent, type WorkerIntent } from "./workers";
+import type { WorkerIntent } from "./workers";
 import { invokeLLM } from "./_core/llm";
 import type { Message as LLMMessage } from "./_core/llm";
 import * as db from "./db";
 import { executeCode, getExecutionEngineStatus } from "./codeExecutor";
 import { executeBrowserTask, parseBrowserTask } from "./browserWorker";
-import { generateImage, isImageRequest, extractImagePrompt } from "./imageWorker";
+import { generateImage, extractImagePrompt } from "./imageWorker";
 import { executeTaskChain } from "./taskChain";
 import { retrieveRelevantMemories, buildMemoryContext, extractMemoriesFromMessage, persistExtractedMemories } from "./memoryService";
 import { saveToMemory, buildMemoryContext as buildSemanticMemoryContext } from "./memory-service";
@@ -35,6 +35,14 @@ import { verifyResponse, shouldVerify, generateBadge } from "./synthesisVerifica
 import { createHeartbeatState, feedTokens, getHeartbeatStatus, getProgressPercent } from "./heartbeatInterrupt";
 import { OWNER_CONTEXT } from "./ownerContext";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
+import { detectCaptainRoute, type CaptainRoute } from "./assistantRouting";
+import {
+  CAPTAIN_FORGE_MODEL,
+  CAPTAIN_MAX_OUTPUT_TOKENS,
+  CAPTAIN_OPENAI_MODEL,
+  CAPTAIN_OPENROUTER_MODEL,
+  getCaptainReasoning,
+} from "./assistantConfig";
 import {
   addImageAnalysisGuidance,
   attachmentMetadata,
@@ -52,60 +60,27 @@ const VALIDATOR_SYSTEM_PROMPT = `You are the Validator worker in Q Workspace. Yo
 
 const RESEARCH_SYSTEM_PROMPT = `You are the Research worker in Q Workspace powered by Perplexity Sonar. You find information, analyze trends, compare options, and provide data-driven insights. Be thorough and cite sources when possible.`;
 
-export type ExtendedIntent = WorkerIntent | "browser" | "execute" | "image" | "complex";
+export type ExtendedIntent = CaptainRoute;
 
-function getSystemPrompt(intent: ExtendedIntent): string {
-  switch (intent) {
-    case "build": return BUILDER_SYSTEM_PROMPT;
-    case "validate": return VALIDATOR_SYSTEM_PROMPT;
-    case "research": return RESEARCH_SYSTEM_PROMPT;
-    default: return CAPTAIN_SYSTEM_PROMPT;
-  }
+function getSystemPrompt(_intent: ExtendedIntent): string {
+  return CAPTAIN_SYSTEM_PROMPT;
 }
 
 function getWorkerName(intent: ExtendedIntent): string {
-  const hasOpenRouter = !!process.env.OPENROUTER_API_KEY;
   switch (intent) {
-    case "build": return hasOpenRouter ? "Builder (DeepSeek)" : "Builder (OpenAI GPT-4o)";
-    case "validate": return hasOpenRouter ? "Validator (Gemini 2.5 Flash)" : "Validator (Anthropic Claude)";
-    case "research": return hasOpenRouter ? "Research (Gemini 2.5 Flash)" : "Research (Perplexity Sonar)";
-    case "browser": return "Browser (Playwright)";
-    case "execute": return `Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
-    case "image": return "Artist (OpenAI Images)";
-    case "complex": return "Captain Q (Multi-Step)";
-    default: return "Captain Q (OpenAI GPT-4o)";
+    case "browser": return "Captain Q · Browser";
+    case "execute": return `Captain Q · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
+    default: return "Captain Q";
   }
 }
 
 /**
- * Extended intent detection that includes new workers
+ * Only unmistakable side-effect requests bypass the general assistant. All
+ * semantic interpretation—including research, images, writing, planning, and
+ * tool selection—stays with the same Captain Q model.
  */
 export function detectExtendedIntent(message: string, hasImageAttachment = false): ExtendedIntent {
-  const lower = message.toLowerCase();
-
-  // An attached image means the user is asking Q to inspect or discuss that
-  // upload. Do not silently replace it with a newly generated image.
-  if (!hasImageAttachment && isImageRequest(message)) return "image";
-
-  // Browser tasks (must contain a URL)
-  if (parseBrowserTask(message) !== null) return "browser";
-
-  // Code execution
-  const execKeywords = ["run this code", "execute this", "run the following", "execute code", "test this code"];
-  if (execKeywords.some(kw => lower.includes(kw))) return "execute";
-  // Also detect code blocks with explicit run request
-  if (lower.includes("```") && (lower.includes("run") || lower.includes("execute"))) return "execute";
-
-  // Complex multi-step tasks (long requests with multiple parts)
-  const complexIndicators = [
-    "step by step", "multiple steps", "first.*then", "build.*and.*deploy",
-    "create.*and.*test", "research.*then.*build", "full project",
-    "end to end", "complete workflow",
-  ];
-  if (complexIndicators.some(kw => lower.match(new RegExp(kw)))) return "complex";
-
-  // Fall back to standard intent detection
-  return detectIntent(message);
+  return detectCaptainRoute(message, hasImageAttachment);
 }
 
 export function registerStreamingRoutes(app: Express) {
@@ -512,17 +487,11 @@ export function registerStreamingRoutes(app: Express) {
     try {
       // Route to appropriate worker
       switch (intent) {
-        case "image":
-          await handleImageGeneration(res, message, projectId, userId, persistedConversationId);
-          break;
         case "browser":
           await handleBrowserTask(res, message, projectId, userId, persistedConversationId);
           break;
         case "execute":
           await handleCodeExecution(res, message, projectId, userId, persistedConversationId);
-          break;
-        case "complex":
-          await handleMultiStepChain(res, message, projectId, memoryContext + knowledgeContext, userId, persistedConversationId);
           break;
         default:
           await handleStandardChat(
@@ -904,163 +873,76 @@ async function handleStandardChat(
   messages.push(...normalizeChatHistory(history));
   messages.push({ role: "user", content: buildChatUserContent(message, imageAttachments) });
 
-  // ─── Autonomous Tool Use (for build intent) ───────────────────────────────
-  // Do not announce or invoke tools for ordinary chat. The previous unconditional
-  // loop made simple writing and attachment questions look like build requests.
-  if (userId && intent === "build" && imageAttachments.length === 0) {
-    try {
-      const { runToolLoop } = await import("./tools/index");
-      const toolContext: import("./tools/index").ToolContext = {
-        userId: String(userId),
-        projectId,
-        res,
-      };
-
-      // Emit tool-use start event
-      res.write(`data: ${JSON.stringify({ type: "tool_mode", active: true })}\n\n`);
-
-      const toolResult = await runToolLoop(
-        messages as any,
-        toolContext,
-        process.env.ORCHESTRATOR_MODEL || "openai/gpt-4o",
-        // onToken: stream tokens as they arrive
-        (token: string) => {
-          res.write(`data: ${JSON.stringify({ type: "token", content: token })}\n\n`);
-        },
-        // onToolStart: notify client which tool is being used
-        (toolName: string, args: Record<string, any>) => {
-          res.write(`data: ${JSON.stringify({ type: "tool_start", tool: toolName, args: Object.keys(args) })}\n\n`);
-        },
-        // onToolResult: notify client of tool completion
-        (toolName: string, result: import("./tools/index").ToolResult) => {
-          const artifacts = result.artifacts?.map(a => ({ type: a.type, name: a.name, url: a.url })) || [];
-          res.write(`data: ${JSON.stringify({ type: "tool_result", tool: toolName, success: result.success, artifacts })}\n\n`);
-          // If a sandbox URL was produced, send it as a preview event
-          const urlArtifact = result.artifacts?.find(a => a.type === "url" && a.url);
-          if (urlArtifact?.url) {
-            res.write(`data: ${JSON.stringify({ type: "sandbox_url", url: urlArtifact.url, name: urlArtifact.name })}\n\n`);
-          }
-        },
-      );
-
-      // Stream the final text response if tool loop produced one
-      if (toolResult.response && toolResult.toolsUsed.length > 0) {
-        res.write(`data: ${JSON.stringify({ type: "token", content: toolResult.response })}\n\n`);
-        res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed: toolResult.toolsUsed })}\n\n`);
-        const generatedImages = toolResult.artifacts
-          .filter((artifact) => artifact.type === "image" && artifact.url)
-          .map((artifact) => ({ url: artifact.url!, title: artifact.name }));
-        await persistAssistantConversationMessage(userId, conversationId, toolResult.response, {
-          intent,
-          toolsUsed: toolResult.toolsUsed,
-          images: generatedImages,
-        });
-
-        // ─── Memory: Save messages for future recall ─────────────
-        if (userId) {
-          saveToMemory({ userId, conversationId: conversationId || undefined, role: "user", content: message }).catch(() => {});
-          saveToMemory({ userId, conversationId: conversationId || undefined, role: "assistant", content: toolResult.response }).catch(() => {});
-        }
-
-        res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
-        res.write(`data: [DONE]\n\n`);
-        res.end();
-        return;
-      }
-      // If no tools were used (LLM decided tools weren't needed), fall through to normal flow
-    } catch (toolErr: any) {
-      console.warn("[ToolLoop] Tool use failed, falling back to standard chat:", toolErr?.message);
-      // Fall through to standard streaming
-    }
-  }
-
-  // For build intent: collect full response to post-process (auto-execute + persist files)
   let fullResponse = "";
-  const isBuildIntent = intent === "build";
+  let toolsUsed: string[] = [];
+  let generatedImages: Array<{ url: string; title: string }> = [];
 
-  // Route to appropriate worker based on intent
-  // Priority: OpenRouter (primary) → individual keys → Forge (fallback)
+  // One capable Captain Q model interprets the complete request and decides
+  // whether a tool is needed. A valid no-tool answer is final; it is never
+  // discarded and sent through a second, inconsistent model path.
   try {
+    const { runToolLoop } = await import("./tools/index");
+    const toolContext: import("./tools/index").ToolContext = {
+      userId: String(userId || "owner"),
+      projectId,
+      res,
+    };
+    let toolModeActive = false;
+
+    const toolResult = await runToolLoop(
+      messages as any,
+      toolContext,
+      CAPTAIN_OPENROUTER_MODEL,
+      undefined,
+      (toolName: string, args: Record<string, any>) => {
+        if (!toolModeActive) {
+          toolModeActive = true;
+          res.write(`data: ${JSON.stringify({ type: "tool_mode", active: true })}\n\n`);
+        }
+        res.write(`data: ${JSON.stringify({ type: "tool_start", tool: toolName, args: Object.keys(args) })}\n\n`);
+      },
+      (toolName: string, result: import("./tools/index").ToolResult) => {
+        const artifacts = result.artifacts?.map((artifact) => ({
+          type: artifact.type,
+          name: artifact.name,
+          url: artifact.url,
+        })) || [];
+        res.write(`data: ${JSON.stringify({ type: "tool_result", tool: toolName, success: result.success, artifacts })}\n\n`);
+        const urlArtifact = result.artifacts?.find((artifact) => artifact.type === "url" && artifact.url);
+        if (urlArtifact?.url) {
+          res.write(`data: ${JSON.stringify({ type: "sandbox_url", url: urlArtifact.url, name: urlArtifact.name })}\n\n`);
+        }
+      },
+    );
+
+    toolsUsed = toolResult.toolsUsed;
+    generatedImages = toolResult.artifacts
+      .filter((artifact) => artifact.type === "image" && artifact.url)
+      .map((artifact) => ({ url: artifact.url!, title: artifact.name }));
+    fullResponse = toolResult.response?.trim() || (toolsUsed.length > 0
+      ? "Done. I completed the requested action."
+      : "I couldn't produce a useful response. Please try that again.");
+
+    res.write(`data: ${JSON.stringify({ type: "token", content: fullResponse })}\n\n`);
+    if (toolModeActive) {
+      res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed })}\n\n`);
+    }
+  } catch (primaryError: any) {
+    console.warn("[Captain Q] Unified reasoning loop failed, using direct model fallback:", primaryError?.message || primaryError);
     if (process.env.OPENROUTER_API_KEY) {
-      // Use OpenRouter as primary for all intents
-      const model = imageAttachments.length > 0
-        ? "openai/gpt-4o"
-        : intent === "build"
-          ? "deepseek/deepseek-chat"
-          : intent === "validate"
-            ? "google/gemini-2.5-flash"
-            : intent === "research"
-              ? "google/gemini-2.5-flash"
-              : "openai/gpt-4o";
-      fullResponse = await streamOpenRouterCollecting(res, messages, model);
-    } else if ((intent === "validate") && process.env.ANTHROPIC_API_KEY) {
-      fullResponse = await streamAnthropicCollecting(res, systemPrompt, message, history);
-    } else if (intent === "research" && process.env.SONAR_API_KEY) {
-      fullResponse = await streamPerplexityCollecting(res, messages, message);
+      fullResponse = await streamOpenRouterCollecting(res, messages, CAPTAIN_OPENROUTER_MODEL);
     } else if (process.env.OPENAI_API_KEY) {
       fullResponse = await streamOpenAICollecting(res, messages);
     } else {
       fullResponse = await streamForgeFallbackCollecting(res, messages);
     }
-  } catch (primaryError: any) {
-    console.warn(`[Stream] Primary provider failed (${intent}), falling back to Forge:`, primaryError?.message || primaryError);
-    fullResponse = await streamForgeFallbackCollecting(res, messages);
   }
 
-  // ─── Post-Build: Auto-Execute + Persist Files ─────────────────────────────
-  if (isBuildIntent && fullResponse) {
-    // Extract code blocks from the generated response
-    const codeBlocks = extractCodeBlocksFromMarkdown(fullResponse);
-    if (codeBlocks.length > 0) {
-      // Persist generated files to DB if we have a project
-      if (projectId && userId) {
-        try {
-          res.write(`data: ${JSON.stringify({ type: "token", content: `\n\n---\n\n💾 **Persisting ${codeBlocks.length} generated file${codeBlocks.length !== 1 ? 's' : ''} to project...**\n` })}\n\n`);
-          for (const block of codeBlocks) {
-            await db.createGeneratedFile({
-              project_id: projectId,
-              user_id: userId,
-              filename: block.filename,
-              filepath: block.filepath,
-              content: block.content,
-              language: block.language,
-            }).catch(() => {});
-          }
-          res.write(`data: ${JSON.stringify({ type: "token", content: `✅ **${codeBlocks.length} file${codeBlocks.length !== 1 ? 's' : ''} saved** to project #${projectId}\n` })}\n\n`);
-        } catch (err) {
-          console.warn("[Build] File persistence failed:", err);
-        }
-      }
-
-      // Auto-execute in Sprites if there's a runnable script
-      const runnableBlock = codeBlocks.find(b =>
-        ["javascript", "typescript", "python", "bash"].includes(b.language) &&
-        b.content.length > 20 &&
-        !b.filename.includes(".test.") &&
-        !b.filename.includes("package.json")
-      );
-
-      if (runnableBlock && process.env.SPRITES_TOKEN) {
-        const lang = runnableBlock.language as "javascript" | "typescript" | "python" | "bash";
-        const engineLabel = "Sprites.dev";
-        res.write(`data: ${JSON.stringify({ type: "token", content: `\n⚡ **Auto-executing ${lang} via ${engineLabel}...**\n` })}\n\n`);
-        try {
-          const execResult = await executeCode(runnableBlock.content, lang, { timeoutMs: 30000 });
-          const engineInfo = execResult.engine === "sprites" ? ` (${execResult.spriteName || "Sprites.dev"})` : " (local)";
-          res.write(`data: ${JSON.stringify({ type: "execution", language: lang, success: execResult.success, stdout: execResult.stdout, stderr: execResult.stderr, duration: execResult.duration, engine: execResult.engine, spriteName: execResult.spriteName })}\n\n`);
-          if (execResult.success) {
-            res.write(`data: ${JSON.stringify({ type: "token", content: `✅ **Execution successful** (${execResult.duration}ms${engineInfo})\n\`\`\`\n${execResult.stdout || "(no output)"}\n\`\`\`` })}\n\n`);
-          } else {
-            res.write(`data: ${JSON.stringify({ type: "token", content: `⚠️ **Execution note** (${execResult.duration}ms${engineInfo}): ${execResult.stderr?.slice(0, 300) || "Check output above"}` })}\n\n`);
-          }
-        } catch (execErr: any) {
-          console.warn("[Build] Auto-execution failed:", execErr?.message);
-        }
-      }
-    }
-  }
-
-  await persistAssistantConversationMessage(userId, conversationId, fullResponse, { intent });
+  await persistAssistantConversationMessage(userId, conversationId, fullResponse, {
+    intent,
+    toolsUsed,
+    images: generatedImages,
+  });
 
   // ─── Memory: Save messages for future recall ─────────────
   if (userId) {
@@ -1287,11 +1169,14 @@ async function streamPerplexity(
 async function streamForgeFallback(res: Response, messages: Array<{ role: string; content: string }>) {
   const startTime = Date.now();
   const result = await invokeLLM({
+    model: CAPTAIN_FORGE_MODEL,
     messages: messages as any,
+    max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+    reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
   });
   const usage = result.usage;
   logApiCall({
-    userId: 0, model: "gemini-2.5-flash", worker: "captain",
+    userId: 0, model: CAPTAIN_FORGE_MODEL, worker: "captain",
     inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
     durationMs: Date.now() - startTime, success: true,
   }).catch(() => {});
@@ -1315,7 +1200,7 @@ async function streamForgeFallback(res: Response, messages: Array<{ role: string
 async function streamOpenRouterCollecting(
   res: Response,
   messages: LLMMessage[],
-  model: string = "deepseek/deepseek-chat"
+  model: string = CAPTAIN_OPENROUTER_MODEL
 ): Promise<string> {
   const startTime = Date.now();
   const openrouter = new OpenAI({
@@ -1323,16 +1208,17 @@ async function streamOpenRouterCollecting(
     baseURL: "https://openrouter.ai/api/v1",
     defaultHeaders: {
       "HTTP-Referer": "https://quoratorium.com",
-      "X-Title": "Quoratorium Builder",
+      "X-Title": "Captain Q",
     },
   });
+  const reasoning = getCaptainReasoning(model);
   const stream = await openrouter.chat.completions.create({
     model,
     messages: messages as any,
     stream: true,
-    max_tokens: 16384,
-    temperature: 0.3,
-  });
+    max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+    ...(reasoning ? { reasoning } : {}),
+  } as any) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   let fullText = "";
   let totalTokens = { prompt: 0, completion: 0 };
   for await (const chunk of stream) {
@@ -1348,7 +1234,7 @@ async function streamOpenRouterCollecting(
     if (chunk.choices[0]?.finish_reason === "stop") break;
   }
   logApiCall({
-    userId: 0, model, worker: "builder",
+    userId: 0, model, worker: "captain",
     inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
     durationMs: Date.now() - startTime, success: true,
   }).catch(() => {});
@@ -1363,13 +1249,13 @@ async function streamOpenAICollecting(
   const startTime = Date.now();
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const stream = await openai.chat.completions.create({
-    model: "gpt-4o",
+    model: CAPTAIN_OPENAI_MODEL,
     messages: messages as any,
     stream: true,
     stream_options: { include_usage: true },
-    max_tokens: 16384,
-    temperature: 0.3,
-  });
+    max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+    reasoning_effort: "low",
+  } as any) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   let fullText = "";
   let totalTokens = { prompt: 0, completion: 0 };
   for await (const chunk of stream) {
@@ -1385,7 +1271,7 @@ async function streamOpenAICollecting(
     if (chunk.choices[0]?.finish_reason === "stop") break;
   }
   logApiCall({
-    userId: 0, model: "gpt-4o", worker: "builder",
+    userId: 0, model: CAPTAIN_OPENAI_MODEL, worker: "captain",
     inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
     durationMs: Date.now() - startTime, success: true,
   }).catch(() => {});
@@ -1503,10 +1389,15 @@ async function streamForgeFallbackCollecting(
   messages: LLMMessage[]
 ): Promise<string> {
   const startTime = Date.now();
-  const result = await invokeLLM({ messages: messages as any });
+  const result = await invokeLLM({
+    model: CAPTAIN_FORGE_MODEL,
+    messages: messages as any,
+    max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+    reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
+  });
   const usage = result.usage;
   logApiCall({
-    userId: 0, model: "gemini-2.5-flash", worker: "builder",
+    userId: 0, model: CAPTAIN_FORGE_MODEL, worker: "captain",
     inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
     durationMs: Date.now() - startTime, success: true,
   }).catch(() => {});

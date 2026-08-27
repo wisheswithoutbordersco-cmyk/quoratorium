@@ -6,7 +6,7 @@ import { registerTool, type ToolContext, type ToolResult } from "./index";
 
 registerTool({
   name: "create_file",
-  description: "Create or update a file with the given content. Use this to write HTML, CSS, JavaScript, TypeScript, Python, or any text file. For web projects, create index.html as the entry point.",
+  description: "Create or update a project file only when the user explicitly asks Captain Q to build an application, produce code files, or save content as a file. Do not use for ordinary explanations, brainstorming, prompt writing, image concepts, or conversational advice. For an explicit web project, index.html may be used as the entry point.",
   parameters: {
     type: "object",
     properties: {

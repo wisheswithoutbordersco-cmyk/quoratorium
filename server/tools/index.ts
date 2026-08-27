@@ -9,8 +9,14 @@
  * - Streaming status events back to the client
  */
 import type { Tool, ToolCall, Message } from "../_core/llm";
-import { CAPTAIN_Q_SYSTEM_PROMPT } from "../captainQPrompt";
+import { CAPTAIN_Q_SYSTEM_PROMPT, CAPTAIN_Q_TOOL_GUIDANCE } from "../captainQPrompt";
 import { invokeLLM } from "../_core/llm";
+import {
+  CAPTAIN_FORGE_MODEL,
+  CAPTAIN_MAX_OUTPUT_TOKENS,
+  CAPTAIN_OPENROUTER_MODEL,
+  getCaptainReasoning,
+} from "../assistantConfig";
 import type { Response } from "express";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -68,7 +74,7 @@ export function getTool(name: string): ToolDefinition | undefined {
 
 // ─── Tool Execution Loop ────────────────────────────────────────────────────
 
-const MAX_TOOL_ITERATIONS = 8; // Safety limit to prevent infinite loops
+const MAX_TOOL_ITERATIONS = 6; // Safety limit to prevent infinite loops
 
 /**
  * Run Captain Q's autonomous tool-use loop:
@@ -80,7 +86,7 @@ const MAX_TOOL_ITERATIONS = 8; // Safety limit to prevent infinite loops
 export async function runToolLoop(
   messages: Message[],
   context: ToolContext,
-  model: string = "deepseek/deepseek-chat",
+  model: string = CAPTAIN_OPENROUTER_MODEL,
   onToken?: (token: string) => void,
   onToolStart?: (toolName: string, args: Record<string, any>) => void,
   onToolResult?: (toolName: string, result: ToolResult) => void,
@@ -107,26 +113,27 @@ export async function runToolLoop(
   // Clone messages to avoid mutating the original
   const conversationMessages = [...messages];
 
-  // Ensure the tool-calling model knows it MUST use tools for real-time info
-  const toolSystemMessage = {
-    role: "system" as const,
-    content:
-      CAPTAIN_Q_SYSTEM_PROMPT +
-      "\n\nTOOL USE REQUIREMENTS:\n" +
-      "- For current events, weather, news, sports scores, stock prices, or anything that can change over time: always call web_search first.\n" +
-      "- For math calculations, data analysis, or code execution: always call run_code.\n" +
-      "- If information might be current, search first; never claim real-time information is unavailable when web_search is available.\n" +
-      "- For ANY visual request (poster, flyer, business card, wall art, menu, brochure, landing page design, social media graphic, banner, or logo concept): use scriptorium_generate FIRST. If it fails or times out, immediately call generate_image with the same prompt.\n" +
-      "- Do NOT use create_file to make an HTML page for a visual request. Only use create_file + deploy_project when the user specifically asks for a working interactive website or web application with functionality.\n" +
-      "- Treat a request to build a landing page as a request for a designed image unless the user explicitly requests a functioning website.\n" +
-      "- Never say image generation is unavailable when either image tool can be used, and never dump raw code, HTML, CSS, or JavaScript into the chat for a visual request.",
-  };
-
-  // Prepend tool instructions (replace any existing system message or add before user messages)
+  // Preserve the caller's full Captain Q context and append one concise tool
+  // contract. The previous implementation prepended a second, conflicting copy
+  // of the assistant prompt and pushed the model toward unnecessary actions.
   if (conversationMessages[0]?.role === "system") {
-    conversationMessages[0] = { ...conversationMessages[0], content: toolSystemMessage.content + "\n\n" + (conversationMessages[0] as any).content };
+    const existingContent = conversationMessages[0].content;
+    const systemText = typeof existingContent === "string"
+      ? existingContent
+      : Array.isArray(existingContent)
+        ? existingContent.map((part: any) => part.type === "text" ? part.text : "").join("\n")
+        : existingContent.type === "text"
+          ? existingContent.text
+          : "";
+    conversationMessages[0] = {
+      ...conversationMessages[0],
+      content: `${systemText}\n\n${CAPTAIN_Q_TOOL_GUIDANCE}`,
+    };
   } else {
-    conversationMessages.unshift(toolSystemMessage as any);
+    conversationMessages.unshift({
+      role: "system",
+      content: `${CAPTAIN_Q_SYSTEM_PROMPT}\n\n${CAPTAIN_Q_TOOL_GUIDANCE}`,
+    });
   }
 
   while (iteration < MAX_TOOL_ITERATIONS) {
@@ -134,7 +141,7 @@ export async function runToolLoop(
 
     // Use OpenRouter directly for tool calling (invokeLLM uses Gemini which doesn't reliably call tools)
     const openrouterKey = process.env.OPENROUTER_API_KEY;
-    const toolModel = model || process.env.ORCHESTRATOR_MODEL || "openai/gpt-4o";
+    const toolModel = model || CAPTAIN_OPENROUTER_MODEL;
 
     let result: any;
     if (openrouterKey) {
@@ -151,6 +158,8 @@ export async function runToolLoop(
           messages: conversationMessages,
           tools: tools.length > 0 ? tools : undefined,
           tool_choice: tools.length > 0 ? "auto" : undefined,
+          max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+          reasoning: getCaptainReasoning(toolModel),
         }),
       });
       if (!response.ok) {
@@ -161,9 +170,12 @@ export async function runToolLoop(
     } else {
       // Fallback to built-in LLM if no OpenRouter key
       result = await invokeLLM({
+        model: CAPTAIN_FORGE_MODEL,
         messages: conversationMessages,
         tools: tools.length > 0 ? tools : undefined,
         toolChoice: tools.length > 0 ? "auto" : undefined,
+        max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+        reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
       });
     }
 
@@ -214,7 +226,7 @@ export async function runToolLoop(
 
         try {
           toolResult = await toolDef.execute(args, context);
-          toolsUsed.push(toolName);
+          if (!toolsUsed.includes(toolName)) toolsUsed.push(toolName);
           if (toolResult.artifacts) {
             allArtifacts.push(...toolResult.artifacts);
           }

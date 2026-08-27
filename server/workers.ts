@@ -14,6 +14,12 @@ import { logApiCall } from "./costService";
 import { analyzeComplexity, selectModel } from "./modelRouter";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
 import { isImageRequest } from "./imageWorker";
+import {
+  CAPTAIN_FORGE_MODEL,
+  CAPTAIN_MAX_OUTPUT_TOKENS,
+  CAPTAIN_OPENAI_MODEL,
+  getCaptainReasoning,
+} from "./assistantConfig";
 
 // ─── Client Initialization ─────────────────────────────────────────────────
 
@@ -101,7 +107,7 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
   if (openai) {
     try {
       const response = await openai.chat.completions.create({
-        model: "gpt-4o",
+        model: CAPTAIN_OPENAI_MODEL,
         messages: [
           { role: "system", content: CAPTAIN_SYSTEM_PROMPT },
           ...messages.map(m => ({
@@ -109,12 +115,12 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
             content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
           })),
         ],
-        max_tokens: 4096,
-        temperature: 0.7,
-      });
+        max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+        reasoning_effort: "low",
+      } as any);
       const usage = response.usage;
       logApiCall({
-        userId, model: "gpt-4o", worker: "captain",
+        userId, model: CAPTAIN_OPENAI_MODEL, worker: "captain",
         inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
         durationMs: Date.now() - startTime, projectId, success: true,
       }).catch(() => {});
@@ -124,16 +130,19 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
     }
   }
 
-  // Fallback to Forge LLM
+  // Fallback to the same current Captain model through Forge.
   const result = await invokeLLM({
+    model: CAPTAIN_FORGE_MODEL,
     messages: [
       { role: "system", content: CAPTAIN_SYSTEM_PROMPT },
       ...messages,
     ],
+    max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+    reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
   });
   const usage = result.usage;
   logApiCall({
-    userId, model: "gemini-2.5-flash", worker: "captain",
+    userId, model: CAPTAIN_FORGE_MODEL, worker: "captain",
     inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
     durationMs: Date.now() - startTime, projectId, success: true,
   }).catch(() => {});
@@ -470,7 +479,7 @@ export function detectIntent(message: string): WorkerIntent {
   // such as "create", "generate", "make", and "design" caused normal writing
   // requests to enter the autonomous tool loop.
   const buildPatterns = [
-    /\b(?:build|develop|implement|scaffold)\b[^.!?]{0,80}\b(?:website|web app|application|dashboard|api|component|page|feature|project)\b/i,
+    /\b(?:build|develop|implement|scaffold|create|make|generate)\b[^.!?]{0,80}\b(?:website|web app|application|dashboard|api|component|page|feature|project)\b/i,
     /\b(?:write|fix|debug|review|refactor|run|execute)\b[^.!?]{0,50}\b(?:code|script|function|component|api)\b/i,
     /\b(?:website|web app|dashboard|api|component)\b[^.!?]{0,50}\b(?:build|develop|implement|code)\b/i,
   ];

@@ -777,3 +777,19 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Keep text-only Captain Q prompts unchanged.
 - [x] Validation: 31/31 focused regressions pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push commit `1870a55` and confirm Railway reports successful deployment to `quoratorium.com`.
+
+## Captain Q Systemic Intelligence Upgrade (Aug 27 2026)
+- [x] Replace keyword-first worker switching with one coherent general Captain Q assistant across streaming and alternate chat routes.
+- [x] Move the primary model from GPT-4o and mixed Gemini/DeepSeek paths to the current multimodal, tool-capable `openai/gpt-5.2-chat`, with current GPT-5 Forge/OpenAI fallbacks.
+- [x] Replace the prescriptive rule pile with a semantic assistant contract that interprets the full message, history, attachments, and user context.
+- [x] Make conversation the default and reserve deterministic routing only for unmistakable browser and code-execution actions.
+- [x] Let Captain Q select web, execution, image, file, and deployment tools only when the full request requires them.
+- [x] Keep valid no-tool answers instead of discarding them and sending the request through a second model.
+- [x] Remove generic autonomous-tool announcements; tool status appears only after an actual tool call begins.
+- [x] Separate attached-image understanding, reusable prompt writing, and explicit image creation across the system prompt and tool descriptions.
+- [x] Allow recognition of fictional characters, dolls, mascots, logos, products, and artwork while preserving the narrow real-human facial-identification restriction.
+- [x] Modernize the shared Forge wrapper to accept model selection and family-correct output/reasoning parameters instead of hardcoding `gemini-2.5-flash` with a 128-token thinking budget.
+- [x] Model-level evaluation with the actual Chucky screenshot: 5/5 scenarios passed, including “That’s Chucky,” no tool for image discussion or prompt writing, image tool for explicit creation, and web research for current information.
+- [x] Browser verification at 390×844: exact Chucky question and JPEG bytes were submitted, response rendered as “That’s Chucky,” and no autonomous-tool status appeared.
+- [x] Validation: 58 relevant automated tests pass, `pnpm check` passes, and `pnpm build` completes successfully. The broader credential-validation suite remains environment-dependent and is not part of this code change.
+- [ ] Commit, push, and confirm successful Railway deployment to `quoratorium.com`.
