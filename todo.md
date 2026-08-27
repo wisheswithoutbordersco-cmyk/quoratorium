@@ -794,4 +794,4 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Validation: 58 relevant automated tests pass, `pnpm check` passes, and `pnpm build` completes successfully. The broader credential-validation suite remains environment-dependent and is not part of this code change.
 - [x] Direct production verification exposed a provider/model failure after the first deployment; add ordered OpenRouter model retries plus independent OpenAI and Forge fallbacks so one provider rejection cannot take Captain Q offline.
 - [x] Revalidate the provider correction: 55 focused tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
-- [ ] Commit, push, and confirm successful Railway deployment to `quoratorium.com`.
+- [x] Push systemic upgrade `8bc6392` and provider-fallback hotfix `816d0ad`; confirm Railway success, text smoke response, and the exact live Chucky image response on `quoratorium.com`.
