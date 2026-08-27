@@ -8,13 +8,16 @@
  * - Multi-step loops (call tool → get result → decide next action)
  * - Streaming status events back to the client
  */
+import OpenAI from "openai";
 import type { Tool, ToolCall, Message } from "../_core/llm";
 import { CAPTAIN_Q_SYSTEM_PROMPT, CAPTAIN_Q_TOOL_GUIDANCE } from "../captainQPrompt";
 import { invokeLLM } from "../_core/llm";
 import {
   CAPTAIN_FORGE_MODEL,
   CAPTAIN_MAX_OUTPUT_TOKENS,
+  CAPTAIN_OPENAI_MODEL,
   CAPTAIN_OPENROUTER_MODEL,
+  isGpt5Family,
   getCaptainReasoning,
 } from "../assistantConfig";
 import type { Response } from "express";
@@ -139,44 +142,89 @@ export async function runToolLoop(
   while (iteration < MAX_TOOL_ITERATIONS) {
     iteration++;
 
-    // Use OpenRouter directly for tool calling (invokeLLM uses Gemini which doesn't reliably call tools)
     const openrouterKey = process.env.OPENROUTER_API_KEY;
     const toolModel = model || CAPTAIN_OPENROUTER_MODEL;
-
+    const providerErrors: string[] = [];
     let result: any;
+
+    // OpenRouter is the preferred provider, but model availability can vary by
+    // account or deployment. Retry known multimodal tool-capable models before
+    // moving to a different provider.
     if (openrouterKey) {
-      const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${openrouterKey}`,
-          "Content-Type": "application/json",
-          "HTTP-Referer": "https://quoratorium.com",
-          "X-Title": "Captain Q Tools",
-        },
-        body: JSON.stringify({
-          model: toolModel,
+      const candidates = Array.from(new Set([toolModel, "openai/gpt-5", "openai/gpt-4o"]));
+      for (const candidate of candidates) {
+        try {
+          const reasoning = getCaptainReasoning(candidate);
+          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Authorization": `Bearer ${openrouterKey}`,
+              "Content-Type": "application/json",
+              "HTTP-Referer": "https://quoratorium.com",
+              "X-Title": "Captain Q Tools",
+            },
+            body: JSON.stringify({
+              model: candidate,
+              messages: conversationMessages,
+              tools: tools.length > 0 ? tools : undefined,
+              tool_choice: tools.length > 0 ? "auto" : undefined,
+              ...(isGpt5Family(candidate)
+                ? { max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }
+                : { max_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }),
+              ...(reasoning ? { reasoning } : {}),
+            }),
+          });
+          if (!response.ok) {
+            const detail = (await response.text()).slice(0, 300);
+            providerErrors.push(`OpenRouter ${candidate}: ${response.status} ${detail}`);
+            continue;
+          }
+          result = await response.json();
+          break;
+        } catch (error: any) {
+          providerErrors.push(`OpenRouter ${candidate}: ${error?.message || "request failed"}`);
+        }
+      }
+    }
+
+    // A separate OpenAI call keeps Captain Q available even when OpenRouter is
+    // configured but rejects a new model or has a temporary outage.
+    if (!result && process.env.OPENAI_API_KEY) {
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      for (const candidate of Array.from(new Set([CAPTAIN_OPENAI_MODEL, "gpt-4o"]))) {
+        try {
+          result = await openai.chat.completions.create({
+            model: candidate,
+            messages: conversationMessages as any,
+            tools: tools.length > 0 ? tools as any : undefined,
+            tool_choice: tools.length > 0 ? "auto" : undefined,
+            ...(isGpt5Family(candidate)
+              ? { max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS, reasoning_effort: "low" }
+              : { max_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }),
+          } as any);
+          break;
+        } catch (error: any) {
+          providerErrors.push(`OpenAI ${candidate}: ${error?.message || "request failed"}`);
+        }
+      }
+    }
+
+    // Forge remains the final model provider so transient external-provider
+    // failures do not become a generic user-facing chat error.
+    if (!result) {
+      try {
+        result = await invokeLLM({
+          model: CAPTAIN_FORGE_MODEL,
           messages: conversationMessages,
           tools: tools.length > 0 ? tools : undefined,
-          tool_choice: tools.length > 0 ? "auto" : undefined,
+          toolChoice: tools.length > 0 ? "auto" : undefined,
           max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
-          reasoning: getCaptainReasoning(toolModel),
-        }),
-      });
-      if (!response.ok) {
-        const errText = await response.text();
-        throw new Error(`OpenRouter tool call failed (${response.status}): ${errText}`);
+          reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
+        });
+      } catch (error: any) {
+        providerErrors.push(`Forge ${CAPTAIN_FORGE_MODEL}: ${error?.message || "request failed"}`);
+        throw new Error(`All Captain Q providers failed: ${providerErrors.join(" | ")}`);
       }
-      result = await response.json();
-    } else {
-      // Fallback to built-in LLM if no OpenRouter key
-      result = await invokeLLM({
-        model: CAPTAIN_FORGE_MODEL,
-        messages: conversationMessages,
-        tools: tools.length > 0 ? tools : undefined,
-        toolChoice: tools.length > 0 ? "auto" : undefined,
-        max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
-        reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
-      });
     }
 
     const choice = result?.choices?.[0];

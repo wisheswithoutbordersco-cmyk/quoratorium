@@ -792,4 +792,6 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Model-level evaluation with the actual Chucky screenshot: 5/5 scenarios passed, including “That’s Chucky,” no tool for image discussion or prompt writing, image tool for explicit creation, and web research for current information.
 - [x] Browser verification at 390×844: exact Chucky question and JPEG bytes were submitted, response rendered as “That’s Chucky,” and no autonomous-tool status appeared.
 - [x] Validation: 58 relevant automated tests pass, `pnpm check` passes, and `pnpm build` completes successfully. The broader credential-validation suite remains environment-dependent and is not part of this code change.
+- [x] Direct production verification exposed a provider/model failure after the first deployment; add ordered OpenRouter model retries plus independent OpenAI and Forge fallbacks so one provider rejection cannot take Captain Q offline.
+- [x] Revalidate the provider correction: 55 focused tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [ ] Commit, push, and confirm successful Railway deployment to `quoratorium.com`.

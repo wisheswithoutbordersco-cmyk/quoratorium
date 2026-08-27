@@ -45,6 +45,27 @@ describe("runToolLoop", () => {
     expect(payload.messages[0].content).toContain("Tools are optional capabilities");
   });
 
+  it("retries a compatible OpenRouter model when the preferred model is rejected", async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 400,
+        text: async () => "unsupported model",
+      })
+      .mockResolvedValueOnce(response({ role: "assistant", content: "Captain Q is online." }));
+
+    const result = await runToolLoop(
+      [{ role: "user", content: "Say hello" }],
+      { userId: "owner" },
+      "openai/unavailable-model",
+    );
+
+    expect(result.response).toBe("Captain Q is online.");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const retryPayload = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(retryPayload.model).toBe("openai/gpt-5");
+  });
+
   it("executes a selected tool and returns the model's final answer", async () => {
     registerTool({
       name: "test_lookup",
