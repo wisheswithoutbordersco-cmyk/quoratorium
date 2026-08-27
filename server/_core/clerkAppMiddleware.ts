@@ -24,12 +24,8 @@ function markUnauthenticated(req: Request) {
 }
 
 export function createClerkAppMiddleware() {
-  // Railway currently carries a stale generic CLERK_PUBLISHABLE_KEY, while the
-  // client-facing VITE key correctly resolves to clerk.quoratorium.com. Prefer
-  // the same public key used by ClerkProvider so authentication and proxying
-  // always target the same Clerk instance.
-  const publishableKey = process.env.VITE_CLERK_PUBLISHABLE_KEY ||
-    process.env.CLERK_PUBLISHABLE_KEY || "";
+  const publishableKey = process.env.CLERK_PUBLISHABLE_KEY ||
+    process.env.VITE_CLERK_PUBLISHABLE_KEY || "";
   const secretKey = process.env.CLERK_SECRET_KEY || "";
 
   if (!publishableKey || !secretKey) {
