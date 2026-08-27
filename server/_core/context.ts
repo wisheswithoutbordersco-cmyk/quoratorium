@@ -8,122 +8,80 @@ export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
-  /** True when this request is running as the platform owner (unlimited credits, no sign-up wall) */
+  /** True when the current Clerk-authenticated identity belongs to the owner. */
   isOwner: boolean;
+  /** The database user resolved from the verified Clerk session. */
+  authenticatedUser?: User | null;
+  /** True only when Clerk verified the current request and that identity belongs to the owner. */
+  isVerifiedOwner?: boolean;
 };
 
+function isOwnerIdentity(user: User | null): boolean {
+  if (!user) return false;
+  const isOwnerByOpenId = Boolean(ENV.ownerOpenId && user.clerk_id === ENV.ownerOpenId);
+  const isOwnerByEmail = Boolean(
+    user.email && OWNER_EMAILS.includes(user.email.toLowerCase()),
+  );
+  return isOwnerByOpenId || isOwnerByEmail;
+}
+
 /**
- * Owner bypass: When Clerk auth is unavailable (DNS not propagated),
- * resolve the owner user from OWNER_OPEN_ID so protected procedures still work.
- * This ensures GitHub push, deploy, memory, and build pipeline function
- * even while Clerk is bypassed on the frontend.
+ * Resolve the real Clerk-authenticated database user for a request.
+ * There is intentionally no owner fallback: protected data and external actions
+ * must always be tied to a verified session.
  */
-let _ownerUserCache: User | null | undefined = undefined;
-
-export async function getOwnerUser(): Promise<User | null> {
-  if (_ownerUserCache !== undefined) return _ownerUserCache;
-
-  const ownerOpenId = ENV.ownerOpenId;
-  if (!ownerOpenId) {
-    _ownerUserCache = null;
-    return null;
-  }
+export async function resolveAuthenticatedUser(
+  req: CreateExpressContextOptions["req"],
+): Promise<User | null> {
+  const clerkAuth = (req as any).auth;
+  const clerkUserId = clerkAuth?.userId;
+  if (!clerkUserId) return null;
 
   try {
-    let ownerUser = await db.getUserByClerkId(ownerOpenId);
-    if (!ownerUser) {
-      // Create the owner user record if it doesn't exist
+    let dbUser = await db.getUserByClerkId(clerkUserId);
+    if (!dbUser || !dbUser.email) {
+      const clerkUser = await clerkClient.users.getUser(clerkUserId);
+      const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
+      const name =
+        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+        clerkUser.username ||
+        email ||
+        "User";
+
       await db.upsertUser({
-        clerkId: ownerOpenId,
-        name: process.env.OWNER_NAME || "Owner",
-        email: null,
-        loginMethod: "owner_bypass",
+        clerkId: clerkUserId,
+        name,
+        email,
+        loginMethod: "clerk",
         lastSignedIn: new Date(),
-        role: "admin",
+        role: email && OWNER_EMAILS.includes(email.toLowerCase()) ? "admin" : undefined,
       });
-      ownerUser = await db.getUserByClerkId(ownerOpenId);
+      dbUser = await db.getUserByClerkId(clerkUserId);
+    } else {
+      await db.upsertUser({
+        clerkId: clerkUserId,
+        lastSignedIn: new Date(),
+      });
     }
-    _ownerUserCache = ownerUser ?? null;
-    return _ownerUserCache;
+    return dbUser ?? null;
   } catch (error) {
-    // Do not cache transient lookup failures; a later request should retry Supabase.
-    console.error("[Auth] Owner bypass: failed to resolve owner user:", error);
+    console.error("[Auth] Failed to resolve Clerk user:", error);
     return null;
   }
 }
 
 export async function createContext(
-  opts: CreateExpressContextOptions
+  opts: CreateExpressContextOptions,
 ): Promise<TrpcContext> {
-  let user: User | null = null;
-
-  // CRITICAL: Always resolve to owner user to bypass all auth checks
-  // This allows the owner to use all features without login prompts
-  try {
-    user = await getOwnerUser();
-    if (user) {
-      console.log("[Auth] Owner bypass active - all requests authenticated as owner");
-    }
-  } catch (error) {
-    console.error("[Auth] Failed to get owner user:", error);
-    user = null;
-  }
-
-  // Fallback: try Clerk auth if owner bypass fails
-  if (!user) {
-    try {
-      const clerkAuth = (opts.req as any).auth;
-      if (clerkAuth?.userId) {
-        const clerkUserId = clerkAuth.userId;
-        let dbUser = await db.getUserByClerkId(clerkUserId);
-
-        if (!dbUser) {
-          try {
-            const clerkUser = await clerkClient.users.getUser(clerkUserId);
-            const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
-            const name =
-              [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-              clerkUser.username ||
-              email ||
-              "User";
-
-            await db.upsertUser({
-              clerkId: clerkUserId,
-              name,
-              email,
-              loginMethod: "clerk",
-              lastSignedIn: new Date(),
-            });
-            dbUser = await db.getUserByClerkId(clerkUserId);
-          } catch (error) {
-            console.error("[Auth] Failed to sync Clerk user:", error);
-          }
-        } else {
-          await db.upsertUser({
-            clerkId: clerkUserId,
-            lastSignedIn: new Date(),
-          });
-        }
-
-        user = dbUser ?? null;
-      }
-    } catch (error) {
-      console.error("[Auth] Fallback auth failed:", error);
-      user = null;
-    }
-  }
-
-  // Determine if this request is the platform owner
-  // Bypass: match by OWNER_OPEN_ID (Manus platform) OR by email (wisheswithoutbordersco@gmail.com)
-  const ownerOpenId = ENV.ownerOpenId;
-  const isOwnerByOpenId = !!(user && ownerOpenId && user.clerk_id === ownerOpenId);
-  const isOwnerByEmail = !!(user?.email && OWNER_EMAILS.includes(user.email.toLowerCase()));
-  const isOwner = isOwnerByOpenId || isOwnerByEmail;
+  const authenticatedUser = await resolveAuthenticatedUser(opts.req);
+  const isVerifiedOwner = isOwnerIdentity(authenticatedUser);
 
   return {
     req: opts.req,
     res: opts.res,
-    user,
-    isOwner,
+    user: authenticatedUser,
+    isOwner: isVerifiedOwner,
+    authenticatedUser,
+    isVerifiedOwner,
   };
 }

@@ -3,6 +3,10 @@ import { protectedProcedure } from "../_core/trpc";
 import { router } from "../_core/trpc";
 import { getSupabaseAdmin } from "../supabase";
 import { invokeLLM } from "../_core/llm";
+import {
+  deleteConversationAssetReferences,
+  rehydrateAttachmentMetadata,
+} from "../chatAssets";
 
 function getDb() {
   const client = getSupabaseAdmin();
@@ -60,15 +64,20 @@ export const conversationsRouter = router({
         projectId: conv.project_id,
         createdAt: conv.created_at,
         updatedAt: conv.updated_at,
-        messages: (msgs || []).map(m => ({
+        messages: await Promise.all((msgs || []).map(async m => ({
           id: m.id,
           conversationId: m.conversation_id,
           userId: m.user_id,
           role: m.role,
           content: m.content,
-          metadata: m.metadata,
+          metadata: Array.isArray(m.metadata?.attachments)
+            ? {
+                ...m.metadata,
+                attachments: await rehydrateAttachmentMetadata(m.metadata.attachments),
+              }
+            : m.metadata,
           createdAt: m.created_at,
-        })),
+        }))),
       };
     }),
 
@@ -145,7 +154,9 @@ export const conversationsRouter = router({
         .eq("user_id", ctx.user.id)
         .single();
       if (!conv) return false;
-      // Delete messages first, then conversation
+      // Remove durable file references, then delete messages and conversation.
+      // The storage template intentionally treats an unreferenced key as deleted.
+      await deleteConversationAssetReferences(ctx.user.id, input.id);
       await db.from("messages").delete().eq("conversation_id", input.id);
       await db.from("conversations").delete().eq("id", input.id);
       return true;

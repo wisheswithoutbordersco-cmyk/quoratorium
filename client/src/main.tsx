@@ -14,6 +14,7 @@ Sentry.init({
 });
 
 import { trpc } from "@/lib/trpc";
+import { ClerkProvider } from "@clerk/clerk-react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
 import { createRoot } from "react-dom/client";
@@ -22,6 +23,7 @@ import App from "./App";
 import "./index.css";
 
 const queryClient = new QueryClient();
+const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
 
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
@@ -86,11 +88,17 @@ function mountApp() {
         </div>
       )}
     >
-      <trpc.Provider client={trpcClient} queryClient={queryClient}>
-        <QueryClientProvider client={queryClient}>
-          <App />
-        </QueryClientProvider>
-      </trpc.Provider>
+      <ClerkProvider
+        publishableKey={clerkPublishableKey}
+        proxyUrl="/__clerk"
+        __internal_bypassMissingPublishableKey={!clerkPublishableKey}
+      >
+        <trpc.Provider client={trpcClient} queryClient={queryClient}>
+          <QueryClientProvider client={queryClient}>
+            <App />
+          </QueryClientProvider>
+        </trpc.Provider>
+      </ClerkProvider>
     </Sentry.ErrorBoundary>
   );
 }

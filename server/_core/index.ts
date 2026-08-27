@@ -82,8 +82,8 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
-  // Clerk's official same-origin Frontend API proxy. This is deployed before
-  // the owner gate so its production route can be validated without affecting Q.
+  // Clerk's official same-origin Frontend API proxy and optional auth context.
+  // Sensitive business actions use a separate server-side owner session.
   app.use(createClerkAppMiddleware());
 
   // Stripe webhook needs raw body for signature verification — must be BEFORE json parser
