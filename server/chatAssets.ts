@@ -184,6 +184,59 @@ export async function resolveChatAssetSignedUrls(
   return Promise.all(matching.map(entry => storageGetSignedUrl(entry.file_key!)));
 }
 
+export type ChatAssetPipelineHealth = {
+  available: boolean;
+  stage: "ready" | "storage" | "reference" | "cleanup";
+};
+
+export async function getChatAssetPipelineHealth(
+  userId: number,
+): Promise<ChatAssetPipelineHealth> {
+  const probe = Buffer.from(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlXcAAAAASUVORK5CYII=",
+    "base64",
+  );
+  let storedKey: string | null = null;
+  let entryId: number | null = null;
+
+  try {
+    const stored = await storagePut(
+      `health/${userId}/conversation-asset-probe.png`,
+      probe,
+      "image/png",
+    );
+    storedKey = stored.key;
+  } catch {
+    return { available: false, stage: "storage" };
+  }
+
+  try {
+    const entry = await db.createVaultEntry({
+      user_id: userId,
+      name: "Durable asset health probe",
+      entry_type: CHAT_ASSET_ENTRY_TYPE,
+      file_url: "private://health-probe",
+      file_key: storedKey,
+      mime_type: "image/png",
+      metadata: { healthProbe: true },
+    });
+    entryId = entry.id;
+  } catch {
+    if (storedKey) await storageDelete(storedKey).catch(() => undefined);
+    return { available: false, stage: "reference" };
+  }
+
+  try {
+    if (entryId) await db.deleteVaultEntry(entryId, userId);
+    if (storedKey) await storageDelete(storedKey);
+    return { available: true, stage: "ready" };
+  } catch {
+    if (entryId) await db.deleteVaultEntry(entryId, userId).catch(() => undefined);
+    if (storedKey) await storageDelete(storedKey).catch(() => undefined);
+    return { available: false, stage: "cleanup" };
+  }
+}
+
 export async function deleteConversationAssetReferences(
   userId: number,
   conversationId: number,
