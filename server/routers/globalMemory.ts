@@ -27,18 +27,14 @@ import {
   clearUserKnowledge,
 } from "../knowledgeBaseService";
 import { isSupabaseConfigured } from "../supabase";
-import { getDurableStorageHealth } from "../storage";
-import { getChatAssetPipelineHealth } from "../chatAssets";
 
 export const globalMemoryRouter = router({
   /**
    * Get Supabase connection status
    */
-  status: protectedProcedure.query(async ({ ctx }) => {
+  status: protectedProcedure.query(async () => {
     return {
       configured: isSupabaseConfigured(),
-      durableStorage: await getDurableStorageHealth(),
-      durableAssetPipeline: await getChatAssetPipelineHealth(ctx.user.id),
       categories: MEMORY_CATEGORIES,
     };
   }),
