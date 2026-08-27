@@ -819,7 +819,9 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Implement the Shopify executor with `productSet`, a deterministic handle, and hard-coded `status: DRAFT`; reject any non-draft response and include no publish mutation.
 - [x] Add mobile proposal cards with Edit, Cancel, Review and confirm, a second explicit **Create DRAFT** step, and completed/failed results.
 - [x] Add a mobile business-action lock and unlock dialog; the owner code is sent only to the unlock procedure and is never returned, persisted in the database, logged, or shown to Captain Q.
-- [x] Validate 64 focused regressions, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
-- [ ] Configure one private `BUSINESS_ACTION_PIN` Railway variable, deploy, and verify: Q chat remains available while locked; a valid code unlocks only business controls; durable images survive reload; Shopify remains disconnected until explicitly connected; and every product creation still requires the separate **Create DRAFT** confirmation.
+- [x] Validate 66 focused regressions, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
+- [x] Configure one private `BUSINESS_ACTION_PIN` Railway variable and verify live: Q chat remains available while locked, Shopify procedures return 401 while locked, a valid code unlocks business controls for 30 minutes, and the code never reaches Captain Q.
+- [x] Add a Railway-safe private Supabase Storage fallback, fresh signed URL rehydration, per-image failure isolation, base64 redaction, and physical object cleanup on conversation deletion.
+- [ ] Deploy and verify a new image renders from a signed URL after a true page reload; confirm Shopify remains disconnected and every product creation still requires the separate **Create DRAFT** confirmation.
 
 No Shopify credential was available during development, no store API mutation was sent, and Anthony's Shopify store was not changed. Clerk DNS records may remain in place but are no longer required by the business-action system.

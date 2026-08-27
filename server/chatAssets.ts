@@ -1,5 +1,5 @@
 import * as db from "./db";
-import { storageGetSignedUrl, storagePut } from "./storage";
+import { storageDelete, storageGetSignedUrl, storagePut } from "./storage";
 import type { ChatAttachment } from "./chatAttachments";
 
 export const CHAT_ASSET_ENTRY_TYPE = "chat_attachment";
@@ -58,40 +58,67 @@ export async function persistConversationAttachments(input: {
     }
 
     const bytes = decodeDataUrl(attachment.dataUrl);
-    if (!bytes || bytes.byteLength === 0) continue;
+    if (!bytes || bytes.byteLength === 0) {
+      results.push({
+        id: attachment.id || crypto.randomUUID(),
+        name: attachment.name,
+        type: attachment.type,
+        size: attachment.size,
+        durable: false,
+        retention: CHAT_ASSET_RETENTION,
+      });
+      continue;
+    }
 
-    const stored = await storagePut(
-      `conversation-assets/${input.userId}/${input.conversationId}/${sanitizeFileName(attachment.name)}`,
-      bytes,
-      attachment.type,
-    );
+    try {
+      const stored = await storagePut(
+        `conversation-assets/${input.userId}/${input.conversationId}/${sanitizeFileName(attachment.name)}`,
+        bytes,
+        attachment.type,
+      );
 
-    const entry = await db.createVaultEntry({
-      user_id: input.userId,
-      name: attachment.name,
-      entry_type: CHAT_ASSET_ENTRY_TYPE,
-      file_url: stored.url,
-      file_key: stored.key,
-      mime_type: attachment.type,
-      metadata: {
+      const entry = await db.createVaultEntry({
+        user_id: input.userId,
+        name: attachment.name,
+        entry_type: CHAT_ASSET_ENTRY_TYPE,
+        file_url: stored.url,
+        file_key: stored.key,
+        mime_type: attachment.type,
+        metadata: {
+          conversationId: input.conversationId,
+          messageId: input.messageId,
+          size: bytes.byteLength,
+          retention: CHAT_ASSET_RETENTION,
+          createdAt: new Date().toISOString(),
+        },
+      });
+
+      results.push({
+        id: String(entry.id),
+        name: attachment.name,
+        type: attachment.type,
+        size: bytes.byteLength,
+        url: stored.url,
+        storageKey: stored.key,
+        durable: true,
+        retention: CHAT_ASSET_RETENTION,
+      });
+    } catch (error) {
+      console.warn("[ChatAssets] Failed to persist one attachment", {
         conversationId: input.conversationId,
         messageId: input.messageId,
+        name: attachment.name,
+        error: error instanceof Error ? error.message : String(error),
+      });
+      results.push({
+        id: attachment.id || crypto.randomUUID(),
+        name: attachment.name,
+        type: attachment.type,
         size: bytes.byteLength,
+        durable: false,
         retention: CHAT_ASSET_RETENTION,
-        createdAt: new Date().toISOString(),
-      },
-    });
-
-    results.push({
-      id: String(entry.id),
-      name: attachment.name,
-      type: attachment.type,
-      size: bytes.byteLength,
-      url: stored.url,
-      storageKey: stored.key,
-      durable: true,
-      retention: CHAT_ASSET_RETENTION,
-    });
+      });
+    }
   }
 
   return results;
@@ -167,6 +194,20 @@ export async function deleteConversationAssetReferences(
     Number(entry.metadata?.conversationId) === conversationId,
   );
 
-  await Promise.all(matching.map(entry => db.deleteVaultEntry(entry.id, userId)));
+  await Promise.all(
+    matching.map(async entry => {
+      if (entry.file_key) {
+        try {
+          await storageDelete(entry.file_key);
+        } catch (error) {
+          console.warn("[ChatAssets] Failed to delete stored attachment object", {
+            entryId: entry.id,
+            error: error instanceof Error ? error.message : String(error),
+          });
+        }
+      }
+      await db.deleteVaultEntry(entry.id, userId);
+    }),
+  );
   return matching.length;
 }

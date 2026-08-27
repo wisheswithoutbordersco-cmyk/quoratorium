@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("./storage", () => ({
   storagePut: vi.fn(),
   storageGetSignedUrl: vi.fn(),
+  storageDelete: vi.fn(),
 }));
 
 vi.mock("./db", () => ({
@@ -12,7 +13,7 @@ vi.mock("./db", () => ({
 }));
 
 import * as db from "./db";
-import { storageGetSignedUrl, storagePut } from "./storage";
+import { storageDelete, storageGetSignedUrl, storagePut } from "./storage";
 import {
   CHAT_ASSET_ENTRY_TYPE,
   CHAT_ASSET_RETENTION,
@@ -74,6 +75,48 @@ describe("durable conversation assets", () => {
         retention: CHAT_ASSET_RETENTION,
       }),
     ]);
+    expect(result[0]).not.toHaveProperty("dataUrl");
+  });
+
+  it("redacts failed uploads independently without aborting the whole message", async () => {
+    vi.mocked(storagePut)
+      .mockResolvedValueOnce({
+        key: "supabase:conversation-assets/1/42/first.png",
+        url: "https://storage.example.com/first.png?signature=fresh",
+      })
+      .mockRejectedValueOnce(new Error("storage unavailable"));
+    vi.mocked(db.createVaultEntry).mockResolvedValue({ id: 77 } as any);
+
+    const result = await persistConversationAttachments({
+      userId: 1,
+      conversationId: 42,
+      messageId: 100,
+      attachments: [
+        {
+          id: "upload-1",
+          name: "First.png",
+          type: "image/png",
+          size: 99,
+          dataUrl,
+        },
+        {
+          id: "upload-2",
+          name: "Second.png",
+          type: "image/png",
+          size: 99,
+          dataUrl,
+        },
+      ],
+    });
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toEqual(expect.objectContaining({ durable: true, id: "77" }));
+    expect(result[1]).toEqual(expect.objectContaining({
+      durable: false,
+      id: "upload-2",
+      name: "Second.png",
+    }));
+    expect(result[1]).not.toHaveProperty("dataUrl");
   });
 
   it("rehydrates a stored reference with a fresh signed HTTPS URL", async () => {
@@ -120,12 +163,22 @@ describe("durable conversation assets", () => {
 
   it("removes only asset references owned by the deleted conversation", async () => {
     vi.mocked(db.getUserVault).mockResolvedValue([
-      { id: 1, entry_type: CHAT_ASSET_ENTRY_TYPE, metadata: { conversationId: 42 } },
+      {
+        id: 1,
+        entry_type: CHAT_ASSET_ENTRY_TYPE,
+        file_key: "supabase:conversation-assets/8/42/photo.png",
+        metadata: { conversationId: 42 },
+      },
       { id: 2, entry_type: CHAT_ASSET_ENTRY_TYPE, metadata: { conversationId: 99 } },
       { id: 3, entry_type: "file", metadata: { conversationId: 42 } },
     ] as any);
 
+    vi.mocked(storageDelete).mockResolvedValue(true);
+
     await expect(deleteConversationAssetReferences(8, 42)).resolves.toBe(1);
+    expect(storageDelete).toHaveBeenCalledWith(
+      "supabase:conversation-assets/8/42/photo.png",
+    );
     expect(db.deleteVaultEntry).toHaveBeenCalledTimes(1);
     expect(db.deleteVaultEntry).toHaveBeenCalledWith(1, 8);
   });
