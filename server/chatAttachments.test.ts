@@ -155,42 +155,4 @@ describe("chat attachments", () => {
       { role: "assistant", content: "Yes, I can see it." },
     ]);
   });
-
-  it("preserves signed HTTPS image history after a conversation reload", () => {
-    const signedUrl = "https://storage.example.com/conversation-assets/photo.png?signature=temporary";
-    expect(normalizeChatHistory([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Remember this image." },
-          { type: "image_url", image_url: { url: signedUrl, detail: "high" } },
-        ],
-      },
-    ])).toEqual([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Remember this image." },
-          { type: "image_url", image_url: { url: signedUrl, detail: "high" } },
-        ],
-      },
-    ]);
-  });
-
-  it("rejects non-HTTPS remote image schemes from conversation history", () => {
-    const history = normalizeChatHistory([
-      {
-        role: "user",
-        content: [
-          { type: "text", text: "Unsafe references." },
-          { type: "image_url", image_url: { url: "file:///etc/passwd", detail: "high" } },
-          { type: "image_url", image_url: { url: "http://127.0.0.1/private.png", detail: "high" } },
-        ],
-      },
-    ]);
-
-    expect(history).toEqual([
-      { role: "user", content: [{ type: "text", text: "Unsafe references." }] },
-    ]);
-  });
 });

@@ -33,7 +33,6 @@ import { getGuestMessagesRemaining, incrementGuestMessages, isGuestLimitReached,
 import { SignUpWall } from "@/components/SignUpWall";
 import { GuestCreditsIndicator } from "@/components/GuestCreditsIndicator";
 import { CreditExhaustedBanner } from "@/components/CreditExhaustedBanner";
-import { BusinessActionPanel } from "@/components/BusinessActionPanel";
 import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_IMAGE_BYTES,
@@ -199,7 +198,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         .filter(m => m.role === "user" || m.role === "assistant")
         .slice(-10)
         .map(m => {
-          const imageAttachments = m.attachments?.filter((attachment) => (attachment.dataUrl || attachment.url) && attachment.type.startsWith("image/")) || [];
+          const imageAttachments = m.attachments?.filter((attachment) => attachment.dataUrl && attachment.type.startsWith("image/")) || [];
           if (m.role === "user" && imageAttachments.length > 0) {
             return {
               role: m.role,
@@ -207,7 +206,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 { type: "text", text: m.content || "Please describe the attached image." },
                 ...imageAttachments.map((attachment) => ({
                   type: "image_url",
-                  image_url: { url: attachment.dataUrl || attachment.url!, detail: "high" },
+                  image_url: { url: attachment.dataUrl, detail: "high" },
                 })),
               ],
             };
@@ -350,9 +349,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 timestamp: new Date(),
               });
             } else if (event.type === "tool_result") {
-              if (event.data?.businessAction) {
-                void utils.businessActions.list.invalidate();
-              }
               // Tool completed. Image artifacts are transported separately from
               // prose so they render reliably even when their source is a data URL.
               const imageArtifacts = Array.isArray(event.artifacts)
@@ -571,8 +567,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         <div ref={messagesEndRef} />
       </div>
 
-      <BusinessActionPanel conversationId={safeParseInt(activeConversationId) ?? null} />
-
       <AnimatePresence>
         {pendingUploads.length > 0 && (
           <motion.div
@@ -762,8 +756,8 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.attachments.map((att: any) => (
                 <div key={att.id} className="overflow-hidden rounded bg-white/10 text-[10px]">
-                  {(att.dataUrl || att.url) && att.type?.startsWith("image/") && (
-                    <img src={att.dataUrl || att.url} alt={att.name} className="block max-h-48 w-auto max-w-full object-contain" />
+                  {att.dataUrl && att.type?.startsWith("image/") && (
+                    <img src={att.dataUrl} alt={att.name} className="block max-h-48 w-auto max-w-full object-contain" />
                   )}
                   <div className="flex items-center gap-1 px-2 py-1">
                     <FileIcon type={att.type} />

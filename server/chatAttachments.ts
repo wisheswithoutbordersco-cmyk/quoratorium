@@ -64,15 +64,6 @@ function normalizeFileName(value: unknown, index: number): string {
   return (trimmed || `attachment-${index + 1}`).slice(0, 255);
 }
 
-function isSafeRemoteImageUrl(value: string): boolean {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:";
-  } catch {
-    return false;
-  }
-}
-
 function parseImageDataUrl(
   dataUrl: string,
   declaredType: string
@@ -208,20 +199,17 @@ export function normalizeChatHistory(
         value.type === "image_url" &&
         typeof value.image_url?.url === "string"
       ) {
-        const imageUrl = value.image_url.url;
-        const mimeTypeMatch = imageUrl.match(
+        const dataUrl = value.image_url.url;
+        const mimeTypeMatch = dataUrl.match(
           /^data:(image\/(?:jpeg|png|webp|gif));base64,/i
         );
         const parsed = mimeTypeMatch
-          ? parseImageDataUrl(imageUrl, mimeTypeMatch[1])
+          ? parseImageDataUrl(dataUrl, mimeTypeMatch[1])
           : null;
-        if (
-          (parsed && parsed.byteLength <= MAX_CHAT_IMAGE_BYTES) ||
-          (!mimeTypeMatch && isSafeRemoteImageUrl(imageUrl))
-        ) {
+        if (parsed && parsed.byteLength <= MAX_CHAT_IMAGE_BYTES) {
           parts.push({
             type: "image_url",
-            image_url: { url: imageUrl, detail: "high" },
+            image_url: { url: dataUrl, detail: "high" },
           });
         }
       }

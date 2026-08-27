@@ -643,64 +643,9 @@ export async function getUserVault(userId: number): Promise<VaultEntry[]> {
   return data || [];
 }
 
-export async function getUserVaultEntriesByType(
-  userId: number,
-  entryType: string,
-): Promise<VaultEntry[]> {
-  const db = getDbOrNull();
-  if (!db) return [];
-  const { data, error } = await db
-    .from("vault_entries")
-    .select("*")
-    .eq("user_id", userId)
-    .eq("entry_type", entryType)
-    .order("updated_at", { ascending: false });
-  if (error) throw new Error(`Failed to load vault entries: ${error.message}`);
-  return data || [];
-}
-
-export async function updateVaultEntry(data: {
-  id: number;
-  userId: number;
-  name?: string;
-  content?: string | null;
-  metadata?: any;
-}): Promise<VaultEntry> {
-  const db = getDb();
-  const updates: Record<string, unknown> = {};
-  if (data.name !== undefined) updates.name = data.name;
-  if (data.content !== undefined) updates.content = data.content;
-  if (data.metadata !== undefined) updates.metadata = data.metadata;
-  const { data: row, error } = await db
-    .from("vault_entries")
-    .update(updates)
-    .eq("id", data.id)
-    .eq("user_id", data.userId)
-    .select()
-    .single();
-  if (error) throw new Error(`Failed to update vault entry: ${error.message}`);
-  return row;
-}
-
 export async function deleteVaultEntry(id: number, userId: number): Promise<void> {
   const db = getDb();
   await db.from("vault_entries").delete().eq("id", id).eq("user_id", userId);
-}
-
-export async function updateConversationMessageMetadata(data: {
-  messageId: number;
-  conversationId: number;
-  userId: number;
-  metadata: any;
-}): Promise<void> {
-  const db = getDb();
-  const { error } = await db
-    .from("messages")
-    .update({ metadata: data.metadata })
-    .eq("id", data.messageId)
-    .eq("conversation_id", data.conversationId)
-    .eq("user_id", data.userId);
-  if (error) throw new Error(`Failed to update message metadata: ${error.message}`);
 }
 
 // ─── Generated Files ────────────────────────────────────────────────────────

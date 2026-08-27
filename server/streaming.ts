@@ -27,8 +27,7 @@ import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabas
 import { getRAGContext } from "./knowledgeBaseService";
 import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
 import { OWNER_EMAILS } from "./_core/env";
-import { resolveAuthenticatedUser } from "./_core/context";
-import { persistConversationAttachments } from "./chatAssets";
+import { getOwnerUser } from "./_core/context";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
 import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
 import { recordMessage as recordSessionMessage, recordToolCall as recordSessionToolCall, recordFailure as recordSessionFailure } from "./sessionHealth";
@@ -118,37 +117,57 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Resolve a real Clerk-authenticated database user. Conversation history,
-    // memories, files, and future business actions are private owner data and must
-    // never use the former anonymous owner fallback.
+    // Resolve the platform owner first, using the exact same path as the tRPC
+    // context that powers conversations.list. This keeps streaming writes and
+    // sidebar reads on the same database user even if a stale Clerk session exists.
     let userId: number | null = null;
     let isGuest = true;
     try {
-      const authenticatedUser = await resolveAuthenticatedUser(req as any);
-      if (authenticatedUser?.id) {
-        userId = authenticatedUser.id;
+      const ownerUser = await getOwnerUser();
+      if (ownerUser?.id) {
+        userId = ownerUser.id;
         isGuest = false;
         console.log("[Conversation] Streaming user resolved", {
-          source: "clerk",
+          source: "owner_bypass",
           userId,
+        });
+      } else {
+        console.error("[Conversation] Owner bypass did not resolve a database user", {
+          ownerOpenIdConfigured: Boolean(process.env.OWNER_OPEN_ID),
         });
       }
     } catch (error: any) {
-      console.error("[Conversation] Clerk user resolution failed", {
+      console.error("[Conversation] Owner resolution failed", {
         error: error?.stack || error?.message || error,
       });
     }
 
+    // Fallback to Clerk only when the shared owner bypass is unavailable.
     if (!userId) {
-      res.status(401).json({ error: "Sign in to use Captain Q." });
-      return;
+      try {
+        const clerkAuth = (req as any).auth;
+        if (clerkAuth?.userId) {
+          const dbUser = await db.getUserByClerkId(clerkAuth.userId);
+          if (dbUser?.id) {
+            userId = dbUser.id;
+            isGuest = false;
+            console.log("[Conversation] Streaming user resolved", {
+              source: "clerk",
+              userId,
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error("[Conversation] Clerk fallback resolution failed", {
+          error: error?.stack || error?.message || error,
+        });
+      }
     }
 
     // Resolve or create the conversation on the server, then persist the user message.
     // This deliberately uses the streaming endpoint's authenticated database user rather
     // than relying on client-side protected tRPC mutations.
     let persistedConversationId: number | null = null;
-    let durableAttachmentIds: string[] = [];
     if (userId) {
       try {
         const requestedConversationId =
@@ -209,35 +228,6 @@ export function registerStreamingRoutes(app: Express) {
             ? { attachments: attachmentMetadata(parsedAttachments.attachments) }
             : undefined,
         });
-
-        if (parsedAttachments.attachments.length > 0) {
-          try {
-            const durableAttachments = await persistConversationAttachments({
-              userId,
-              conversationId: persistedConversationId,
-              messageId: userMessageId,
-              attachments: parsedAttachments.attachments,
-            });
-            if (durableAttachments.length > 0) {
-              durableAttachmentIds = durableAttachments
-                .filter(attachment => attachment.durable)
-                .map(attachment => attachment.id);
-              await db.updateConversationMessageMetadata({
-                messageId: userMessageId,
-                conversationId: persistedConversationId,
-                userId,
-                metadata: { attachments: durableAttachments },
-              });
-            }
-          } catch (error) {
-            console.warn("[Conversation] Durable attachment storage unavailable; continuing with this response", {
-              conversationId: persistedConversationId,
-              messageId: userMessageId,
-              error,
-            });
-          }
-        }
-
         console.log("[Conversation] User message saved", {
           userId,
           conversationId: persistedConversationId,
@@ -252,7 +242,9 @@ export function registerStreamingRoutes(app: Express) {
         persistedConversationId = null;
       }
     } else {
-      console.error("[Conversation] Persistence skipped because no authenticated database user was resolved");
+      console.error("[Conversation] Persistence skipped because no database user was resolved", {
+        ownerOpenIdConfigured: Boolean(process.env.OWNER_OPEN_ID),
+      });
     }
 
     // Set SSE headers
@@ -512,8 +504,7 @@ export function registerStreamingRoutes(app: Express) {
             semanticMemoryContext,
             userId,
             persistedConversationId,
-            parsedAttachments.imageAttachments,
-            durableAttachmentIds
+            parsedAttachments.imageAttachments
           );
           break;
       }
@@ -859,8 +850,7 @@ async function handleStandardChat(
   semanticMemoryContext: string = "",
   userId?: number | null,
   conversationId?: number | null,
-  imageAttachments: ChatAttachment[] = [],
-  durableAttachmentIds: string[] = []
+  imageAttachments: ChatAttachment[] = []
 ) {
   const basePrompt = getSystemPrompt(intent);
   let systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
@@ -895,8 +885,6 @@ async function handleStandardChat(
     const toolContext: import("./tools/index").ToolContext = {
       userId: String(userId || "owner"),
       projectId,
-      conversationId,
-      durableAttachmentIds,
       res,
     };
     let toolModeActive = false;
@@ -919,13 +907,7 @@ async function handleStandardChat(
           name: artifact.name,
           url: artifact.url,
         })) || [];
-        res.write(`data: ${JSON.stringify({
-          type: "tool_result",
-          tool: toolName,
-          success: result.success,
-          artifacts,
-          data: result.data,
-        })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: "tool_result", tool: toolName, success: result.success, artifacts })}\n\n`);
         const urlArtifact = result.artifacts?.find((artifact) => artifact.type === "url" && artifact.url);
         if (urlArtifact?.url) {
           res.write(`data: ${JSON.stringify({ type: "sandbox_url", url: urlArtifact.url, name: urlArtifact.name })}\n\n`);
