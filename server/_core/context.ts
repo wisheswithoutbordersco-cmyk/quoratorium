@@ -8,13 +8,44 @@ export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
   user: User | null;
-  /** True when the current Clerk-authenticated identity belongs to the owner. */
+  /** True when this request is operating in Anthony's owner workspace. */
   isOwner: boolean;
-  /** The database user resolved from the verified Clerk session. */
+  /** Optional database user resolved from Clerk when Clerk is available. */
   authenticatedUser?: User | null;
-  /** True only when Clerk verified the current request and that identity belongs to the owner. */
+  /** Optional Clerk owner signal retained for non-business compatibility only. */
   isVerifiedOwner?: boolean;
 };
+
+let ownerUserCache: User | null | undefined;
+
+export async function getOwnerUser(): Promise<User | null> {
+  if (ownerUserCache !== undefined) return ownerUserCache;
+  const ownerOpenId = ENV.ownerOpenId;
+  if (!ownerOpenId) {
+    ownerUserCache = null;
+    return null;
+  }
+
+  try {
+    let ownerUser = await db.getUserByClerkId(ownerOpenId);
+    if (!ownerUser) {
+      await db.upsertUser({
+        clerkId: ownerOpenId,
+        name: process.env.OWNER_NAME || "Owner",
+        email: null,
+        loginMethod: "owner_bypass",
+        lastSignedIn: new Date(),
+        role: "admin",
+      });
+      ownerUser = await db.getUserByClerkId(ownerOpenId);
+    }
+    ownerUserCache = ownerUser ?? null;
+    return ownerUserCache;
+  } catch (error) {
+    console.error("[Auth] Failed to resolve owner workspace:", error);
+    return null;
+  }
+}
 
 function isOwnerIdentity(user: User | null): boolean {
   if (!user) return false;
@@ -76,11 +107,24 @@ export async function createContext(
   const authenticatedUser = await resolveAuthenticatedUser(opts.req);
   const isVerifiedOwner = isOwnerIdentity(authenticatedUser);
 
+  // Preserve Anthony's existing private-workspace behavior for ordinary Q chat.
+  // External business mutations require a separate short-lived action session.
+  let user = authenticatedUser;
+  let isOwner = isVerifiedOwner;
+  if (!user) {
+    try {
+      user = await getOwnerUser();
+      isOwner = Boolean(user);
+    } catch (error) {
+      console.error("[Auth] Failed to resolve workspace owner:", error);
+    }
+  }
+
   return {
     req: opts.req,
     res: opts.res,
-    user: authenticatedUser,
-    isOwner: isVerifiedOwner,
+    user,
+    isOwner,
     authenticatedUser,
     isVerifiedOwner,
   };

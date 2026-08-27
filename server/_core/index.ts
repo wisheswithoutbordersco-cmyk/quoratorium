@@ -16,7 +16,6 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { createClerkAppMiddleware } from "./clerkAppMiddleware";
 import { registerStorageProxy } from "./storageProxy";
 import { registerStreamingRoutes } from "../streaming";
 import { registerSandboxRoutes } from "../sandbox/routes";
@@ -81,10 +80,6 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
-
-  // Clerk's official same-origin Frontend API proxy and optional auth context.
-  // Sensitive business actions use a separate server-side owner session.
-  app.use(createClerkAppMiddleware());
 
   // Stripe webhook needs raw body for signature verification — must be BEFORE json parser
   app.use("/api/webhooks/stripe",

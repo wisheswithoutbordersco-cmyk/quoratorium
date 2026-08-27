@@ -27,7 +27,7 @@ import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabas
 import { getRAGContext } from "./knowledgeBaseService";
 import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
 import { OWNER_EMAILS } from "./_core/env";
-import { resolveAuthenticatedUser } from "./_core/context";
+import { getOwnerUser } from "./_core/context";
 import { persistConversationAttachments } from "./chatAssets";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
 import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
@@ -118,35 +118,28 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Resolve a real Clerk-authenticated database user. Conversation history,
-    // memories, files, and future business actions are private owner data and must
-    // never use the former anonymous owner fallback.
+    // Keep ordinary Captain Q conversation on Anthony's existing owner workspace.
+    // External business procedures use a separate short-lived action session.
     let userId: number | null = null;
     let isGuest = true;
     try {
-      const authenticatedUser = await resolveAuthenticatedUser(req as any);
-      if (authenticatedUser?.id) {
-        userId = authenticatedUser.id;
+      const owner = await getOwnerUser();
+      if (owner?.id) {
+        userId = owner.id;
         isGuest = false;
-        console.log("[Conversation] Streaming user resolved", {
-          source: "clerk",
-          userId,
-        });
       }
     } catch (error: any) {
-      console.error("[Conversation] Clerk user resolution failed", {
+      console.error("[Conversation] Owner workspace resolution failed", {
         error: error?.stack || error?.message || error,
       });
     }
 
     if (!userId) {
-      res.status(401).json({ error: "Sign in to use Captain Q." });
+      res.status(503).json({ error: "Owner workspace is temporarily unavailable." });
       return;
     }
 
     // Resolve or create the conversation on the server, then persist the user message.
-    // This deliberately uses the streaming endpoint's authenticated database user rather
-    // than relying on client-side protected tRPC mutations.
     let persistedConversationId: number | null = null;
     let durableAttachmentIds: string[] = [];
     if (userId) {

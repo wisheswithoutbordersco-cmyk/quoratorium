@@ -3,6 +3,7 @@ import {
   AlertTriangle,
   Check,
   ExternalLink,
+  KeyRound,
   Loader2,
   Pencil,
   ShieldCheck,
@@ -71,13 +72,26 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
   const [connectingActionId, setConnectingActionId] = useState<string | null>(null);
   const [shopDomain, setShopDomain] = useState("");
   const [accessToken, setAccessToken] = useState("");
+  const [unlockOpen, setUnlockOpen] = useState(false);
+  const [actionCode, setActionCode] = useState("");
 
+  const sessionQuery = trpc.businessActions.sessionStatus.useQuery(undefined, {
+    enabled: Boolean(conversationId),
+    refetchInterval: 60_000,
+    retry: false,
+  });
+  const isUnlocked = Boolean(sessionQuery.data?.unlocked);
   const actionsQuery = trpc.businessActions.list.useQuery(
     { conversationId: conversationId || undefined, includeTerminal: true },
-    { enabled: Boolean(conversationId), refetchInterval: 10_000 },
+    {
+      enabled: Boolean(conversationId && isUnlocked),
+      refetchInterval: 10_000,
+      retry: false,
+    },
   );
   const connectionQuery = trpc.businessActions.connectionStatus.useQuery(undefined, {
-    enabled: Boolean(conversationId),
+    enabled: Boolean(conversationId && isUnlocked),
+    retry: false,
   });
 
   const refresh = async () => {
@@ -86,6 +100,27 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
       utils.businessActions.connectionStatus.invalidate(),
     ]);
   };
+
+  const unlockMutation = trpc.businessActions.unlock.useMutation({
+    onSuccess: async result => {
+      setActionCode("");
+      setUnlockOpen(false);
+      await Promise.all([
+        utils.businessActions.sessionStatus.invalidate(),
+        utils.businessActions.list.invalidate(),
+        utils.businessActions.connectionStatus.invalidate(),
+      ]);
+      toast.success(`Business actions unlocked until ${new Date(result.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}.`);
+    },
+    onError: error => toast.error(error.message),
+  });
+  const lockMutation = trpc.businessActions.lock.useMutation({
+    onSuccess: async () => {
+      await utils.businessActions.sessionStatus.invalidate();
+      toast.success("Business actions locked.");
+    },
+    onError: error => toast.error(error.message),
+  });
 
   const editMutation = trpc.businessActions.editShopifyDraft.useMutation({
     onSuccess: async () => {
@@ -141,13 +176,112 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
     }
   }, [conversationId]);
 
-  if (!conversationId || actions.length === 0) return null;
+  if (!conversationId || sessionQuery.isLoading) return null;
+
+  if (!isUnlocked) {
+    const configured = Boolean(sessionQuery.data?.configured);
+    return (
+      <div className="border-t border-border bg-background/90 px-3 py-3 sm:px-4" data-testid="business-action-lock">
+        <div className="mx-auto flex max-w-3xl items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/[0.04] p-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="rounded-lg border border-primary/20 bg-primary/10 p-2 text-primary">
+              <KeyRound size={16} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold text-foreground">Business actions locked</p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {configured
+                  ? "Q chat is available. Unlock only when you want to review or run store actions."
+                  : "Owner action code is not configured yet. Q chat remains available."}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            disabled={!configured}
+            onClick={() => setUnlockOpen(true)}
+            className="shrink-0 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
+          >
+            Unlock
+          </button>
+        </div>
+
+        {unlockOpen && (
+          <div className="fixed inset-0 z-[100] grid place-items-end bg-black/75 p-3 sm:place-items-center" role="dialog" aria-modal="true" aria-label="Unlock business actions">
+            <div className="w-full max-w-md rounded-2xl border border-border bg-background p-4 shadow-2xl">
+              <div className="flex items-start gap-3">
+                <div className="rounded-lg bg-primary/10 p-2 text-primary"><KeyRound size={18} /></div>
+                <div>
+                  <h3 className="text-base font-semibold text-foreground">Unlock business actions</h3>
+                  <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
+                    Enter your owner action code. It is verified only on the server and unlocks store controls for {sessionQuery.data?.ttlMinutes || 30} minutes. Q never receives the code.
+                  </p>
+                </div>
+              </div>
+              <label className="mt-4 grid gap-1 text-[10px] text-muted-foreground">
+                Owner action code
+                <input
+                  type="password"
+                  autoComplete="off"
+                  value={actionCode}
+                  onChange={event => setActionCode(event.target.value)}
+                  onKeyDown={event => {
+                    if (event.key === "Enter" && actionCode.trim().length >= 8) {
+                      unlockMutation.mutate({ code: actionCode.trim() });
+                    }
+                  }}
+                  className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50"
+                />
+              </label>
+              <p className="mt-3 text-[10px] leading-relaxed text-muted-foreground">
+                Unlocking does not contact Shopify. Creating a draft still requires a separate review and confirmation.
+              </p>
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUnlockOpen(false);
+                    setActionCode("");
+                  }}
+                  className="rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  disabled={unlockMutation.isPending || actionCode.trim().length < 8}
+                  onClick={() => unlockMutation.mutate({ code: actionCode.trim() })}
+                  className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
+                >
+                  {unlockMutation.isPending ? <Loader2 size={14} className="animate-spin" /> : <ShieldCheck size={14} />}
+                  Unlock
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (actions.length === 0) return null;
 
   const shopify = connectionQuery.data?.shopify;
 
   return (
     <div className="border-t border-border bg-background/90 px-3 py-3 sm:px-4" data-testid="business-action-panel">
       <div className="mx-auto flex max-w-3xl flex-col gap-3">
+        <div className="flex items-center justify-between px-1 text-[10px] text-emerald-300/75">
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck size={12} /> Business actions unlocked</span>
+          <button
+            type="button"
+            disabled={lockMutation.isPending}
+            onClick={() => lockMutation.mutate()}
+            className="text-muted-foreground underline underline-offset-2 hover:text-foreground disabled:opacity-50"
+          >
+            Lock now
+          </button>
+        </div>
         {actions.map(action => {
           const preview = action.preview || {};
           const isPending = action.status === "proposed" || action.status === "confirmed";

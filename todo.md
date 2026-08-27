@@ -804,12 +804,13 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Model-level verification with ten real uploaded JPEG screenshots: all 10 were accepted, Q answered `10`, and no tool was invoked.
 - [x] Model-level verification with five screenshots plus five in the next message: Q retained both batches and answered `10`.
 - [x] Focused Captain Q tests, `pnpm check`, and `pnpm build` pass.
-- [ ] Commit, push, deploy, and verify the ten-image limit on `quoratorium.com`.
+- [x] Push commit `eb47b7f`, deploy through Railway, and verify all ten live attachments plus Captain Q's `10` response on `quoratorium.com`.
 
 ## Secure Business Action Foundation — August 27, 2026
 
-- [x] Replace the public browser-embedded workspace password and universal owner fallback with a real Clerk-authenticated owner boundary.
-- [x] Replace the broken generic `/__clerk` proxy with Clerk Express's built-in same-origin frontend API proxy and fail closed if authentication is unavailable.
+- [x] Preserve ordinary Captain Q workspace access while separating all external business procedures behind an independent owner action session.
+- [x] Confirm Clerk's Cloudflare-hosted custom domain is blocked by a known Error 1000 conflict, remove Clerk from the business-action dependency chain, and require no further Clerk or DNS changes.
+- [x] Add a server-side owner action code verified with salted `scrypt`, five-attempt IP rate limiting, and a signed HTTP-only SameSite=Strict cookie that expires after 30 minutes.
 - [x] Persist uploaded chat images as owner-scoped durable assets, reissue signed URLs after conversation reload, and remove only conversation-owned references on deletion.
 - [x] Build the reusable action lifecycle: proposed, confirmed, executing, completed, cancelled, failed, and expired, with idempotency and concurrency-safe transitions.
 - [x] Add Captain Q's proposal-only Shopify draft tool. The model cannot contact Shopify or publish a product.
@@ -817,7 +818,8 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Verify Shopify connections with a read-only GraphQL query, require `write_products`, encrypt the token with AES-256-GCM, and never return it to the browser or model.
 - [x] Implement the Shopify executor with `productSet`, a deterministic handle, and hard-coded `status: DRAFT`; reject any non-draft response and include no publish mutation.
 - [x] Add mobile proposal cards with Edit, Cancel, Review and confirm, a second explicit **Create DRAFT** step, and completed/failed results.
-- [x] Validate 68 focused regressions, TypeScript, production build, a 390×844 mobile UI test, and a real Clerk SDK proxy probe using synthetic credentials only.
-- [ ] Deploy and verify: public landing remains available, `/__clerk` no longer returns 502, unauthenticated workspace shows owner sign-in, authenticated owner can chat, durable images survive reload, and a Shopify proposal remains non-destructive until explicit confirmation.
+- [x] Add a mobile business-action lock and unlock dialog; the owner code is sent only to the unlock procedure and is never returned, persisted in the database, logged, or shown to Captain Q.
+- [x] Validate 64 focused regressions, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
+- [ ] Configure one private `BUSINESS_ACTION_PIN` Railway variable, deploy, and verify: Q chat remains available while locked; a valid code unlocks only business controls; durable images survive reload; Shopify remains disconnected until explicitly connected; and every product creation still requires the separate **Create DRAFT** confirmation.
 
-No Shopify credential was available during development, no store API mutation was sent, and Anthony's Shopify store was not changed.
+No Shopify credential was available during development, no store API mutation was sent, and Anthony's Shopify store was not changed. Clerk DNS records may remain in place but are no longer required by the business-action system.

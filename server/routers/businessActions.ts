@@ -1,6 +1,14 @@
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { router, verifiedOwnerProcedure } from "../_core/trpc";
+import { businessActionProcedure, protectedProcedure, router } from "../_core/trpc";
+import {
+  BUSINESS_ACTION_SESSION_TTL_MINUTES,
+  clearBusinessActionSession,
+  getBusinessActionSession,
+  isBusinessActionPinConfigured,
+  startBusinessActionSession,
+  verifyBusinessActionPin,
+} from "../businessActionAuth";
 import {
   deleteShopifyConnection,
   saveShopifyConnection,
@@ -20,11 +28,68 @@ import {
 } from "../shopifyDrafts";
 
 export const businessActionsRouter = router({
-  connectionStatus: verifiedOwnerProcedure.query(async ({ ctx }) => ({
+  sessionStatus: protectedProcedure.query(({ ctx }) => {
+    if (!ctx.user || !ctx.isOwner) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "Business actions are restricted to the owner workspace.",
+      });
+    }
+    const session = getBusinessActionSession(ctx.req, ctx.user.id);
+    return {
+      configured: isBusinessActionPinConfigured(),
+      unlocked: Boolean(session),
+      expiresAt: session ? new Date(session.expiresAt).toISOString() : null,
+      ttlMinutes: BUSINESS_ACTION_SESSION_TTL_MINUTES,
+    };
+  }),
+
+  unlock: protectedProcedure
+    .input(z.object({ code: z.string().trim().min(8).max(128) }))
+    .mutation(({ ctx, input }) => {
+      if (!ctx.user || !ctx.isOwner) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Business actions are restricted to the owner workspace.",
+        });
+      }
+      if (!isBusinessActionPinConfigured()) {
+        throw new TRPCError({
+          code: "PRECONDITION_FAILED",
+          message: "Configure the owner action code in Railway first.",
+        });
+      }
+
+      const verification = verifyBusinessActionPin(ctx.req, input.code);
+      if (!verification.ok) {
+        if (verification.retryAfterSeconds) {
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Too many attempts. Try again in ${verification.retryAfterSeconds} seconds.`,
+          });
+        }
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "The owner action code is incorrect.",
+        });
+      }
+
+      return {
+        unlocked: true,
+        ...startBusinessActionSession(ctx.res, ctx.user.id),
+      };
+    }),
+
+  lock: protectedProcedure.mutation(({ ctx }) => {
+    clearBusinessActionSession(ctx.res);
+    return { locked: true };
+  }),
+
+  connectionStatus: businessActionProcedure.query(async ({ ctx }) => ({
     shopify: await getShopifyConnectionStatus(ctx.user.id),
   })),
 
-  connectShopify: verifiedOwnerProcedure
+  connectShopify: businessActionProcedure
     .input(z.object({
       shopDomain: z.string().trim().min(3).max(255),
       accessToken: z.string().trim().min(20).max(1000),
@@ -43,11 +108,11 @@ export const businessActionsRouter = router({
       };
     }),
 
-  disconnectShopify: verifiedOwnerProcedure.mutation(async ({ ctx }) => ({
+  disconnectShopify: businessActionProcedure.mutation(async ({ ctx }) => ({
     disconnected: await deleteShopifyConnection(ctx.user.id),
   })),
 
-  list: verifiedOwnerProcedure
+  list: businessActionProcedure
     .input(z.object({
       conversationId: z.number().int().positive().optional(),
       includeTerminal: z.boolean().optional(),
@@ -57,7 +122,7 @@ export const businessActionsRouter = router({
       includeTerminal: input?.includeTerminal,
     })),
 
-  proposeShopifyDraft: verifiedOwnerProcedure
+  proposeShopifyDraft: businessActionProcedure
     .input(z.object({
       conversationId: z.number().int().positive().optional(),
       product: shopifyDraftInputSchema,
@@ -68,7 +133,7 @@ export const businessActionsRouter = router({
       product: input.product,
     })),
 
-  editShopifyDraft: verifiedOwnerProcedure
+  editShopifyDraft: businessActionProcedure
     .input(z.object({
       actionId: z.string().regex(/^\d+$/),
       product: shopifyDraftInputSchema,
@@ -79,7 +144,7 @@ export const businessActionsRouter = router({
       product: input.product,
     })),
 
-  cancel: verifiedOwnerProcedure
+  cancel: businessActionProcedure
     .input(z.object({ actionId: z.string().regex(/^\d+$/) }))
     .mutation(({ ctx, input }) => transitionBusinessAction(
       ctx.user.id,
@@ -88,7 +153,7 @@ export const businessActionsRouter = router({
       "cancelled",
     )),
 
-  confirmShopifyDraft: verifiedOwnerProcedure
+  confirmShopifyDraft: businessActionProcedure
     .input(z.object({ actionId: z.string().regex(/^\d+$/) }))
     .mutation(async ({ ctx, input }) => {
       const connection = await getShopifyConnectionStatus(ctx.user.id);

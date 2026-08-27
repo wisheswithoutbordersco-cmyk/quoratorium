@@ -1,4 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  resetBusinessActionAuthForTests,
+  startBusinessActionSession,
+} from "../businessActionAuth";
 import type { TrpcContext } from "../_core/context";
 import type { User } from "../db";
 
@@ -77,24 +81,53 @@ const proposed: BusinessAction = {
   version: 1,
 };
 
-function caller() {
+function actionCookie(): string {
+  const res = { cookie: vi.fn(), clearCookie: vi.fn() } as any;
+  startBusinessActionSession(res, owner.id);
+  const [name, value] = res.cookie.mock.calls[0];
+  return `${name}=${encodeURIComponent(value)}`;
+}
+
+function caller(options: { cookie?: string; response?: any } = {}) {
   const ctx: TrpcContext = {
-    req: {} as TrpcContext["req"],
-    res: {} as TrpcContext["res"],
+    req: {
+      headers: { cookie: options.cookie ?? actionCookie() },
+      socket: { remoteAddress: "127.0.0.1" },
+      ip: "127.0.0.1",
+    } as any,
+    res: options.response ?? ({ cookie: vi.fn(), clearCookie: vi.fn() } as any),
     user: owner,
     isOwner: true,
-    authenticatedUser: owner,
-    isVerifiedOwner: true,
+    authenticatedUser: null,
+    isVerifiedOwner: false,
   };
   return businessActionsRouter.createCaller(ctx);
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
+  resetBusinessActionAuthForTests();
+  process.env.BUSINESS_ACTION_PIN = "correct-horse-47";
+  process.env.BUSINESS_ACTION_SESSION_SECRET = "test-session-secret-with-entropy";
   vi.mocked(listBusinessActions).mockResolvedValue([]);
 });
 
 describe("business actions router", () => {
+  it("reports a locked session and unlocks it without returning the owner code", async () => {
+    const response = { cookie: vi.fn(), clearCookie: vi.fn() } as any;
+    const lockedCaller = caller({ cookie: "", response });
+
+    await expect(lockedCaller.sessionStatus()).resolves.toMatchObject({
+      configured: true,
+      unlocked: false,
+      ttlMinutes: 30,
+    });
+    const result = await lockedCaller.unlock({ code: "correct-horse-47" });
+    expect(result.unlocked).toBe(true);
+    expect(response.cookie).toHaveBeenCalledTimes(1);
+    expect(JSON.stringify(result)).not.toContain("correct-horse-47");
+  });
+
   it("verifies and saves a Shopify connection without returning the token", async () => {
     vi.mocked(verifyShopifyConnection).mockResolvedValue({
       shopDomain: "example-store.myshopify.com",
