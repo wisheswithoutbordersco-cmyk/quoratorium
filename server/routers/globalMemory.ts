@@ -27,6 +27,7 @@ import {
   clearUserKnowledge,
 } from "../knowledgeBaseService";
 import { isSupabaseConfigured } from "../supabase";
+import { getDurableStorageHealth } from "../storage";
 
 export const globalMemoryRouter = router({
   /**
@@ -35,6 +36,7 @@ export const globalMemoryRouter = router({
   status: protectedProcedure.query(async () => {
     return {
       configured: isSupabaseConfigured(),
+      durableStorage: await getDurableStorageHealth(),
       categories: MEMORY_CATEGORIES,
     };
   }),

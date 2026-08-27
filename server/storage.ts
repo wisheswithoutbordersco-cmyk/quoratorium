@@ -8,8 +8,17 @@ import { getSupabaseAdmin } from "./supabase";
 const SUPABASE_ASSET_BUCKET = "quoratorium-assets";
 const SUPABASE_KEY_PREFIX = "supabase:";
 const SIGNED_URL_TTL_SECONDS = 60 * 60;
+const STORAGE_HEALTH_TTL_MS = 5 * 60 * 1000;
+
+export type DurableStorageHealth = {
+  configured: boolean;
+  available: boolean;
+  backend: "supabase";
+  reason?: "missing_config" | "bucket" | "upload" | "signing" | "cleanup" | "unknown";
+};
 
 let ensureSupabaseBucketPromise: Promise<void> | null = null;
+let storageHealthCache: { expiresAt: number; value: DurableStorageHealth } | null = null;
 
 function getForgeConfig(): { forgeUrl: string; forgeKey: string } | null {
   const forgeUrl = ENV.forgeApiUrl;
@@ -223,4 +232,68 @@ export async function storageDelete(relKey: string): Promise<boolean> {
     .remove([stripSupabasePrefix(key)]);
   if (error) throw new Error(`Supabase storage deletion failed: ${error.message}`);
   return true;
+}
+
+function storageHealthReason(error: unknown): DurableStorageHealth["reason"] {
+  const message = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  if (message.includes("config missing") || message.includes("storage is unavailable")) {
+    return "missing_config";
+  }
+  if (message.includes("bucket")) return "bucket";
+  if (message.includes("upload")) return "upload";
+  if (message.includes("signed url")) return "signing";
+  if (message.includes("deletion")) return "cleanup";
+  return "unknown";
+}
+
+export async function getDurableStorageHealth(): Promise<DurableStorageHealth> {
+  if (storageHealthCache && storageHealthCache.expiresAt > Date.now()) {
+    return storageHealthCache.value;
+  }
+
+  const configured = Boolean(getSupabaseAdmin());
+  if (!configured) {
+    const value: DurableStorageHealth = {
+      configured: false,
+      available: false,
+      backend: "supabase",
+      reason: "missing_config",
+    };
+    storageHealthCache = { expiresAt: Date.now() + STORAGE_HEALTH_TTL_MS, value };
+    return value;
+  }
+
+  const probeKey = appendHashSuffix("health/durable-storage-probe.png");
+  let storedKey: string | null = null;
+  try {
+    // A minimal valid PNG keeps the probe compatible with the private bucket's MIME policy.
+    const probe = Buffer.from(
+      "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9ZlXcAAAAASUVORK5CYII=",
+      "base64",
+    );
+    const stored = await supabasePut(probeKey, probe, "image/png");
+    storedKey = stored.key;
+    await storageGetSignedUrl(stored.key);
+    await storageDelete(stored.key);
+
+    const value: DurableStorageHealth = {
+      configured: true,
+      available: true,
+      backend: "supabase",
+    };
+    storageHealthCache = { expiresAt: Date.now() + STORAGE_HEALTH_TTL_MS, value };
+    return value;
+  } catch (error) {
+    if (storedKey) {
+      await storageDelete(storedKey).catch(() => undefined);
+    }
+    const value: DurableStorageHealth = {
+      configured: true,
+      available: false,
+      backend: "supabase",
+      reason: storageHealthReason(error),
+    };
+    storageHealthCache = { expiresAt: Date.now() + STORAGE_HEALTH_TTL_MS, value };
+    return value;
+  }
 }
