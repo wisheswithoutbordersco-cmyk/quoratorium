@@ -34,6 +34,8 @@ export interface ToolDefinition {
 export interface ToolContext {
   userId: string;
   projectId?: number | null;
+  conversationId?: number | null;
+  durableAttachmentIds?: string[];
   res?: Response; // For streaming status updates
 }
 
@@ -103,6 +105,7 @@ export async function runToolLoop(
       await import("./scriptorium");
       await import("./deploy");
       await import("./generateImage");
+      await import("./proposeShopifyDraft");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }

@@ -1,8 +1,8 @@
-/**
- * useAuth — stub implementation while Clerk DNS propagates.
- * Returns a stable constant object — no hooks, no re-renders.
- * TODO: Restore Clerk integration once clerk.quoratorium.com CNAME resolves.
- */
+import {
+  useAuth as useClerkAuth,
+  useClerk,
+  useUser,
+} from "@clerk/clerk-react";
 
 export type AuthUser = {
   id: string;
@@ -13,21 +13,33 @@ export type AuthUser = {
   created_at: number;
 };
 
-// Stable constant references — never recreated, never cause re-renders
-const NOOP_ASYNC = async () => {};
-const NOOP_REFRESH = () => Promise.resolve();
-const GET_TOKEN = async (): Promise<string | null> => null;
-
-const STUB_STATE = {
-  user: null as AuthUser | null,
-  loading: false,
-  error: null as Error | null,
-  isAuthenticated: false,
-  refresh: NOOP_REFRESH,
-  logout: NOOP_ASYNC,
-  getToken: GET_TOKEN,
-} as const;
-
 export function useAuth(_options?: { redirectOnUnauthenticated?: boolean }) {
-  return STUB_STATE;
+  const { isLoaded, isSignedIn, getToken } = useClerkAuth();
+  const { user } = useUser();
+  const clerk = useClerk();
+
+  const normalizedUser: AuthUser | null = user
+    ? {
+        id: user.id,
+        name: user.fullName || user.username || user.primaryEmailAddress?.emailAddress || "Owner",
+        email: user.primaryEmailAddress?.emailAddress || null,
+        avatar: user.imageUrl || null,
+        role: user.publicMetadata?.role === "admin" ? "admin" : "user",
+        created_at: user.createdAt?.getTime() || Date.now(),
+      }
+    : null;
+
+  return {
+    user: normalizedUser,
+    loading: !isLoaded,
+    error: null as Error | null,
+    isAuthenticated: Boolean(isSignedIn),
+    refresh: async () => {
+      await user?.reload();
+    },
+    logout: async () => {
+      await clerk.signOut({ redirectUrl: "/" });
+    },
+    getToken,
+  };
 }

@@ -43,3 +43,34 @@ export const adminProcedure = t.procedure.use(
     });
   }),
 );
+
+/**
+ * Required for actions that can mutate an external business system.
+ * Unlike protectedProcedure and adminProcedure, this middleware never accepts
+ * the legacy ordinary-workspace owner fallback as proof of identity.
+ */
+export const verifiedOwnerProcedure = t.procedure.use(
+  t.middleware(async ({ ctx, next }) => {
+    if (!ctx.authenticatedUser) {
+      throw new TRPCError({
+        code: "UNAUTHORIZED",
+        message: "Sign in as the verified owner to continue.",
+      });
+    }
+    if (!ctx.isVerifiedOwner) {
+      throw new TRPCError({
+        code: "FORBIDDEN",
+        message: "This business action is restricted to the verified owner.",
+      });
+    }
+
+    return next({
+      ctx: {
+        ...ctx,
+        user: ctx.authenticatedUser,
+        authenticatedUser: ctx.authenticatedUser,
+        isVerifiedOwner: true as const,
+      },
+    });
+  }),
+);

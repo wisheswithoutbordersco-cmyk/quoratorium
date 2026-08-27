@@ -1,46 +1,64 @@
 /**
  * Q Workspace — Application Root
- * Landing page at /, workspace at /workspace/*
+ * Landing page at /, private workspace at /workspace/*
  */
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Route, Switch } from "wouter";
-import Launchpad from "./pages/Launchpad";
 import ErrorBoundary from "./components/ErrorBoundary";
+import { OwnerGate } from "./components/OwnerGate";
 import { SettingsInitializer } from "./components/SettingsInitializer";
 import { ThemeProvider } from "./contexts/ThemeContext";
-import { PasswordGate } from "./components/PasswordGate";
-
-// Landing Page
 import LandingPage from "./pages/LandingPage";
-
-// Workspace Pages
 import Home from "./pages/Home";
+import Launchpad from "./pages/Launchpad";
+import NotFound from "./pages/NotFound";
 import Projects from "./pages/Projects";
-import Vault from "./pages/Vault";
 import Settings from "./pages/Settings";
 import SharedProject from "./pages/SharedProject";
-import NotFound from "./pages/NotFound";
+import Vault from "./pages/Vault";
+
+function PrivateWorkspace({ children }: { children: React.ReactNode }) {
+  return (
+    <OwnerGate>
+      <SettingsInitializer />
+      {children}
+    </OwnerGate>
+  );
+}
+
+function WorkspaceHome() {
+  return <PrivateWorkspace><Home /></PrivateWorkspace>;
+}
+function WorkspaceProjects() {
+  return <PrivateWorkspace><Projects /></PrivateWorkspace>;
+}
+function WorkspaceVault() {
+  return <PrivateWorkspace><Vault /></PrivateWorkspace>;
+}
+function WorkspaceLaunchpad() {
+  return <PrivateWorkspace><Launchpad /></PrivateWorkspace>;
+}
+function WorkspaceSettings() {
+  return <PrivateWorkspace><Settings /></PrivateWorkspace>;
+}
 
 function Router() {
   return (
     <Switch>
-      {/* Public landing page */}
       <Route path="/" component={LandingPage} />
       <Route path="/shared/:slug" component={SharedProject} />
 
-      {/* Workspace routes */}
-      <Route path="/workspace" component={Home} />
-      <Route path="/workspace/projects" component={Projects} />
-      <Route path="/workspace/vault" component={Vault} />
-      <Route path="/workspace/launchpad" component={Launchpad} />
-      <Route path="/workspace/settings" component={Settings} />
+      <Route path="/workspace" component={WorkspaceHome} />
+      <Route path="/workspace/projects" component={WorkspaceProjects} />
+      <Route path="/workspace/vault" component={WorkspaceVault} />
+      <Route path="/workspace/launchpad" component={WorkspaceLaunchpad} />
+      <Route path="/workspace/settings" component={WorkspaceSettings} />
 
-      {/* Legacy routes */}
-      <Route path="/projects" component={Projects} />
-      <Route path="/vault" component={Vault} />
-      <Route path="/launchpad" component={Launchpad} />
-      <Route path="/settings" component={Settings} />
+      <Route path="/projects" component={WorkspaceProjects} />
+      <Route path="/vault" component={WorkspaceVault} />
+      <Route path="/launchpad" component={WorkspaceLaunchpad} />
+      <Route path="/settings" component={WorkspaceSettings} />
 
       <Route component={NotFound} />
     </Switch>
@@ -49,26 +67,23 @@ function Router() {
 
 function App() {
   return (
-    <PasswordGate>
-      <ErrorBoundary>
-        <ThemeProvider defaultTheme="dark">
-          <TooltipProvider>
-            <Toaster
-              position="bottom-right"
-              toastOptions={{
-                style: {
-                  background: "#050505",
-                  border: "1px solid rgba(255,255,255,0.08)",
-                  color: "#F0F0F5",
-                },
-              }}
-            />
-            <SettingsInitializer />
-            <Router />
-          </TooltipProvider>
-        </ThemeProvider>
-      </ErrorBoundary>
-    </PasswordGate>
+    <ErrorBoundary>
+      <ThemeProvider defaultTheme="dark">
+        <TooltipProvider>
+          <Toaster
+            position="bottom-right"
+            toastOptions={{
+              style: {
+                background: "#050505",
+                border: "1px solid rgba(255,255,255,0.08)",
+                color: "#F0F0F5",
+              },
+            }}
+          />
+          <Router />
+        </TooltipProvider>
+      </ThemeProvider>
+    </ErrorBoundary>
   );
 }
 

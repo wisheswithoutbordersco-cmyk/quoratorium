@@ -805,3 +805,19 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Model-level verification with five screenshots plus five in the next message: Q retained both batches and answered `10`.
 - [x] Focused Captain Q tests, `pnpm check`, and `pnpm build` pass.
 - [ ] Commit, push, deploy, and verify the ten-image limit on `quoratorium.com`.
+
+## Secure Business Action Foundation — August 27, 2026
+
+- [x] Replace the public browser-embedded workspace password and universal owner fallback with a real Clerk-authenticated owner boundary.
+- [x] Replace the broken generic `/__clerk` proxy with Clerk Express's built-in same-origin frontend API proxy and fail closed if authentication is unavailable.
+- [x] Persist uploaded chat images as owner-scoped durable assets, reissue signed URLs after conversation reload, and remove only conversation-owned references on deletion.
+- [x] Build the reusable action lifecycle: proposed, confirmed, executing, completed, cancelled, failed, and expired, with idempotency and concurrency-safe transitions.
+- [x] Add Captain Q's proposal-only Shopify draft tool. The model cannot contact Shopify or publish a product.
+- [x] Add owner-only proposal, edit, cancel, connect, and confirm procedures.
+- [x] Verify Shopify connections with a read-only GraphQL query, require `write_products`, encrypt the token with AES-256-GCM, and never return it to the browser or model.
+- [x] Implement the Shopify executor with `productSet`, a deterministic handle, and hard-coded `status: DRAFT`; reject any non-draft response and include no publish mutation.
+- [x] Add mobile proposal cards with Edit, Cancel, Review and confirm, a second explicit **Create DRAFT** step, and completed/failed results.
+- [x] Validate 68 focused regressions, TypeScript, production build, a 390×844 mobile UI test, and a real Clerk SDK proxy probe using synthetic credentials only.
+- [ ] Deploy and verify: public landing remains available, `/__clerk` no longer returns 502, unauthenticated workspace shows owner sign-in, authenticated owner can chat, durable images survive reload, and a Shopify proposal remains non-destructive until explicit confirmation.
+
+No Shopify credential was available during development, no store API mutation was sent, and Anthony's Shopify store was not changed.

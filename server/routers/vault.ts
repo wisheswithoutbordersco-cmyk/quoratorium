@@ -6,9 +6,16 @@ import { router, protectedProcedure } from "../_core/trpc";
 import { createVaultEntry, getUserVault, deleteVaultEntry } from "../db";
 import { storagePut } from "../storage";
 
+const INTERNAL_ENTRY_TYPES = new Set([
+  "business_action",
+  "business_connection",
+  "conversation_asset",
+]);
+
 export const vaultRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
-    return getUserVault(ctx.user.id);
+    const entries = await getUserVault(ctx.user.id);
+    return entries.filter(entry => !INTERNAL_ENTRY_TYPES.has(entry.entry_type));
   }),
 
   create: protectedProcedure
