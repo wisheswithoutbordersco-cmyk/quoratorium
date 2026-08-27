@@ -81,7 +81,9 @@ describe("chat attachments", () => {
     expect(parsed.imageAttachments).toEqual([]);
   });
 
-  it("caps the number of accepted attachments", () => {
+  it("accepts ten images and caps any extras", () => {
+    expect(MAX_CHAT_ATTACHMENTS).toBe(10);
+
     const parsed = parseChatAttachments(
       Array.from({ length: MAX_CHAT_ATTACHMENTS + 2 }, (_, index) => ({
         id: `upload-${index}`,
@@ -91,9 +93,43 @@ describe("chat attachments", () => {
         dataUrl: tinyPng,
       }))
     );
+    const content = buildChatUserContent(
+      "Compare all ten screenshots.",
+      parsed.imageAttachments
+    );
 
-    expect(parsed.attachments).toHaveLength(MAX_CHAT_ATTACHMENTS);
-    expect(parsed.imageAttachments).toHaveLength(MAX_CHAT_ATTACHMENTS);
+    expect(parsed.attachments).toHaveLength(10);
+    expect(parsed.imageAttachments).toHaveLength(10);
+    expect(content).toHaveLength(11);
+  });
+
+  it("supports five images followed by five more in the next message", () => {
+    const firstBatch = Array.from({ length: 5 }, (_, index) => ({
+      type: "image_url" as const,
+      image_url: { url: tinyPng, detail: "high" },
+    }));
+    const history = normalizeChatHistory([
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "Here are the first five screenshots." },
+          ...firstBatch,
+        ],
+      },
+      { role: "assistant", content: "I can see the first five." },
+    ]);
+    const secondBatch = parseChatAttachments(
+      Array.from({ length: 5 }, (_, index) => ({
+        id: `second-${index}`,
+        name: `second-${index}.png`,
+        type: "image/png",
+        size: 10,
+        dataUrl: tinyPng,
+      }))
+    );
+
+    expect(Array.isArray(history[0]?.content) && history[0].content).toHaveLength(6);
+    expect(buildChatUserContent("Now compare these five too.", secondBatch.imageAttachments)).toHaveLength(6);
   });
 
   it("preserves valid image history for a follow-up question", () => {

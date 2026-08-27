@@ -795,3 +795,13 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Direct production verification exposed a provider/model failure after the first deployment; add ordered OpenRouter model retries plus independent OpenAI and Forge fallbacks so one provider rejection cannot take Captain Q offline.
 - [x] Revalidate the provider correction: 55 focused tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push systemic upgrade `8bc6392` and provider-fallback hotfix `816d0ad`; confirm Railway success, text smoke response, and the exact live Chucky image response on `quoratorium.com`.
+
+## Captain Q Ten-Image Capacity Upgrade (Aug 27 2026)
+- [x] Replace the hidden four-attachment cap with one shared client/server limit of 10 attachments per message.
+- [x] Preserve the existing 10 MB per-image and 20 MB combined raw-image safety limits under the 50 MB JSON request ceiling.
+- [x] Enforce remaining attachment slots across repeated file selections and show a clear limit message instead of silently dropping extras.
+- [x] Add regressions for ten images in one turn and five images followed by five more in the next turn.
+- [x] Model-level verification with ten real uploaded JPEG screenshots: all 10 were accepted, Q answered `10`, and no tool was invoked.
+- [x] Model-level verification with five screenshots plus five in the next message: Q retained both batches and answered `10`.
+- [x] Focused Captain Q tests, `pnpm check`, and `pnpm build` pass.
+- [ ] Commit, push, deploy, and verify the ten-image limit on `quoratorium.com`.

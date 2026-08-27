@@ -33,6 +33,11 @@ import { getGuestMessagesRemaining, incrementGuestMessages, isGuestLimitReached,
 import { SignUpWall } from "@/components/SignUpWall";
 import { GuestCreditsIndicator } from "@/components/GuestCreditsIndicator";
 import { CreditExhaustedBanner } from "@/components/CreditExhaustedBanner";
+import {
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_TOTAL_IMAGE_BYTES,
+} from "@shared/chatLimits";
 
 // Safe parseInt: returns undefined if result is NaN (avoids tRPC z.number() validation errors)
 // This prevents errors when activeProject.id is a non-numeric string like "proj-1"
@@ -42,8 +47,6 @@ const safeParseInt = (val: string | null | undefined): number | undefined => {
   return isNaN(n) ? undefined : n;
 };
 
-const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
-const MAX_CHAT_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
 const SUPPORTED_CHAT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -431,8 +434,11 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     let queuedImageBytes = pendingUploads
       .filter((attachment) => attachment.type.startsWith("image/"))
       .reduce((total, attachment) => total + attachment.size, 0);
-
-    for (const file of files.slice(0, 4)) {
+    const remainingSlots = Math.max(0, MAX_CHAT_ATTACHMENTS - pendingUploads.length);
+    if (files.length > remainingSlots) {
+      toast.error(`Captain Q accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`);
+    }
+    for (const file of files.slice(0, remainingSlots)) {
       if (file.type.startsWith("image/") && !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)) {
         toast.error("That image type is not supported. Please use PNG, JPG, WEBP, or GIF.");
         continue;

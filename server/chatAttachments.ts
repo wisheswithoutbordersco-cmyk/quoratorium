@@ -1,8 +1,15 @@
 import type { MessageContent } from "./_core/llm";
+import {
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_TOTAL_IMAGE_BYTES,
+} from "@shared/chatLimits";
 
-export const MAX_CHAT_ATTACHMENTS = 4;
-export const MAX_CHAT_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_CHAT_TOTAL_IMAGE_BYTES = 20 * 1024 * 1024;
+export {
+  MAX_CHAT_ATTACHMENTS,
+  MAX_CHAT_IMAGE_BYTES,
+  MAX_CHAT_TOTAL_IMAGE_BYTES,
+} from "@shared/chatLimits";
 
 export const IMAGE_ANALYSIS_GUIDANCE = `
 
