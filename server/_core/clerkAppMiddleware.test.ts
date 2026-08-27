@@ -27,6 +27,7 @@ beforeEach(() => {
 
 afterEach(() => {
   delete process.env.CLERK_PUBLISHABLE_KEY;
+  delete process.env.VITE_CLERK_PUBLISHABLE_KEY;
   delete process.env.CLERK_SECRET_KEY;
 });
 
@@ -49,6 +50,19 @@ describe("Clerk application middleware", () => {
     }));
     expect(next).toHaveBeenCalledTimes(1);
     expect(req.auth.userId).toBe("user_owner");
+  });
+
+  it("prefers the same publishable key as the deployed browser over a stale server placeholder", () => {
+    process.env.CLERK_PUBLISHABLE_KEY = "pk_live_stale_generic";
+    process.env.VITE_CLERK_PUBLISHABLE_KEY = "pk_live_clerk_quoratorium";
+    vi.mocked(clerkMiddleware).mockReturnValue(((_req: any, _res: any, next: any) => next()) as any);
+
+    createClerkAppMiddleware();
+
+    expect(clerkMiddleware).toHaveBeenCalledWith(expect.objectContaining({
+      publishableKey: "pk_live_clerk_quoratorium",
+      frontendApiProxy: { enabled: true, path: "/__clerk" },
+    }));
   });
 
   it("fails closed as unauthenticated when server keys are missing", () => {
