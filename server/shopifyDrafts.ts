@@ -270,7 +270,20 @@ export async function proposeShopifyProductDraft(input: {
   conversationId?: number;
   product: unknown;
 }): Promise<BusinessAction<ShopifyDraftInput>> {
-  const product = shopifyDraftInputSchema.parse(input.product);
+  let product = shopifyDraftInputSchema.parse(input.product);
+  if (
+    product.imageUrls.length === 0 &&
+    product.imageAssetIds.length === 0 &&
+    input.conversationId
+  ) {
+    const recoveredImageAssetIds = await listConversationImageAssetIds(
+      input.userId,
+      input.conversationId,
+    );
+    if (recoveredImageAssetIds.length > 0) {
+      product = { ...product, imageAssetIds: recoveredImageAssetIds };
+    }
+  }
   const preview = buildShopifyDraftPreview(product);
 
   return createBusinessAction({

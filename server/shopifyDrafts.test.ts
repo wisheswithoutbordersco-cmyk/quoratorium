@@ -103,6 +103,35 @@ describe("Shopify product draft actions", () => {
     fetchSpy.mockRestore();
   });
 
+  it("reuses the same conversation's durable image for a fresh proposal with no new upload", async () => {
+    vi.mocked(listConversationImageAssetIds).mockResolvedValue(["91"]);
+    vi.mocked(createBusinessAction).mockImplementation(async input => ({
+      ...action("proposed"),
+      conversationId: input.conversationId,
+      payload: input.payload,
+      preview: input.preview,
+    }));
+
+    const result = await proposeShopifyProductDraft({
+      userId: 1,
+      conversationId: 42,
+      product: {
+        ...product,
+        imageUrls: [],
+        imageAssetIds: [],
+      },
+    });
+
+    expect(listConversationImageAssetIds).toHaveBeenCalledWith(1, 42);
+    expect(createBusinessAction).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 1,
+      conversationId: 42,
+      payload: expect.objectContaining({ imageAssetIds: ["91"] }),
+      preview: expect.objectContaining({ imageCount: 1, status: "DRAFT" }),
+    }));
+    expect(result.preview).toEqual(expect.objectContaining({ imageCount: 1 }));
+  });
+
   it("recovers the same conversation's durable image when editing an older zero-image proposal", async () => {
     const current = { ...action("proposed"), conversationId: 42, payload: { ...product, imageUrls: [], imageAssetIds: [] } };
     vi.mocked(getBusinessAction).mockResolvedValue(current);
