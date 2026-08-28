@@ -5,7 +5,10 @@ import {
   type BusinessAction,
 } from "./businessActions";
 import { resolveChatAssetSignedUrls } from "./chatAssets";
-import { getStoredShopifyConnection } from "./businessCredentials";
+import {
+  getStoredShopifyConnection,
+  normalizeShopDomain,
+} from "./businessCredentials";
 
 export const SHOPIFY_API_VERSION = "2026-07";
 
@@ -40,6 +43,23 @@ export interface ShopifyDraftResult {
   imageCount: number;
 }
 
+interface ShopifyClientCredentialsResponse {
+  access_token?: string;
+  scope?: string;
+  expires_in?: number;
+  error?: string;
+  error_description?: string;
+}
+
+interface CachedShopifyToken {
+  accessToken: string;
+  expiresAt: number;
+  scopes: string[];
+}
+
+const shopifyTokenCache = new Map<string, CachedShopifyToken>();
+const TOKEN_REFRESH_BUFFER_MS = 60_000;
+
 interface ShopifyGraphQlResponse {
   data?: {
     productSet?: {
@@ -57,29 +77,104 @@ interface ShopifyGraphQlResponse {
   errors?: Array<{ message: string }>;
 }
 
+function parseShopifyScopes(value: string | undefined): string[] {
+  return String(value || "")
+    .split(/[\s,]+/)
+    .map(scope => scope.trim())
+    .filter(Boolean);
+}
+
+export async function exchangeShopifyClientCredentials(input: {
+  shopDomain: string;
+  clientId: string;
+  clientSecret: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ shopDomain: string; accessToken: string; expiresAt: number; scopes: string[] }> {
+  const shopDomain = normalizeShopDomain(input.shopDomain);
+  const clientId = input.clientId.trim();
+  const clientSecret = input.clientSecret.trim();
+  if (clientId.length < 8 || clientSecret.length < 20) {
+    throw new Error("Enter the Shopify client ID and client secret from the Dev Dashboard");
+  }
+
+  const response = await (input.fetchImpl || fetch)(
+    `https://${shopDomain}/admin/oauth/access_token`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        grant_type: "client_credentials",
+        client_id: clientId,
+        client_secret: clientSecret,
+      }).toString(),
+    },
+  );
+  const body = await response.json().catch(() => null) as ShopifyClientCredentialsResponse | null;
+  if (!response.ok || !body?.access_token) {
+    throw new Error(body?.error_description || "Shopify could not exchange those client credentials");
+  }
+  const expiresIn = Number(body.expires_in || 0);
+  if (!Number.isFinite(expiresIn) || expiresIn <= 0) {
+    throw new Error("Shopify did not return a valid token expiration");
+  }
+  const scopes = parseShopifyScopes(body.scope);
+  if (!scopes.includes("write_products")) {
+    throw new Error("The installed Shopify app version needs the write_products permission");
+  }
+  return {
+    shopDomain,
+    accessToken: body.access_token,
+    expiresAt: Date.now() + expiresIn * 1000,
+    scopes,
+  };
+}
+
 async function getShopifyConfig(
   userId?: number,
-  overrides?: { shopDomain?: string; accessToken?: string },
+  overrides?: { shopDomain?: string; accessToken?: string; fetchImpl?: typeof fetch },
 ) {
-  const hasCompleteOverride = Boolean(overrides?.shopDomain && overrides?.accessToken);
-  const stored = userId && !hasCompleteOverride
-    ? await getStoredShopifyConnection(userId)
-    : null;
-  const rawDomain = overrides?.shopDomain || stored?.shopDomain || process.env.SHOPIFY_SHOP_DOMAIN || "";
-  const accessToken = overrides?.accessToken || stored?.accessToken || process.env.SHOPIFY_ACCESS_TOKEN || "";
-  const shopDomain = rawDomain
-    .trim()
-    .toLowerCase()
-    .replace(/^https?:\/\//, "")
-    .replace(/\/+$/, "");
+  if (overrides?.shopDomain && overrides?.accessToken) {
+    return {
+      shopDomain: normalizeShopDomain(overrides.shopDomain),
+      accessToken: overrides.accessToken,
+    };
+  }
 
-  if (!/^[a-z0-9][a-z0-9-]*\.myshopify\.com$/.test(shopDomain)) {
-    throw new Error("Shopify is not connected: a valid .myshopify.com domain is required");
+  const stored = userId ? await getStoredShopifyConnection(userId) : null;
+  if (stored?.authMode === "access_token") {
+    return { shopDomain: stored.shopDomain, accessToken: stored.accessToken };
   }
-  if (!accessToken) {
-    throw new Error("Shopify is not connected: an Admin API access token is required");
+  if (stored?.authMode === "client_credentials") {
+    const cacheKey = `${userId}:${stored.shopDomain}:${stored.clientId}`;
+    const cached = shopifyTokenCache.get(cacheKey);
+    if (cached && Date.now() < cached.expiresAt - TOKEN_REFRESH_BUFFER_MS) {
+      return { shopDomain: stored.shopDomain, accessToken: cached.accessToken };
+    }
+    const exchanged = await exchangeShopifyClientCredentials({
+      ...stored,
+      fetchImpl: overrides?.fetchImpl,
+    });
+    shopifyTokenCache.set(cacheKey, {
+      accessToken: exchanged.accessToken,
+      expiresAt: exchanged.expiresAt,
+      scopes: exchanged.scopes,
+    });
+    return { shopDomain: stored.shopDomain, accessToken: exchanged.accessToken };
   }
-  return { shopDomain, accessToken };
+
+  const environmentDomain = process.env.SHOPIFY_SHOP_DOMAIN || "";
+  const environmentToken = process.env.SHOPIFY_ACCESS_TOKEN || "";
+  if (environmentDomain && environmentToken) {
+    return {
+      shopDomain: normalizeShopDomain(environmentDomain),
+      accessToken: environmentToken,
+    };
+  }
+  throw new Error("Shopify is not connected");
+}
+
+export function clearShopifyTokenCache(): void {
+  shopifyTokenCache.clear();
 }
 
 export async function getShopifyConnectionStatus(userId: number): Promise<{
@@ -133,6 +228,20 @@ export async function verifyShopifyConnection(input: {
     shopDomain,
     shopName: String(body?.data?.shop?.name || shopDomain),
   };
+}
+
+export async function verifyShopifyClientCredentials(input: {
+  shopDomain: string;
+  clientId: string;
+  clientSecret: string;
+  fetchImpl?: typeof fetch;
+}): Promise<{ shopDomain: string; shopName: string }> {
+  const exchanged = await exchangeShopifyClientCredentials(input);
+  return verifyShopifyConnection({
+    shopDomain: exchanged.shopDomain,
+    accessToken: exchanged.accessToken,
+    fetchImpl: input.fetchImpl,
+  });
 }
 
 function draftHandle(idempotencyKey: string): string {

@@ -11,6 +11,7 @@ import {
 } from "../businessActionAuth";
 import {
   deleteShopifyConnection,
+  saveShopifyClientCredentials,
   saveShopifyConnection,
 } from "../businessCredentials";
 import {
@@ -19,11 +20,13 @@ import {
   transitionBusinessAction,
 } from "../businessActions";
 import {
+  clearShopifyTokenCache,
   editShopifyProductDraft,
   executeShopifyProductDraft,
   getShopifyConnectionStatus,
   proposeShopifyProductDraft,
   shopifyDraftInputSchema,
+  verifyShopifyClientCredentials,
   verifyShopifyConnection,
 } from "../shopifyDrafts";
 
@@ -90,27 +93,51 @@ export const businessActionsRouter = router({
   })),
 
   connectShopify: businessActionProcedure
-    .input(z.object({
-      shopDomain: z.string().trim().min(3).max(255),
-      accessToken: z.string().trim().min(20).max(1000),
-    }))
+    .input(z.discriminatedUnion("authMode", [
+      z.object({
+        authMode: z.literal("client_credentials"),
+        shopDomain: z.string().trim().min(3).max(255),
+        clientId: z.string().trim().min(8).max(255),
+        clientSecret: z.string().trim().min(20).max(1000),
+      }),
+      z.object({
+        authMode: z.literal("access_token"),
+        shopDomain: z.string().trim().min(3).max(255),
+        accessToken: z.string().trim().min(20).max(1000),
+      }),
+    ]))
     .mutation(async ({ ctx, input }) => {
-      const verified = await verifyShopifyConnection(input);
-      await saveShopifyConnection({
-        userId: ctx.user.id,
-        shopDomain: verified.shopDomain,
-        accessToken: input.accessToken,
-      });
+      const verified = input.authMode === "client_credentials"
+        ? await verifyShopifyClientCredentials(input)
+        : await verifyShopifyConnection(input);
+      if (input.authMode === "client_credentials") {
+        await saveShopifyClientCredentials({
+          userId: ctx.user.id,
+          shopDomain: verified.shopDomain,
+          clientId: input.clientId,
+          clientSecret: input.clientSecret,
+        });
+      } else {
+        await saveShopifyConnection({
+          userId: ctx.user.id,
+          shopDomain: verified.shopDomain,
+          accessToken: input.accessToken,
+        });
+      }
+      clearShopifyTokenCache();
       return {
         configured: true,
+        authMode: input.authMode,
         shopDomain: verified.shopDomain,
         shopName: verified.shopName,
       };
     }),
 
-  disconnectShopify: businessActionProcedure.mutation(async ({ ctx }) => ({
-    disconnected: await deleteShopifyConnection(ctx.user.id),
-  })),
+  disconnectShopify: businessActionProcedure.mutation(async ({ ctx }) => {
+    const disconnected = await deleteShopifyConnection(ctx.user.id);
+    clearShopifyTokenCache();
+    return { disconnected };
+  }),
 
   list: businessActionProcedure
     .input(z.object({

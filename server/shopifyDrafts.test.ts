@@ -10,9 +10,11 @@ vi.mock("./businessActions", async importOriginal => {
 
 import { createBusinessAction, type BusinessAction } from "./businessActions";
 import {
+  exchangeShopifyClientCredentials,
   executeShopifyProductDraft,
   proposeShopifyProductDraft,
   SHOPIFY_API_VERSION,
+  verifyShopifyClientCredentials,
   verifyShopifyConnection,
 } from "./shopifyDrafts";
 
@@ -71,6 +73,82 @@ describe("Shopify product draft actions", () => {
       }),
     }));
     fetchSpy.mockRestore();
+  });
+
+  it("exchanges client credentials for a 24-hour token using Shopify's official form request", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "temporary_access_token_value",
+      scope: "read_products,write_products",
+      expires_in: 86399,
+    }), { status: 200 }));
+
+    const before = Date.now();
+    const result = await exchangeShopifyClientCredentials({
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+      fetchImpl,
+    });
+
+    expect(fetchImpl).toHaveBeenCalledTimes(1);
+    const [url, init] = fetchImpl.mock.calls[0];
+    expect(url).toBe("https://example-store.myshopify.com/admin/oauth/access_token");
+    expect(init.headers).toEqual({ "Content-Type": "application/x-www-form-urlencoded" });
+    const form = new URLSearchParams(String(init.body));
+    expect(Object.fromEntries(form)).toEqual({
+      grant_type: "client_credentials",
+      client_id: "shopify_client_id",
+      client_secret: "shopify_client_secret_value",
+    });
+    expect(result.accessToken).toBe("temporary_access_token_value");
+    expect(result.scopes).toContain("write_products");
+    expect(result.expiresAt).toBeGreaterThanOrEqual(before + 86_398_000);
+  });
+
+  it("rejects client credentials whose installed app version lacks write_products", async () => {
+    const fetchImpl = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      access_token: "temporary_read_only_token",
+      scope: "read_products",
+      expires_in: 86399,
+    }), { status: 200 }));
+
+    await expect(exchangeShopifyClientCredentials({
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+      fetchImpl,
+    })).rejects.toThrow("write_products");
+  });
+
+  it("exchanges client credentials and verifies store identity without making a mutation", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "temporary_access_token_value",
+        scope: "read_products,write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          shop: { name: "Example Store", myshopifyDomain: "example-store.myshopify.com" },
+          currentAppInstallation: {
+            accessScopes: [{ handle: "read_products" }, { handle: "write_products" }],
+          },
+        },
+      }), { status: 200 }));
+
+    await expect(verifyShopifyClientCredentials({
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+      fetchImpl,
+    })).resolves.toEqual({
+      shopDomain: "example-store.myshopify.com",
+      shopName: "Example Store",
+    });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+    const verificationBody = JSON.parse(String(fetchImpl.mock.calls[1][1].body));
+    expect(verificationBody.query).toContain("CaptainQVerifyShopifyConnection");
+    expect(verificationBody.query).not.toContain("mutation");
   });
 
   it("verifies store identity and write_products without making a mutation", async () => {

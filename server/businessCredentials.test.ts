@@ -12,6 +12,7 @@ import {
   BUSINESS_CONNECTION_ENTRY_TYPE,
   deleteShopifyConnection,
   getStoredShopifyConnection,
+  saveShopifyClientCredentials,
   saveShopifyConnection,
 } from "./businessCredentials";
 
@@ -76,7 +77,9 @@ describe("encrypted business credentials", () => {
     expect(rows[0].content).toBeNull();
     expect(JSON.stringify(rows[0])).not.toContain(accessToken);
     expect(rows[0].metadata).toEqual(expect.objectContaining({
+      schemaVersion: 2,
       provider: "shopify",
+      authMode: "access_token",
       shopDomain: "example-store.myshopify.com",
       ciphertext: expect.any(String),
       iv: expect.any(String),
@@ -93,8 +96,37 @@ describe("encrypted business credentials", () => {
     });
 
     await expect(getStoredShopifyConnection(7)).resolves.toEqual({
+      authMode: "access_token",
       shopDomain: "example-store.myshopify.com",
       accessToken,
+    });
+    await expect(getStoredShopifyConnection(8)).resolves.toBeNull();
+  });
+
+  it("encrypts client ID and secret together and decrypts them only for the owner", async () => {
+    const clientId = "client_id_for_captain_q";
+    const clientSecret = "client_secret_that_must_never_be_plaintext";
+    await expect(saveShopifyClientCredentials({
+      userId: 7,
+      shopDomain: "example-store.myshopify.com",
+      clientId,
+      clientSecret,
+    })).resolves.toEqual({ shopDomain: "example-store.myshopify.com" });
+
+    expect(JSON.stringify(rows[0])).not.toContain(clientId);
+    expect(JSON.stringify(rows[0])).not.toContain(clientSecret);
+    expect(rows[0].metadata).toEqual(expect.objectContaining({
+      schemaVersion: 2,
+      authMode: "client_credentials",
+      ciphertext: expect.any(String),
+      iv: expect.any(String),
+      authTag: expect.any(String),
+    }));
+    await expect(getStoredShopifyConnection(7)).resolves.toEqual({
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      clientId,
+      clientSecret,
     });
     await expect(getStoredShopifyConnection(8)).resolves.toBeNull();
   });
@@ -115,6 +147,27 @@ describe("encrypted business credentials", () => {
     expect(db.updateVaultEntry).toHaveBeenCalledTimes(1);
     await expect(getStoredShopifyConnection(7)).resolves.toEqual(expect.objectContaining({
       accessToken: "shpat_second_secret_token_value",
+    }));
+  });
+
+  it("replaces a direct token with client credentials without creating a duplicate", async () => {
+    await saveShopifyConnection({
+      userId: 7,
+      shopDomain: "example-store.myshopify.com",
+      accessToken: "shpat_original_secret_token_value",
+    });
+    await saveShopifyClientCredentials({
+      userId: 7,
+      shopDomain: "example-store.myshopify.com",
+      clientId: "replacement_client_id",
+      clientSecret: "replacement_client_secret_value",
+    });
+
+    expect(db.createVaultEntry).toHaveBeenCalledTimes(1);
+    expect(db.updateVaultEntry).toHaveBeenCalledTimes(1);
+    await expect(getStoredShopifyConnection(7)).resolves.toEqual(expect.objectContaining({
+      authMode: "client_credentials",
+      clientId: "replacement_client_id",
     }));
   });
 

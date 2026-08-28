@@ -17,6 +17,7 @@ vi.mock("../businessActions", async importOriginal => {
 });
 
 vi.mock("../businessCredentials", () => ({
+  saveShopifyClientCredentials: vi.fn(),
   saveShopifyConnection: vi.fn(),
   deleteShopifyConnection: vi.fn(),
 }));
@@ -29,6 +30,7 @@ vi.mock("../shopifyDrafts", async importOriginal => {
     proposeShopifyProductDraft: vi.fn(),
     editShopifyProductDraft: vi.fn(),
     executeShopifyProductDraft: vi.fn(),
+    verifyShopifyClientCredentials: vi.fn(),
     verifyShopifyConnection: vi.fn(),
   };
 });
@@ -42,9 +44,13 @@ import {
 import {
   executeShopifyProductDraft,
   getShopifyConnectionStatus,
+  verifyShopifyClientCredentials,
   verifyShopifyConnection,
 } from "../shopifyDrafts";
-import { saveShopifyConnection } from "../businessCredentials";
+import {
+  saveShopifyClientCredentials,
+  saveShopifyConnection,
+} from "../businessCredentials";
 import { businessActionsRouter } from "./businessActions";
 
 const owner: User = {
@@ -128,36 +134,44 @@ describe("business actions router", () => {
     expect(JSON.stringify(result)).not.toContain("correct-horse-47");
   });
 
-  it("verifies and saves a Shopify connection without returning the token", async () => {
-    vi.mocked(verifyShopifyConnection).mockResolvedValue({
+  it("verifies and encrypts Shopify client credentials without returning either secret", async () => {
+    vi.mocked(verifyShopifyClientCredentials).mockResolvedValue({
       shopDomain: "example-store.myshopify.com",
       shopName: "Example Store",
     });
-    vi.mocked(saveShopifyConnection).mockResolvedValue({
+    vi.mocked(saveShopifyClientCredentials).mockResolvedValue({
       shopDomain: "example-store.myshopify.com",
     });
-    const accessToken = "shpat_private_connection_token_value";
+    const clientId = "shopify_client_id";
+    const clientSecret = "shopify_client_secret_value";
 
     const result = await caller().connectShopify({
+      authMode: "client_credentials",
       shopDomain: "example-store.myshopify.com",
-      accessToken,
+      clientId,
+      clientSecret,
     });
 
-    expect(verifyShopifyConnection).toHaveBeenCalledWith({
+    expect(verifyShopifyClientCredentials).toHaveBeenCalledWith({
+      authMode: "client_credentials",
       shopDomain: "example-store.myshopify.com",
-      accessToken,
+      clientId,
+      clientSecret,
     });
-    expect(saveShopifyConnection).toHaveBeenCalledWith({
+    expect(saveShopifyClientCredentials).toHaveBeenCalledWith({
       userId: 1,
       shopDomain: "example-store.myshopify.com",
-      accessToken,
+      clientId,
+      clientSecret,
     });
     expect(result).toEqual({
       configured: true,
+      authMode: "client_credentials",
       shopDomain: "example-store.myshopify.com",
       shopName: "Example Store",
     });
-    expect(JSON.stringify(result)).not.toContain(accessToken);
+    expect(JSON.stringify(result)).not.toContain(clientId);
+    expect(JSON.stringify(result)).not.toContain(clientSecret);
   });
 
   it("does not change action state or call Shopify when the store is disconnected", async () => {

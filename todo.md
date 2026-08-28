@@ -815,13 +815,16 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Build the reusable action lifecycle: proposed, confirmed, executing, completed, cancelled, failed, and expired, with idempotency and concurrency-safe transitions.
 - [x] Add Captain Q's proposal-only Shopify draft tool. The model cannot contact Shopify or publish a product.
 - [x] Add owner-only proposal, edit, cancel, connect, and confirm procedures.
-- [x] Verify Shopify connections with a read-only GraphQL query, require `write_products`, encrypt the token with AES-256-GCM, and never return it to the browser or model.
+- [x] Verify Shopify connections with Shopify's official client-credentials grant plus a read-only GraphQL query, require `write_products`, encrypt the permanent client ID and secret with AES-256-GCM, cache the 24-hour access token only in server memory, and renew it automatically before expiry.
 - [x] Implement the Shopify executor with `productSet`, a deterministic handle, and hard-coded `status: DRAFT`; reject any non-draft response and include no publish mutation.
 - [x] Add mobile proposal cards with Edit, Cancel, Review and confirm, a second explicit **Create DRAFT** step, and completed/failed results.
 - [x] Add a mobile business-action lock and unlock dialog; the owner code is sent only to the unlock procedure and is never returned, persisted in the database, logged, or shown to Captain Q.
-- [x] Validate 97 focused regressions across 18 files, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
+- [x] Validate 106 focused regressions across 20 files, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
 - [x] Configure one private `BUSINESS_ACTION_PIN` Railway variable and verify live: Q chat remains available while locked, Shopify procedures return 401 while locked, a valid code unlocks business controls for 30 minutes, and the code never reaches Captain Q.
 - [x] Add a Railway-safe private Supabase Storage fallback, fresh signed URL rehydration, per-image failure isolation, base64 redaction, and physical object cleanup on conversation deletion.
 - [x] Deploy commit `e4fe3a1` and verify a new image renders from a fresh private Supabase signed URL after a true page reload; Shopify remains disconnected and every product creation still requires the separate **Create DRAFT** confirmation.
 
 No Shopify credential was available during development, no store API mutation was sent, and Anthony's Shopify store was not changed. Clerk DNS records may remain in place but are no longer required by the business-action system.
+
+- [x] Create the live $2.99 ELA Challenge Board proposal with one durable product image and no Shopify contact.
+- [ ] Deploy the client ID and secret connection upgrade, securely connect the store, have Anthony review the saved proposal, and execute only after the separate **Create DRAFT** confirmation.

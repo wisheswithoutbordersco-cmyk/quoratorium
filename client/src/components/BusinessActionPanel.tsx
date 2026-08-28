@@ -71,7 +71,8 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
   const [editDraft, setEditDraft] = useState<EditDraft | null>(null);
   const [connectingActionId, setConnectingActionId] = useState<string | null>(null);
   const [shopDomain, setShopDomain] = useState("");
-  const [accessToken, setAccessToken] = useState("");
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [actionCode, setActionCode] = useState("");
 
@@ -141,7 +142,8 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
   const connectMutation = trpc.businessActions.connectShopify.useMutation({
     onSuccess: async result => {
       setConnectingActionId(null);
-      setAccessToken("");
+      setClientId("");
+      setClientSecret("");
       setShopDomain(result.shopDomain);
       await refresh();
       toast.success(`Connected to ${result.shopName}.`);
@@ -492,7 +494,7 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                       <div>
                         <h3 className="text-base font-semibold text-foreground">Connect Shopify securely</h3>
                         <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                          Enter the permanent <strong className="text-foreground">.myshopify.com</strong> domain and an Admin API token with <strong className="text-foreground">write_products</strong>. Q verifies the token, encrypts it on the server, and never sends it to the model.
+                          Enter the permanent <strong className="text-foreground">.myshopify.com</strong> domain plus the client ID and client secret from your Shopify Dev Dashboard. Q verifies them, encrypts them on the server, and renews the 24-hour access token automatically. The secret is never sent to the model.
                         </p>
                       </div>
                     </div>
@@ -509,13 +511,23 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                         />
                       </label>
                       <label className="grid gap-1 text-[10px] text-muted-foreground">
-                        Admin API access token
+                        Client ID
+                        <input
+                          autoCapitalize="none"
+                          autoCorrect="off"
+                          autoComplete="off"
+                          value={clientId}
+                          onChange={event => setClientId(event.target.value)}
+                          className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50"
+                        />
+                      </label>
+                      <label className="grid gap-1 text-[10px] text-muted-foreground">
+                        Client secret
                         <input
                           type="password"
                           autoComplete="off"
-                          placeholder="shpat_…"
-                          value={accessToken}
-                          onChange={event => setAccessToken(event.target.value)}
+                          value={clientSecret}
+                          onChange={event => setClientSecret(event.target.value)}
                           className="rounded-lg border border-border bg-background px-3 py-2.5 text-sm text-foreground outline-none focus:border-primary/50"
                         />
                       </label>
@@ -527,17 +539,20 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                       <button
                         onClick={() => {
                           setConnectingActionId(null);
-                          setAccessToken("");
+                          setClientId("");
+                          setClientSecret("");
                         }}
                         className="rounded-lg border border-border px-3 py-2.5 text-sm text-muted-foreground hover:text-foreground"
                       >
                         Cancel
                       </button>
                       <button
-                        disabled={connectMutation.isPending || !shopDomain.trim() || accessToken.trim().length < 20}
+                        disabled={connectMutation.isPending || !shopDomain.trim() || clientId.trim().length < 8 || clientSecret.trim().length < 20}
                         onClick={() => connectMutation.mutate({
+                          authMode: "client_credentials",
                           shopDomain: shopDomain.trim(),
-                          accessToken: accessToken.trim(),
+                          clientId: clientId.trim(),
+                          clientSecret: clientSecret.trim(),
                         })}
                         className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-primary px-3 py-2.5 text-sm font-semibold text-primary-foreground disabled:opacity-50"
                       >

@@ -5,21 +5,45 @@ export const BUSINESS_CONNECTION_ENTRY_TYPE = "credential";
 export const BUSINESS_CONNECTION_RECORD_KIND = "business_connection";
 const SHOPIFY_PROVIDER = "shopify";
 
-interface StoredShopifyConnection {
+type ShopifyAuthMode = "access_token" | "client_credentials";
+
+interface EncryptedSecret {
+  ciphertext: string;
+  iv: string;
+  authTag: string;
+}
+
+interface StoredShopifyConnectionV1 extends EncryptedSecret {
   schemaVersion: 1;
   recordKind: typeof BUSINESS_CONNECTION_RECORD_KIND;
   provider: typeof SHOPIFY_PROVIDER;
   shopDomain: string;
-  ciphertext: string;
-  iv: string;
-  authTag: string;
   updatedAt: string;
 }
 
-export interface ShopifyConnectionSecret {
+interface StoredShopifyConnectionV2 extends EncryptedSecret {
+  schemaVersion: 2;
+  recordKind: typeof BUSINESS_CONNECTION_RECORD_KIND;
+  provider: typeof SHOPIFY_PROVIDER;
+  authMode: ShopifyAuthMode;
   shopDomain: string;
-  accessToken: string;
+  updatedAt: string;
 }
+
+type StoredShopifyConnection = StoredShopifyConnectionV1 | StoredShopifyConnectionV2;
+
+export type ShopifyConnectionSecret =
+  | {
+      authMode: "access_token";
+      shopDomain: string;
+      accessToken: string;
+    }
+  | {
+      authMode: "client_credentials";
+      shopDomain: string;
+      clientId: string;
+      clientSecret: string;
+    };
 
 function encryptionKey(): Buffer {
   const secret = process.env.BUSINESS_CREDENTIAL_KEY || process.env.CLERK_SECRET_KEY || "";
@@ -31,11 +55,11 @@ function encryptionKey(): Buffer {
     .digest();
 }
 
-function encryptAccessToken(accessToken: string): Pick<StoredShopifyConnection, "ciphertext" | "iv" | "authTag"> {
+function encryptSecret(secret: string): EncryptedSecret {
   const iv = randomBytes(12);
   const cipher = createCipheriv("aes-256-gcm", encryptionKey(), iv);
   const ciphertext = Buffer.concat([
-    cipher.update(accessToken, "utf8"),
+    cipher.update(secret, "utf8"),
     cipher.final(),
   ]);
   return {
@@ -45,7 +69,7 @@ function encryptAccessToken(accessToken: string): Pick<StoredShopifyConnection, 
   };
 }
 
-function decryptAccessToken(metadata: StoredShopifyConnection): string {
+function decryptSecret(metadata: EncryptedSecret): string {
   const decipher = createDecipheriv(
     "aes-256-gcm",
     encryptionKey(),
@@ -58,7 +82,7 @@ function decryptAccessToken(metadata: StoredShopifyConnection): string {
   ]).toString("utf8");
 }
 
-function normalizeShopDomain(value: string): string {
+export function normalizeShopDomain(value: string): string {
   const domain = value
     .trim()
     .toLowerCase()
@@ -70,34 +94,38 @@ function normalizeShopDomain(value: string): string {
   return domain;
 }
 
+function isEncryptedSecret(value: Record<string, unknown>): boolean {
+  return typeof value.ciphertext === "string" &&
+    typeof value.iv === "string" &&
+    typeof value.authTag === "string";
+}
+
 function isStoredShopifyConnection(value: unknown): value is StoredShopifyConnection {
   if (!value || typeof value !== "object") return false;
   const metadata = value as Record<string, unknown>;
-  return metadata.schemaVersion === 1 &&
-    metadata.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
+  const baseValid = metadata.recordKind === BUSINESS_CONNECTION_RECORD_KIND &&
     metadata.provider === SHOPIFY_PROVIDER &&
     typeof metadata.shopDomain === "string" &&
-    typeof metadata.ciphertext === "string" &&
-    typeof metadata.iv === "string" &&
-    typeof metadata.authTag === "string";
+    isEncryptedSecret(metadata);
+  if (!baseValid) return false;
+  if (metadata.schemaVersion === 1) return true;
+  return metadata.schemaVersion === 2 &&
+    (metadata.authMode === "access_token" || metadata.authMode === "client_credentials");
 }
 
-export async function saveShopifyConnection(input: {
+async function persistShopifyConnection(input: {
   userId: number;
   shopDomain: string;
-  accessToken: string;
+  authMode: ShopifyAuthMode;
+  secret: string;
 }): Promise<{ shopDomain: string }> {
   const shopDomain = normalizeShopDomain(input.shopDomain);
-  const accessToken = input.accessToken.trim();
-  if (accessToken.length < 20 || accessToken.length > 1000) {
-    throw new Error("Enter a valid Shopify Admin API access token");
-  }
-
-  const encrypted = encryptAccessToken(accessToken);
-  const metadata: StoredShopifyConnection = {
-    schemaVersion: 1,
+  const encrypted = encryptSecret(input.secret);
+  const metadata: StoredShopifyConnectionV2 = {
+    schemaVersion: 2,
     recordKind: BUSINESS_CONNECTION_RECORD_KIND,
     provider: SHOPIFY_PROVIDER,
+    authMode: input.authMode,
     shopDomain,
     ...encrypted,
     updatedAt: new Date().toISOString(),
@@ -130,6 +158,45 @@ export async function saveShopifyConnection(input: {
   return { shopDomain };
 }
 
+export async function saveShopifyConnection(input: {
+  userId: number;
+  shopDomain: string;
+  accessToken: string;
+}): Promise<{ shopDomain: string }> {
+  const accessToken = input.accessToken.trim();
+  if (accessToken.length < 20 || accessToken.length > 1000) {
+    throw new Error("Enter a valid Shopify Admin API access token");
+  }
+  return persistShopifyConnection({
+    userId: input.userId,
+    shopDomain: input.shopDomain,
+    authMode: "access_token",
+    secret: accessToken,
+  });
+}
+
+export async function saveShopifyClientCredentials(input: {
+  userId: number;
+  shopDomain: string;
+  clientId: string;
+  clientSecret: string;
+}): Promise<{ shopDomain: string }> {
+  const clientId = input.clientId.trim();
+  const clientSecret = input.clientSecret.trim();
+  if (clientId.length < 8 || clientId.length > 255) {
+    throw new Error("Enter a valid Shopify client ID");
+  }
+  if (clientSecret.length < 20 || clientSecret.length > 1000) {
+    throw new Error("Enter a valid Shopify client secret");
+  }
+  return persistShopifyConnection({
+    userId: input.userId,
+    shopDomain: input.shopDomain,
+    authMode: "client_credentials",
+    secret: JSON.stringify({ clientId, clientSecret }),
+  });
+}
+
 export async function getStoredShopifyConnection(
   userId: number,
 ): Promise<ShopifyConnectionSecret | null> {
@@ -142,9 +209,30 @@ export async function getStoredShopifyConnection(
   );
   if (!entry || !isStoredShopifyConnection(entry.metadata)) return null;
 
+  const shopDomain = normalizeShopDomain(entry.metadata.shopDomain);
+  const secret = decryptSecret(entry.metadata);
+  if (entry.metadata.schemaVersion === 1 || entry.metadata.authMode === "access_token") {
+    return { authMode: "access_token", shopDomain, accessToken: secret };
+  }
+
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(secret);
+  } catch {
+    throw new Error("Stored Shopify client credentials are invalid");
+  }
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("Stored Shopify client credentials are invalid");
+  }
+  const values = parsed as Record<string, unknown>;
+  if (typeof values.clientId !== "string" || typeof values.clientSecret !== "string") {
+    throw new Error("Stored Shopify client credentials are invalid");
+  }
   return {
-    shopDomain: normalizeShopDomain(entry.metadata.shopDomain),
-    accessToken: decryptAccessToken(entry.metadata),
+    authMode: "client_credentials",
+    shopDomain,
+    clientId: values.clientId,
+    clientSecret: values.clientSecret,
   };
 }
 
