@@ -173,6 +173,25 @@ export async function rehydrateAttachmentMetadata(
   );
 }
 
+export async function listConversationImageAssetIds(
+  userId: number,
+  conversationId: number,
+): Promise<string[]> {
+  const entries = await db.getUserVault(userId);
+  return entries
+    .filter(entry =>
+      entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+      entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
+      Number(entry.metadata?.conversationId) === conversationId &&
+      typeof entry.mime_type === "string" &&
+      entry.mime_type.startsWith("image/") &&
+      Boolean(entry.file_key),
+    )
+    .sort((a, b) => Number(a.id) - Number(b.id))
+    .slice(0, 10)
+    .map(entry => String(entry.id));
+}
+
 export async function resolveChatAssetSignedUrls(
   userId: number,
   assetIds: string[],

@@ -5,12 +5,29 @@ vi.mock("./businessActions", async importOriginal => {
   return {
     ...actual,
     createBusinessAction: vi.fn(),
+    editBusinessAction: vi.fn(),
+    getBusinessAction: vi.fn(),
   };
 });
 
-import { createBusinessAction, type BusinessAction } from "./businessActions";
+vi.mock("./chatAssets", async importOriginal => {
+  const actual = await importOriginal<typeof import("./chatAssets")>();
+  return {
+    ...actual,
+    listConversationImageAssetIds: vi.fn(),
+  };
+});
+
+import {
+  createBusinessAction,
+  editBusinessAction,
+  getBusinessAction,
+  type BusinessAction,
+} from "./businessActions";
+import { listConversationImageAssetIds } from "./chatAssets";
 import {
   exchangeShopifyClientCredentials,
+  editShopifyProductDraft,
   executeShopifyProductDraft,
   proposeShopifyProductDraft,
   SHOPIFY_API_VERSION,
@@ -73,6 +90,36 @@ describe("Shopify product draft actions", () => {
       }),
     }));
     fetchSpy.mockRestore();
+  });
+
+  it("recovers the same conversation's durable image when editing an older zero-image proposal", async () => {
+    const current = { ...action("proposed"), conversationId: 42, payload: { ...product, imageUrls: [], imageAssetIds: [] } };
+    vi.mocked(getBusinessAction).mockResolvedValue(current);
+    vi.mocked(listConversationImageAssetIds).mockResolvedValue(["91"]);
+    vi.mocked(editBusinessAction).mockImplementation(async input => ({
+      ...current,
+      payload: input.payload,
+      preview: input.preview,
+    }));
+
+    const result = await editShopifyProductDraft({
+      userId: 1,
+      actionId: current.id,
+      product: {
+        ...product,
+        imageUrls: [],
+        imageAssetIds: [],
+      },
+    });
+
+    expect(listConversationImageAssetIds).toHaveBeenCalledWith(1, 42);
+    expect(editBusinessAction).toHaveBeenCalledWith(expect.objectContaining({
+      userId: 1,
+      actionId: current.id,
+      payload: expect.objectContaining({ imageAssetIds: ["91"] }),
+      preview: expect.objectContaining({ imageCount: 1, status: "DRAFT" }),
+    }));
+    expect(result.preview).toEqual(expect.objectContaining({ imageCount: 1 }));
   });
 
   it("exchanges client credentials for a 24-hour token using Shopify's official form request", async () => {

@@ -2,9 +2,13 @@ import { z } from "zod";
 import {
   createBusinessAction,
   editBusinessAction,
+  getBusinessAction,
   type BusinessAction,
 } from "./businessActions";
-import { resolveChatAssetSignedUrls } from "./chatAssets";
+import {
+  listConversationImageAssetIds,
+  resolveChatAssetSignedUrls,
+} from "./chatAssets";
 import {
   getStoredShopifyConnection,
   normalizeShopDomain,
@@ -284,7 +288,27 @@ export async function editShopifyProductDraft(input: {
   actionId: string;
   product: unknown;
 }): Promise<BusinessAction<ShopifyDraftInput>> {
-  const product = shopifyDraftInputSchema.parse(input.product);
+  let product = shopifyDraftInputSchema.parse(input.product);
+  const current = await getBusinessAction(input.userId, input.actionId);
+  if (!current) throw new Error("Business action not found");
+
+  // Earlier proposal clients could save the conversation image durably while
+  // creating a proposal with imageAssetIds: []. During an owner-approved edit,
+  // recover only durable images that belong to this action's same conversation.
+  if (
+    product.imageUrls.length === 0 &&
+    product.imageAssetIds.length === 0 &&
+    current.conversationId
+  ) {
+    const recoveredImageAssetIds = await listConversationImageAssetIds(
+      input.userId,
+      current.conversationId,
+    );
+    if (recoveredImageAssetIds.length > 0) {
+      product = { ...product, imageAssetIds: recoveredImageAssetIds };
+    }
+  }
+
   return editBusinessAction({
     userId: input.userId,
     actionId: input.actionId,
