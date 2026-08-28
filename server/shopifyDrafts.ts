@@ -407,27 +407,48 @@ export async function executeShopifyProductDraft(
     },
   };
 
-  const response = await fetchImpl(
-    `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
-    {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Shopify-Access-Token": accessToken,
-      },
-      body: JSON.stringify({ query, variables }),
+  const endpoint = `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`;
+  const requestDraft = (token: string) => fetchImpl(endpoint, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Shopify-Access-Token": token,
     },
-  );
+    body: JSON.stringify({ query, variables }),
+  });
 
-  const body = await response.json().catch(() => null) as ShopifyGraphQlResponse | null;
+  let response = await requestDraft(accessToken);
+  let body = await response.json().catch(() => null) as ShopifyGraphQlResponse | Record<string, unknown> | null;
+
+  // A cached client-credentials token may be revoked or rejected before its
+  // advertised expiration. A true 401 is rejected before Shopify runs the
+  // mutation, so it is safe to exchange once and retry the exact DRAFT request.
+  if (response.status === 401 && !options.accessToken) {
+    clearShopifyTokenCache();
+    const refreshed = await getShopifyConfig(action.userId, { fetchImpl });
+    response = await requestDraft(refreshed.accessToken);
+    body = await response.json().catch(() => null) as ShopifyGraphQlResponse | Record<string, unknown> | null;
+  }
+
   if (!response.ok) {
-    throw new Error(`Shopify request failed (${response.status})`);
+    const rawDetail = body && typeof body === "object"
+      ? typeof (body as any).error_description === "string"
+        ? (body as any).error_description
+        : typeof (body as any).errors === "string"
+          ? (body as any).errors
+          : Array.isArray((body as any).errors)
+            ? (body as any).errors.map((error: any) => error?.message).filter(Boolean).join("; ")
+            : ""
+      : "";
+    const detail = rawDetail.replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new Error(`Shopify request failed (${response.status})${detail ? `: ${detail}` : ""}`);
   }
-  if (body?.errors?.length) {
-    throw new Error(`Shopify GraphQL error: ${body.errors.map(error => error.message).join("; ")}`);
+  const graphBody = body as ShopifyGraphQlResponse | null;
+  if (graphBody?.errors?.length) {
+    throw new Error(`Shopify GraphQL error: ${graphBody.errors.map(error => error.message).join("; ")}`);
   }
 
-  const payload = body?.data?.productSet;
+  const payload = graphBody?.data?.productSet;
   const userErrors = payload?.userErrors || [];
   if (userErrors.length > 0) {
     throw new Error(`Shopify rejected the draft: ${userErrors.map(error => error.message).join("; ")}`);

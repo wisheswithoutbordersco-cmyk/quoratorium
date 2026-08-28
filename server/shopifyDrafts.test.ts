@@ -10,6 +10,14 @@ vi.mock("./businessActions", async importOriginal => {
   };
 });
 
+vi.mock("./businessCredentials", async importOriginal => {
+  const actual = await importOriginal<typeof import("./businessCredentials")>();
+  return {
+    ...actual,
+    getStoredShopifyConnection: vi.fn(),
+  };
+});
+
 vi.mock("./chatAssets", async importOriginal => {
   const actual = await importOriginal<typeof import("./chatAssets")>();
   return {
@@ -25,7 +33,9 @@ import {
   type BusinessAction,
 } from "./businessActions";
 import { listConversationImageAssetIds } from "./chatAssets";
+import { getStoredShopifyConnection } from "./businessCredentials";
 import {
+  clearShopifyTokenCache,
   exchangeShopifyClientCredentials,
   editShopifyProductDraft,
   executeShopifyProductDraft,
@@ -64,6 +74,7 @@ function action(status: BusinessAction["status"] = "executing"): BusinessAction 
 
 beforeEach(() => {
   vi.clearAllMocks();
+  clearShopifyTokenCache();
 });
 
 describe("Shopify product draft actions", () => {
@@ -289,6 +300,63 @@ describe("Shopify product draft actions", () => {
       imageCount: 1,
       adminUrl: "https://example-store.myshopify.com/admin/products/123456789",
     }));
+  });
+
+  it("refreshes client credentials once after a 401 and retries only the forced-DRAFT request", async () => {
+    vi.mocked(getStoredShopifyConnection).mockResolvedValue({
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+    });
+
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "stale_but_unexpired_access_token",
+        scope: "read_products,write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        errors: "Invalid API key or access token",
+      }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "fresh_access_token_after_401",
+        scope: "read_products,write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          productSet: {
+            product: {
+              id: "gid://shopify/Product/222",
+              title: product.title,
+              handle: "captain-q-draft-abcdef1234567890abcd",
+              status: "DRAFT",
+              variants: { nodes: [{ id: "gid://shopify/ProductVariant/3", price: "8.99" }] },
+              media: { nodes: [{ id: "gid://shopify/MediaImage/4" }] },
+            },
+            userErrors: [],
+          },
+        },
+      }), { status: 200 }));
+
+    const result = await executeShopifyProductDraft(action());
+
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    expect(fetchMock.mock.calls[1][1]?.headers).toEqual(expect.objectContaining({
+      "X-Shopify-Access-Token": "stale_but_unexpired_access_token",
+    }));
+    expect(fetchMock.mock.calls[3][1]?.headers).toEqual(expect.objectContaining({
+      "X-Shopify-Access-Token": "fresh_access_token_after_401",
+    }));
+    const firstDraftBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    const retriedDraftBody = JSON.parse(String(fetchMock.mock.calls[3][1]?.body));
+    expect(retriedDraftBody).toEqual(firstDraftBody);
+    expect(retriedDraftBody.variables.input.status).toBe("DRAFT");
+    expect(JSON.stringify(retriedDraftBody.variables)).not.toContain("ACTIVE");
+    expect(result).toEqual(expect.objectContaining({ status: "DRAFT", productId: "gid://shopify/Product/222" }));
+
+    fetchMock.mockRestore();
   });
 
   it("fails closed if Shopify returns any status other than DRAFT", async () => {
