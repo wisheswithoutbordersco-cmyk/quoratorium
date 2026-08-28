@@ -18,8 +18,9 @@ import { ConversationPanel } from "@/components/panels/ConversationPanel";
 import { WorkspacePreviewPanel, MobilePreviewOverlay } from "@/components/panels/WorkspacePreviewPanel";
 import { ProjectSidebar } from "@/components/ProjectSidebar";
 import { BootScreen } from "@/components/BootScreen";
-import { useUIStore } from "@/stores";
+import { useConversationStore, useUIStore } from "@/stores";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { trpc } from "@/lib/trpc";
 import { duration, ease } from "@/lib/motion";
 import { useAuth } from "@/_core/hooks/useAuth";
 
@@ -34,6 +35,60 @@ export default function Home() {
     if (sessionStorage.getItem("q-booted")) return true;
     return false;
   });
+  const { activeConversationId, setActiveConversationId, setMessages } = useConversationStore();
+  const { data: conversations } = trpc.conversations.list.useQuery();
+  const utils = trpc.useUtils();
+  const initialConversationRestoreAttempted = useRef(false);
+
+  // Mobile browsers and installed app windows can be resumed after a deployment
+  // with the chat text still painted but without a live conversation ID in memory.
+  // Restore the latest server conversation once per workspace mount so dependent
+  // panels (including confirmation-gated business actions) remain attached.
+  useEffect(() => {
+    if (initialConversationRestoreAttempted.current || conversations === undefined) return;
+    initialConversationRestoreAttempted.current = true;
+
+    const activeId = Number(activeConversationId);
+    const activeStillExists = Number.isInteger(activeId) && conversations.some((conversation: any) => Number(conversation.id) === activeId);
+    const selectedId = activeStillExists ? activeId : Number(conversations[0]?.id);
+    if (!Number.isInteger(selectedId) || selectedId <= 0) return;
+
+    const selectedIdString = String(selectedId);
+    setActiveConversationId(selectedIdString);
+
+    void utils.conversations.get.fetch({ id: selectedId })
+      .then(data => {
+        if (useConversationStore.getState().activeConversationId !== selectedIdString) return;
+        const restoredMessages = (data?.messages ?? []).map(message => {
+          const metadata = message.metadata && typeof message.metadata === "object"
+            ? message.metadata as Record<string, unknown>
+            : {};
+          const images = Array.isArray(metadata.images)
+            ? metadata.images.filter((image: any) => image && typeof image.url === "string")
+            : undefined;
+          const attachments = Array.isArray(metadata.attachments)
+            ? metadata.attachments.filter((attachment: any) => attachment && typeof attachment.name === "string")
+            : undefined;
+
+          return {
+            id: String(message.id),
+            role: message.role as "user" | "assistant" | "system",
+            content: message.content,
+            timestamp: new Date(message.createdAt),
+            images,
+            attachments,
+          };
+        });
+        setMessages(restoredMessages);
+      })
+      .catch(error => {
+        console.error("[Conversations] Failed to restore the active conversation:", error);
+        if (useConversationStore.getState().activeConversationId === selectedIdString) {
+          setActiveConversationId(null);
+          setMessages([]);
+        }
+      });
+  }, [activeConversationId, conversations, setActiveConversationId, setMessages, utils.conversations.get]);
 
   // Track viewport size for responsive behavior
   useEffect(() => {

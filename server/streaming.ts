@@ -930,9 +930,12 @@ async function handleStandardChat(
     generatedImages = toolResult.artifacts
       .filter((artifact) => artifact.type === "image" && artifact.url)
       .map((artifact) => ({ url: artifact.url!, title: artifact.name }));
-    fullResponse = toolResult.response?.trim() || (toolsUsed.length > 0
-      ? "Done. I completed the requested action."
-      : "I couldn't produce a useful response. Please try that again.");
+    const preparedShopifyProposal = toolsUsed.includes("propose_shopify_product_draft");
+    fullResponse = preparedShopifyProposal
+      ? "I prepared the Shopify product draft proposal below for your review. Nothing was created or published. Unlock business actions when you are ready to review or edit the card."
+      : toolResult.response?.trim() || (toolsUsed.length > 0
+        ? "Done. I completed the requested action."
+        : "I couldn't produce a useful response. Please try that again.");
 
     res.write(`data: ${JSON.stringify({ type: "token", content: fullResponse })}\n\n`);
     if (toolModeActive) {
