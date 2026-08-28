@@ -41,6 +41,8 @@ interface EditDraft {
   vendor: string;
   productType: string;
   tags: string;
+  seoTitle: string;
+  seoDescription: string;
 }
 
 function toEditDraft(action: ActionRecord): EditDraft {
@@ -51,6 +53,8 @@ function toEditDraft(action: ActionRecord): EditDraft {
     vendor: String(action.payload.vendor || ""),
     productType: String(action.payload.productType || ""),
     tags: Array.isArray(action.payload.tags) ? action.payload.tags.join(", ") : "",
+    seoTitle: String(action.payload.seoTitle || ""),
+    seoDescription: String(action.payload.seoDescription || ""),
   };
 }
 
@@ -359,7 +363,26 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                     <textarea
                       value={editDraft.descriptionHtml}
                       onChange={event => setEditDraft({ ...editDraft, descriptionHtml: event.target.value })}
-                      rows={4}
+                      rows={6}
+                      className="resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-[10px] text-muted-foreground">
+                    SEO title
+                    <input
+                      maxLength={70}
+                      value={editDraft.seoTitle}
+                      onChange={event => setEditDraft({ ...editDraft, seoTitle: event.target.value })}
+                      className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-[10px] text-muted-foreground">
+                    SEO description
+                    <textarea
+                      maxLength={320}
+                      value={editDraft.seoDescription}
+                      onChange={event => setEditDraft({ ...editDraft, seoDescription: event.target.value })}
+                      rows={3}
                       className="resize-y rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground outline-none focus:border-primary/50"
                     />
                   </label>
@@ -385,6 +408,8 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                           vendor: editDraft.vendor || undefined,
                           productType: editDraft.productType || undefined,
                           tags: editDraft.tags.split(",").map(tag => tag.trim()).filter(Boolean),
+                          seoTitle: editDraft.seoTitle || undefined,
+                          seoDescription: editDraft.seoDescription || undefined,
                         },
                       })}
                       className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground disabled:opacity-50"
