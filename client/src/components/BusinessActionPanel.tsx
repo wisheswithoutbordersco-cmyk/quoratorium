@@ -143,6 +143,13 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
     },
     onError: error => toast.error(error.message),
   });
+  const retryMutation = trpc.businessActions.prepareShopifyDraftRetry.useMutation({
+    onSuccess: async () => {
+      await refresh();
+      toast.success("Draft returned to review. Nothing was sent to Shopify.");
+    },
+    onError: error => toast.error(error.message),
+  });
   const connectMutation = trpc.businessActions.connectShopify.useMutation({
     onSuccess: async result => {
       setConnectingActionId(null);
@@ -292,12 +299,18 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
           <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/50 p-3" data-testid="shopify-connection-control">
             <div className="min-w-0">
               <p className="text-xs font-medium text-foreground">
-                {shopify?.configured ? "Shopify connected" : "Shopify not connected"}
+                {shopify?.healthy
+                  ? "Shopify ready"
+                  : shopify?.configured
+                    ? "Shopify needs reconnection"
+                    : "Shopify not connected"}
               </p>
-              <p className="truncate text-[10px] text-muted-foreground">
-                {shopify?.configured
-                  ? `${shopify.shopDomain} · Reconnect safely if Shopify rejects a renewed token.`
-                  : "Connect before confirming a product draft."}
+              <p className="break-words text-[10px] leading-relaxed text-muted-foreground">
+                {shopify?.healthy
+                  ? `${shopify.shopDomain} · Live token and write_products access verified.`
+                  : shopify?.configured
+                    ? `${shopify.shopDomain} · ${shopify.error || "Live verification failed."}`
+                    : "Connect before confirming a product draft."}
               </p>
             </div>
             <button
@@ -467,19 +480,32 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                   </div>
 
                   {action.status === "failed" && (
-                    <p className="mt-2 rounded-lg border border-destructive/20 bg-destructive/5 p-2 text-[11px] text-destructive">
-                      {action.error || "Shopify could not create this draft."}
-                    </p>
+                    <div className="mt-2 grid gap-2 rounded-lg border border-destructive/20 bg-destructive/5 p-2">
+                      <p className="text-[11px] text-destructive">
+                        {action.error || "Shopify could not create this draft."}
+                      </p>
+                      <button
+                        type="button"
+                        disabled={retryMutation.isPending}
+                        onClick={() => retryMutation.mutate({ actionId: action.id })}
+                        className="justify-self-end rounded-md border border-destructive/25 px-2.5 py-1.5 text-[10px] font-semibold text-destructive disabled:opacity-50"
+                      >
+                        {retryMutation.isPending ? "Preparing…" : "Prepare retry"}
+                      </button>
+                    </div>
                   )}
 
                   {action.status === "completed" && (
-                    <div className="mt-2 flex items-center justify-between gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
-                      <span className="inline-flex items-center gap-1.5"><Check size={13} /> Created as an unpublished draft.</span>
+                    <div className="mt-2 grid gap-1 rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 text-[11px] text-emerald-300">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5"><Check size={13} /> Created as an unpublished draft.</span>
                       {typeof result.adminUrl === "string" && (
                         <a href={result.adminUrl} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 underline underline-offset-2">
                           Open <ExternalLink size={11} />
                         </a>
                       )}
+                      </div>
+                      <p className="text-[10px] text-emerald-200/70">Listing media is attached; customer download delivery remains a separate setup step.</p>
                     </div>
                   )}
 
@@ -504,7 +530,7 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                         <X size={13} /> Cancel
                       </button>
                       <button
-                        disabled={!shopify?.configured}
+                        disabled={!shopify?.healthy}
                         onClick={() => setConfirmingId(action.id)}
                         className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-primary-foreground disabled:cursor-not-allowed disabled:opacity-40"
                       >
@@ -525,8 +551,12 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                     </div>
                   )}
 
-                  {isPending && shopify?.configured && (
-                    <p className="mt-2 text-[10px] text-emerald-300/70">Connected securely to {shopify.shopDomain}.</p>
+                  {isPending && shopify?.healthy && (
+                    <p className="mt-2 text-[10px] text-emerald-300/70">Live connection verified for {shopify.shopDomain}.</p>
+                  )}
+
+                  {isPending && shopify?.configured && !shopify?.healthy && (
+                    <p className="mt-2 text-[10px] text-amber-300/80">Reconnect Shopify above before reviewing or confirming this draft.</p>
                   )}
 
                   {isExecuting && (
@@ -629,8 +659,11 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
                     </div>
                     <div className="mt-4 rounded-lg border border-border bg-muted/20 p-3 text-xs">
                       <p className="font-medium text-foreground">{String(preview.title || action.summary)}</p>
-                      <p className="mt-1 text-muted-foreground">${String(preview.price || "0.00")} · {Number(preview.imageCount || 0)} image(s)</p>
+                      <p className="mt-1 text-muted-foreground">${String(preview.price || "0.00")} · {Number(preview.imageCount || 0)} image(s) · DRAFT only</p>
                     </div>
+                    <p className="mt-3 rounded-lg border border-amber-400/15 bg-amber-400/5 p-2 text-[10px] leading-relaxed text-amber-200/80">
+                      The product image is listing media, not the customer download file. Digital-file delivery must be configured separately before any future publication.
+                    </p>
                     <div className="mt-4 grid grid-cols-2 gap-2">
                       <button
                         onClick={() => setConfirmingId(null)}

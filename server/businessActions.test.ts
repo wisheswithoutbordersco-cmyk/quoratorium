@@ -9,9 +9,11 @@ vi.mock("./db", () => ({
 import * as db from "./db";
 import {
   BUSINESS_ACTION_ENTRY_TYPE,
+  BUSINESS_ACTION_EXECUTION_STALE_MS,
   createBusinessAction,
   editBusinessAction,
   listBusinessActions,
+  prepareBusinessActionRetry,
   transitionBusinessAction,
 } from "./businessActions";
 
@@ -134,6 +136,57 @@ describe("business action lifecycle", () => {
     await expect(
       transitionBusinessAction(7, proposed.id, ["confirmed"], "executing"),
     ).rejects.toThrow("Cannot move business action from cancelled to executing");
+  });
+
+  it("prepares a failed draft for retry without changing its Shopify identity", async () => {
+    const proposed = await createProposal();
+    await transitionBusinessAction(7, proposed.id, ["proposed"], "confirmed");
+    await transitionBusinessAction(7, proposed.id, ["confirmed"], "executing");
+    const failed = await transitionBusinessAction(7, proposed.id, ["executing"], "failed", {
+      error: "Shopify request failed (401)",
+    });
+
+    const retried = await prepareBusinessActionRetry(7, failed.id);
+
+    expect(retried.status).toBe("proposed");
+    expect(retried.idempotencyKey).toBe(proposed.idempotencyKey);
+    expect(retried.error).toBeUndefined();
+    expect(retried.result).toBeUndefined();
+    expect(retried.confirmedAt).toBeUndefined();
+    expect(retried.executedAt).toBeUndefined();
+    expect(retried.version).toBe(5);
+  });
+
+  it("returns an existing active duplicate instead of reopening a second retry", async () => {
+    const original = await createProposal();
+    await transitionBusinessAction(7, original.id, ["proposed"], "confirmed");
+    await transitionBusinessAction(7, original.id, ["confirmed"], "executing");
+    const failed = await transitionBusinessAction(7, original.id, ["executing"], "failed", {
+      error: "Interrupted",
+    });
+    const active = await createProposal();
+    const writesBeforeRetry = vi.mocked(db.updateVaultEntry).mock.calls.length;
+
+    const retry = await prepareBusinessActionRetry(7, failed.id);
+
+    expect(retry.id).toBe(active.id);
+    expect(retry.status).toBe("proposed");
+    expect(db.updateVaultEntry).toHaveBeenCalledTimes(writesBeforeRetry);
+  });
+
+  it("marks a stale executing action failed so it can safely reuse the same identity", async () => {
+    const proposed = await createProposal();
+    await transitionBusinessAction(7, proposed.id, ["proposed"], "confirmed");
+    await transitionBusinessAction(7, proposed.id, ["confirmed"], "executing");
+    const row = rows.find(candidate => String(candidate.id) === proposed.id);
+    row.metadata.updatedAt = new Date(Date.now() - BUSINESS_ACTION_EXECUTION_STALE_MS - 1_000).toISOString();
+
+    const actions = await listBusinessActions(7, { includeTerminal: true });
+    const recovered = actions.find(action => action.id === proposed.id);
+
+    expect(recovered?.status).toBe("failed");
+    expect(recovered?.error).toContain("interrupted");
+    expect(recovered?.idempotencyKey).toBe(proposed.idempotencyKey);
   });
 
   it("expires stale proposals when they are listed", async () => {

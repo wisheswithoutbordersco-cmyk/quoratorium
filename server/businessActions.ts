@@ -4,6 +4,7 @@ import * as db from "./db";
 export const BUSINESS_ACTION_ENTRY_TYPE = "config";
 export const BUSINESS_ACTION_RECORD_KIND = "business_action";
 export const BUSINESS_ACTION_TTL_MS = 24 * 60 * 60 * 1000;
+export const BUSINESS_ACTION_EXECUTION_STALE_MS = 10 * 60 * 1000;
 
 export type BusinessActionStatus =
   | "proposed"
@@ -136,6 +137,14 @@ export async function listBusinessActions(
     if (action.status === "proposed" && new Date(action.expiresAt).getTime() <= now) {
       return transitionBusinessAction(userId, action.id, ["proposed"], "expired");
     }
+    if (
+      action.status === "executing" &&
+      now - new Date(action.updatedAt).getTime() >= BUSINESS_ACTION_EXECUTION_STALE_MS
+    ) {
+      return transitionBusinessAction(userId, action.id, ["executing"], "failed", {
+        error: "The previous execution was interrupted before Q received a final result. Prepare retry to safely reuse the same Shopify draft identity.",
+      });
+    }
     return action;
   }));
 }
@@ -234,6 +243,54 @@ export async function editBusinessAction(input: {
     });
     const action = parseAction(entry);
     if (!action) throw new Error("Failed to parse updated business action");
+    return action;
+  });
+}
+
+export async function prepareBusinessActionRetry(
+  userId: number,
+  actionId: string,
+): Promise<BusinessAction> {
+  return withActionLock(actionId, async () => {
+    const current = await getBusinessAction(userId, actionId);
+    if (!current) throw new Error("Business action not found");
+    if (current.type !== "shopify.create_product_draft") {
+      throw new Error("Only Shopify product draft actions can be retried");
+    }
+    if (current.status !== "failed") {
+      throw new Error("Only a failed Shopify draft can be prepared for retry");
+    }
+
+    const all = (await db.getUserVaultEntriesByType(userId, BUSINESS_ACTION_ENTRY_TYPE))
+      .map(parseAction)
+      .filter((action): action is BusinessAction => Boolean(action));
+    const activeDuplicate = all.find(action =>
+      action.id !== current.id &&
+      action.idempotencyKey === current.idempotencyKey &&
+      !["cancelled", "failed", "expired"].includes(action.status),
+    );
+    if (activeDuplicate) return activeDuplicate;
+
+    const now = new Date();
+    const next: BusinessAction = {
+      ...current,
+      status: "proposed",
+      error: undefined,
+      result: undefined,
+      confirmedAt: undefined,
+      executedAt: undefined,
+      updatedAt: now.toISOString(),
+      expiresAt: new Date(now.getTime() + BUSINESS_ACTION_TTL_MS).toISOString(),
+      version: current.version + 1,
+    };
+    const { id: _id, userId: _userId, ...stored } = next;
+    const entry = await db.updateVaultEntry({
+      id: Number(current.id),
+      userId,
+      metadata: toMetadata(stored),
+    });
+    const action = parseAction(entry);
+    if (!action) throw new Error("Failed to parse retried business action");
     return action;
   });
 }

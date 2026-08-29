@@ -17,6 +17,7 @@ import {
 import {
   getBusinessAction,
   listBusinessActions,
+  prepareBusinessActionRetry,
   transitionBusinessAction,
 } from "../businessActions";
 import {
@@ -180,14 +181,23 @@ export const businessActionsRouter = router({
       "cancelled",
     )),
 
+  prepareShopifyDraftRetry: businessActionProcedure
+    .input(z.object({ actionId: z.string().regex(/^\d+$/) }))
+    .mutation(({ ctx, input }) => prepareBusinessActionRetry(
+      ctx.user.id,
+      input.actionId,
+    )),
+
   confirmShopifyDraft: businessActionProcedure
     .input(z.object({ actionId: z.string().regex(/^\d+$/) }))
     .mutation(async ({ ctx, input }) => {
       const connection = await getShopifyConnectionStatus(ctx.user.id);
-      if (!connection.configured) {
+      if (!connection.configured || !connection.healthy) {
         throw new TRPCError({
           code: "PRECONDITION_FAILED",
-          message: "Connect Shopify before confirming this draft.",
+          message: connection.configured
+            ? `Reconnect Shopify before confirming this draft${connection.error ? `: ${connection.error}` : "."}`
+            : "Connect Shopify before confirming this draft.",
         });
       }
 

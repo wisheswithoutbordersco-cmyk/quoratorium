@@ -12,6 +12,7 @@ vi.mock("../businessActions", async importOriginal => {
     ...actual,
     getBusinessAction: vi.fn(),
     listBusinessActions: vi.fn(),
+    prepareBusinessActionRetry: vi.fn(),
     transitionBusinessAction: vi.fn(),
   };
 });
@@ -38,6 +39,7 @@ vi.mock("../shopifyDrafts", async importOriginal => {
 import {
   getBusinessAction,
   listBusinessActions,
+  prepareBusinessActionRetry,
   transitionBusinessAction,
   type BusinessAction,
 } from "../businessActions";
@@ -138,6 +140,7 @@ describe("business actions router", () => {
     vi.mocked(verifyShopifyClientCredentials).mockResolvedValue({
       shopDomain: "example-store.myshopify.com",
       shopName: "Example Store",
+      scopes: ["write_products"],
     });
     vi.mocked(saveShopifyClientCredentials).mockResolvedValue({
       shopDomain: "example-store.myshopify.com",
@@ -175,10 +178,15 @@ describe("business actions router", () => {
   });
 
   it("does not change action state or call Shopify when the store is disconnected", async () => {
-    vi.mocked(getShopifyConnectionStatus).mockReturnValue({
+    vi.mocked(getShopifyConnectionStatus).mockResolvedValue({
       configured: false,
+      healthy: false,
+      authMode: null,
       shopDomain: null,
+      shopName: null,
+      scopes: [],
       apiVersion: "2026-07",
+      error: null,
     });
 
     await expect(caller().confirmShopifyDraft({ actionId: "10" }))
@@ -188,11 +196,45 @@ describe("business actions router", () => {
     expect(executeShopifyProductDraft).not.toHaveBeenCalled();
   });
 
-  it("executes only after proposed, confirmed, and executing transitions", async () => {
-    vi.mocked(getShopifyConnectionStatus).mockReturnValue({
+  it("refuses to advance or execute when stored credentials fail the live health preflight", async () => {
+    vi.mocked(getShopifyConnectionStatus).mockResolvedValue({
       configured: true,
+      healthy: false,
+      authMode: "client_credentials",
       shopDomain: "example-store.myshopify.com",
+      shopName: null,
+      scopes: [],
       apiVersion: "2026-07",
+      error: "Shopify rejected the refreshed token",
+    });
+
+    await expect(caller().confirmShopifyDraft({ actionId: "10" }))
+      .rejects.toMatchObject({ code: "PRECONDITION_FAILED" });
+    expect(getBusinessAction).not.toHaveBeenCalled();
+    expect(transitionBusinessAction).not.toHaveBeenCalled();
+    expect(executeShopifyProductDraft).not.toHaveBeenCalled();
+  });
+
+  it("prepares a failed action for retry without calling Shopify", async () => {
+    const retried = { ...proposed, status: "proposed" as const };
+    vi.mocked(prepareBusinessActionRetry).mockResolvedValue(retried);
+
+    await expect(caller().prepareShopifyDraftRetry({ actionId: "10" })).resolves.toEqual(retried);
+    expect(prepareBusinessActionRetry).toHaveBeenCalledWith(1, "10");
+    expect(executeShopifyProductDraft).not.toHaveBeenCalled();
+    expect(transitionBusinessAction).not.toHaveBeenCalled();
+  });
+
+  it("executes only after a live-healthy preflight and proposed, confirmed, and executing transitions", async () => {
+    vi.mocked(getShopifyConnectionStatus).mockResolvedValue({
+      configured: true,
+      healthy: true,
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      shopName: "Example Store",
+      scopes: ["write_products"],
+      apiVersion: "2026-07",
+      error: null,
     });
     vi.mocked(getBusinessAction).mockResolvedValue(proposed);
     const confirmed = { ...proposed, status: "confirmed" as const };
@@ -213,6 +255,7 @@ describe("business actions router", () => {
     });
 
     await expect(caller().confirmShopifyDraft({ actionId: "10" })).resolves.toEqual(completed);
+    expect(getShopifyConnectionStatus).toHaveBeenCalledWith(1);
     expect(transitionBusinessAction).toHaveBeenNthCalledWith(
       1, 1, "10", ["proposed"], "confirmed",
     );

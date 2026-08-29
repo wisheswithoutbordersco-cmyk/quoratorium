@@ -181,16 +181,95 @@ export function clearShopifyTokenCache(): void {
   shopifyTokenCache.clear();
 }
 
-export async function getShopifyConnectionStatus(userId: number): Promise<{
+export interface ShopifyConnectionStatus {
   configured: boolean;
+  healthy: boolean;
+  authMode: "client_credentials" | "access_token" | null;
   shopDomain: string | null;
+  shopName: string | null;
+  scopes: string[];
   apiVersion: string;
-}> {
+  error: string | null;
+}
+
+function safeShopifyError(error: unknown): string {
+  const message = error instanceof Error ? error.message : "Shopify connection verification failed";
+  return message.replace(/\s+/g, " ").trim().slice(0, 300);
+}
+
+export async function getShopifyConnectionStatus(userId: number): Promise<ShopifyConnectionStatus> {
+  const stored = await getStoredShopifyConnection(userId);
+  const environmentConfigured = Boolean(
+    process.env.SHOPIFY_SHOP_DOMAIN && process.env.SHOPIFY_ACCESS_TOKEN,
+  );
+  if (!stored && !environmentConfigured) {
+    return {
+      configured: false,
+      healthy: false,
+      authMode: null,
+      shopDomain: null,
+      shopName: null,
+      scopes: [],
+      apiVersion: SHOPIFY_API_VERSION,
+      error: null,
+    };
+  }
+
+  const verifyCurrent = async () => {
+    const config = await getShopifyConfig(userId);
+    return verifyShopifyConnection(config);
+  };
+
   try {
-    const { shopDomain } = await getShopifyConfig(userId);
-    return { configured: true, shopDomain, apiVersion: SHOPIFY_API_VERSION };
-  } catch {
-    return { configured: false, shopDomain: null, apiVersion: SHOPIFY_API_VERSION };
+    const verified = await verifyCurrent();
+    return {
+      configured: true,
+      healthy: true,
+      authMode: stored?.authMode || "access_token",
+      shopDomain: verified.shopDomain,
+      shopName: verified.shopName,
+      scopes: verified.scopes,
+      apiVersion: SHOPIFY_API_VERSION,
+      error: null,
+    };
+  } catch (firstError) {
+    if (stored?.authMode === "client_credentials") {
+      clearShopifyTokenCache();
+      try {
+        const verified = await verifyCurrent();
+        return {
+          configured: true,
+          healthy: true,
+          authMode: stored.authMode,
+          shopDomain: verified.shopDomain,
+          shopName: verified.shopName,
+          scopes: verified.scopes,
+          apiVersion: SHOPIFY_API_VERSION,
+          error: null,
+        };
+      } catch (refreshedError) {
+        return {
+          configured: true,
+          healthy: false,
+          authMode: stored.authMode,
+          shopDomain: stored.shopDomain,
+          shopName: null,
+          scopes: [],
+          apiVersion: SHOPIFY_API_VERSION,
+          error: safeShopifyError(refreshedError),
+        };
+      }
+    }
+    return {
+      configured: true,
+      healthy: false,
+      authMode: stored?.authMode || "access_token",
+      shopDomain: stored?.shopDomain || normalizeShopDomain(process.env.SHOPIFY_SHOP_DOMAIN || ""),
+      shopName: null,
+      scopes: [],
+      apiVersion: SHOPIFY_API_VERSION,
+      error: safeShopifyError(firstError),
+    };
   }
 }
 
@@ -198,7 +277,7 @@ export async function verifyShopifyConnection(input: {
   shopDomain: string;
   accessToken: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ shopDomain: string; shopName: string }> {
+}): Promise<{ shopDomain: string; shopName: string; scopes: string[] }> {
   const { shopDomain, accessToken } = await getShopifyConfig(undefined, input);
   const response = await (input.fetchImpl || fetch)(
     `https://${shopDomain}/admin/api/${SHOPIFY_API_VERSION}/graphql.json`,
@@ -218,7 +297,15 @@ export async function verifyShopifyConnection(input: {
   );
   const body = await response.json().catch(() => null) as any;
   if (!response.ok || body?.errors?.length) {
-    throw new Error("Shopify could not verify that store domain and token");
+    const rawDetail = typeof body?.error_description === "string"
+      ? body.error_description
+      : typeof body?.errors === "string"
+        ? body.errors
+        : Array.isArray(body?.errors)
+          ? body.errors.map((error: any) => error?.message).filter(Boolean).join("; ")
+          : "";
+    const detail = String(rawDetail).replace(/\s+/g, " ").trim().slice(0, 300);
+    throw new Error(`Shopify could not verify that store domain and token${detail ? `: ${detail}` : ""}`);
   }
   const scopes = body?.data?.currentAppInstallation?.accessScopes || [];
   if (!scopes.some((scope: any) => scope?.handle === "write_products")) {
@@ -231,6 +318,9 @@ export async function verifyShopifyConnection(input: {
   return {
     shopDomain,
     shopName: String(body?.data?.shop?.name || shopDomain),
+    scopes: scopes
+      .map((scope: any) => String(scope?.handle || ""))
+      .filter(Boolean),
   };
 }
 
@@ -239,7 +329,7 @@ export async function verifyShopifyClientCredentials(input: {
   clientId: string;
   clientSecret: string;
   fetchImpl?: typeof fetch;
-}): Promise<{ shopDomain: string; shopName: string }> {
+}): Promise<{ shopDomain: string; shopName: string; scopes: string[] }> {
   const exchanged = await exchangeShopifyClientCredentials(input);
   return verifyShopifyConnection({
     shopDomain: exchanged.shopDomain,

@@ -39,6 +39,7 @@ import {
   exchangeShopifyClientCredentials,
   editShopifyProductDraft,
   executeShopifyProductDraft,
+  getShopifyConnectionStatus,
   proposeShopifyProductDraft,
   SHOPIFY_API_VERSION,
   verifyShopifyClientCredentials,
@@ -231,6 +232,7 @@ describe("Shopify product draft actions", () => {
     })).resolves.toEqual({
       shopDomain: "example-store.myshopify.com",
       shopName: "Example Store",
+      scopes: ["read_products", "write_products"],
     });
     expect(fetchImpl).toHaveBeenCalledTimes(2);
     const verificationBody = JSON.parse(String(fetchImpl.mock.calls[1][1].body));
@@ -255,10 +257,88 @@ describe("Shopify product draft actions", () => {
     })).resolves.toEqual({
       shopDomain: "example-store.myshopify.com",
       shopName: "Example Store",
+      scopes: ["read_products", "write_products"],
     });
     const body = JSON.parse(String(fetchImpl.mock.calls[0][1].body));
     expect(body.query).toContain("CaptainQVerifyShopifyConnection");
     expect(body.query).not.toContain("mutation");
+  });
+
+  it("reports a live healthy connection only after a read-only Admin API verification", async () => {
+    vi.mocked(getStoredShopifyConnection).mockResolvedValue({
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "healthy_access_token_value",
+        scope: "write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        data: {
+          shop: { name: "Example Store", myshopifyDomain: "example-store.myshopify.com" },
+          currentAppInstallation: { accessScopes: [{ handle: "write_products" }] },
+        },
+      }), { status: 200 }));
+
+    const status = await getShopifyConnectionStatus(1);
+
+    expect(status).toEqual(expect.objectContaining({
+      configured: true,
+      healthy: true,
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      shopName: "Example Store",
+      scopes: ["write_products"],
+      error: null,
+    }));
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    const verificationBody = JSON.parse(String(fetchMock.mock.calls[1][1]?.body));
+    expect(verificationBody.query).not.toContain("mutation");
+    fetchMock.mockRestore();
+  });
+
+  it("fails health closed after one fresh client-token exchange and two rejected read-only checks", async () => {
+    vi.mocked(getStoredShopifyConnection).mockResolvedValue({
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      clientId: "shopify_client_id",
+      clientSecret: "shopify_client_secret_value",
+    });
+    const fetchMock = vi.spyOn(globalThis, "fetch")
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "first_access_token_value",
+        scope: "write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: "Invalid token" }), { status: 401 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: "refreshed_access_token_value",
+        scope: "write_products",
+        expires_in: 86399,
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ errors: "Invalid token" }), { status: 401 }));
+
+    const status = await getShopifyConnectionStatus(1);
+
+    expect(status).toEqual(expect.objectContaining({
+      configured: true,
+      healthy: false,
+      authMode: "client_credentials",
+      shopDomain: "example-store.myshopify.com",
+      shopName: null,
+      scopes: [],
+    }));
+    expect(status.error).toContain("could not verify");
+    expect(fetchMock).toHaveBeenCalledTimes(4);
+    for (const index of [1, 3]) {
+      const body = JSON.parse(String(fetchMock.mock.calls[index][1]?.body));
+      expect(body.query).not.toContain("mutation");
+    }
+    fetchMock.mockRestore();
   });
 
   it("rejects a Shopify token without write_products permission", async () => {
