@@ -288,6 +288,32 @@ export function BusinessActionPanel({ conversationId }: { conversationId: number
             Lock now
           </button>
         </div>
+        {!connectionQuery.isLoading && (
+          <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-background/50 p-3" data-testid="shopify-connection-control">
+            <div className="min-w-0">
+              <p className="text-xs font-medium text-foreground">
+                {shopify?.configured ? "Shopify connected" : "Shopify not connected"}
+              </p>
+              <p className="truncate text-[10px] text-muted-foreground">
+                {shopify?.configured
+                  ? `${shopify.shopDomain} · Reconnect safely if Shopify rejects a renewed token.`
+                  : "Connect before confirming a product draft."}
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setShopDomain(shopify?.shopDomain || "");
+                setClientId("");
+                setClientSecret("");
+                setConnectingActionId(actions[0]?.id || null);
+              }}
+              className="shrink-0 rounded-lg border border-primary/25 bg-primary/10 px-3 py-2 text-xs font-semibold text-primary"
+            >
+              {shopify?.configured ? "Reconnect" : "Connect"}
+            </button>
+          </div>
+        )}
         {actions.map(action => {
           const preview = action.preview || {};
           const isPending = action.status === "proposed" || action.status === "confirmed";
