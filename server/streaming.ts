@@ -13,7 +13,13 @@ import type { Message as LLMMessage } from "./_core/llm";
 import * as db from "./db";
 import { executeCode, getExecutionEngineStatus } from "./codeExecutor";
 import { executeBrowserTask, parseBrowserTask } from "./browserWorker";
-import { generateImage, extractImagePrompt } from "./imageWorker";
+import {
+  buildImageVariationPrompt,
+  generateImage,
+  extractImagePrompt,
+  getRequestedImageCount,
+  isImageRequest,
+} from "./imageWorker";
 import { executeTaskChain } from "./taskChain";
 import { retrieveRelevantMemories, buildMemoryContext, extractMemoriesFromMessage, persistExtractedMemories } from "./memoryService";
 import { saveToMemory, buildMemoryContext as buildSemanticMemoryContext } from "./memory-service";
@@ -495,19 +501,30 @@ export function registerStreamingRoutes(app: Express) {
           await handleCodeExecution(res, message, projectId, userId, persistedConversationId);
           break;
         default:
-          await handleStandardChat(
-            res,
-            message,
-            intent,
-            history,
-            projectId,
-            memoryContext + knowledgeContext,
-            semanticMemoryContext,
-            userId,
-            persistedConversationId,
-            parsedAttachments.imageAttachments,
-            durableAttachmentIds
-          );
+          if (isImageRequest(message)) {
+            await handleImageGeneration(
+              res,
+              message,
+              projectId,
+              userId,
+              persistedConversationId,
+              parsedAttachments.imageAttachments,
+            );
+          } else {
+            await handleStandardChat(
+              res,
+              message,
+              intent,
+              history,
+              projectId,
+              memoryContext + knowledgeContext,
+              semanticMemoryContext,
+              userId,
+              persistedConversationId,
+              parsedAttachments.imageAttachments,
+              durableAttachmentIds
+            );
+          }
           break;
       }
     } catch (error: any) {
@@ -658,30 +675,72 @@ async function handleImageGeneration(
   message: string,
   projectId: number | null,
   userId: number | null,
-  conversationId: number | null
+  conversationId: number | null,
+  imageAttachments: ChatAttachment[] = [],
 ) {
   const prompt = extractImagePrompt(message);
-  let assistantResponse = `🎨 Generating image: "${prompt}"...\n\n`;
+  const requestedCount = getRequestedImageCount(message);
+  let assistantResponse = requestedCount > 1
+    ? `Creating ${requestedCount} image variations now.\n\n`
+    : "Creating your image now.\n\n";
   res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
-  const result = await generateImage(prompt);
+  const originalImages = imageAttachments.flatMap((attachment) => {
+    if (!attachment.dataUrl) return [];
+    const match = attachment.dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i);
+    if (!match) return [];
+    return [{ mimeType: match[1].toLowerCase(), b64Json: match[2].replace(/\s/g, "") }];
+  });
 
-  if (result.success && result.imageUrl) {
-    const completion = `\n\n✅ Image generated successfully.\n\n**Prompt used:** ${result.revisedPrompt || prompt}`;
-    res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, title: "Generated image", revisedPrompt: result.revisedPrompt })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
-    assistantResponse += completion;
+  const generatedImages: Array<{ url: string; title: string }> = [];
+  const providers = new Set<string>();
+  let usedFallback = false;
+  const failures: string[] = [];
+
+  for (let index = 0; index < requestedCount; index += 1) {
+    const variationPrompt = buildImageVariationPrompt(prompt, index, requestedCount);
+    const result = await generateImage(variationPrompt, {
+      quality: "high",
+      originalImages: originalImages.length > 0 ? originalImages : undefined,
+    });
+
+    if (result.success && result.imageUrl) {
+      const title = requestedCount > 1 ? `Generated image ${index + 1}` : "Generated image";
+      generatedImages.push({ url: result.imageUrl, title });
+      if (result.provider) providers.add(result.provider);
+      usedFallback = usedFallback || Boolean(result.fallbackUsed);
+      res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, title, revisedPrompt: result.revisedPrompt })}\n\n`);
+      continue;
+    }
+
+    const providerDetail = result.providerErrors
+      ?.map((failure) => `${failure.provider}: ${failure.message}`)
+      .join("; ");
+    failures.push(`${result.error || "Both image providers failed."}${providerDetail ? ` ${providerDetail}` : ""}`);
+  }
+
+  if (generatedImages.length > 0) {
+    const completion = generatedImages.length === 1
+      ? "Done. Click the image to view the complete version."
+      : `Done. I created ${generatedImages.length} image variations. Click any image to view the complete version.`;
+    const partial = generatedImages.length < requestedCount
+      ? ` ${requestedCount - generatedImages.length} variation${requestedCount - generatedImages.length === 1 ? "" : "s"} could not be completed.`
+      : "";
+    res.write(`data: ${JSON.stringify({ type: "token", content: completion + partial })}\n\n`);
+    assistantResponse += completion + partial;
   } else {
-    const failure = `❌ Image generation failed: ${result.error}`;
+    const failure = `I could not generate the image. ${failures[0] || "The primary image service and its backup were unavailable."}`;
     res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
     assistantResponse += failure;
   }
 
   await persistAssistantConversationMessage(userId, conversationId, assistantResponse, {
     intent: "image",
-    images: result.success && result.imageUrl
-      ? [{ url: result.imageUrl, title: "Generated image" }]
-      : [],
+    providers: Array.from(providers),
+    fallbackUsed: usedFallback,
+    sourceImageCount: originalImages.length,
+    requestedImageCount: requestedCount,
+    images: generatedImages,
   });
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);

@@ -43,6 +43,9 @@ describe("runToolLoop", () => {
     expect(payload.tool_choice).toBe("auto");
     expect(payload.messages[0].content.match(/You are Captain Q\./g)).toHaveLength(1);
     expect(payload.messages[0].content).toContain("Tools are optional capabilities");
+    const toolNames = payload.tools.map((tool: any) => tool.function.name);
+    expect(toolNames).toContain("generate_image");
+    expect(toolNames).not.toContain("scriptorium_generate");
   });
 
   it("retries a compatible OpenRouter model when the preferred model is rejected", async () => {

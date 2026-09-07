@@ -15,6 +15,11 @@ import {
   PanelLeft,
   Volume2,
   Square,
+  ChevronLeft,
+  ChevronRight,
+  ExternalLink,
+  Download,
+  Maximize2,
 } from "lucide-react";
 import { PushToGitHub } from "@/components/PushToGitHub";
 import { Streamdown } from "streamdown";
@@ -34,6 +39,7 @@ import { SignUpWall } from "@/components/SignUpWall";
 import { GuestCreditsIndicator } from "@/components/GuestCreditsIndicator";
 import { CreditExhaustedBanner } from "@/components/CreditExhaustedBanner";
 import { BusinessActionPanel } from "@/components/BusinessActionPanel";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_IMAGE_BYTES,
@@ -680,6 +686,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 function MessageBubble({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
   const isUser = message.role === "user";
   const [showPushDialog, setShowPushDialog] = useState(false);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
 
   // Extract code blocks from assistant messages for push-to-github
   const codeFiles = useMemo(() => {
@@ -696,6 +703,8 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
   }, [message.content, isUser, isStreaming]);
 
   const hasCode = codeFiles.length > 0;
+  const generatedImages = message.images || [];
+  const selectedImage = selectedImageIndex === null ? null : generatedImages[selectedImageIndex];
 
   return (
     <motion.div
@@ -727,23 +736,40 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
               ) : (
                 <>
                   <Streamdown>{message.content || (isStreaming ? " " : "")}</Streamdown>
-                  {message.images && message.images.length > 0 && (
-                    <div className="mt-3 space-y-2 not-prose">
-                      {message.images.map((image, index) => (
-                        <a
+                  {generatedImages.length > 0 && (
+                    <div
+                      className={`mt-3 grid gap-2 not-prose ${
+                        generatedImages.length === 1
+                          ? "max-w-xl grid-cols-1"
+                          : "grid-cols-2 xl:grid-cols-3"
+                      }`}
+                    >
+                      {generatedImages.map((image, index) => (
+                        <button
                           key={`${image.url.slice(0, 80)}-${index}`}
-                          href={image.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="block overflow-hidden rounded-lg border border-white/10 bg-black/40"
+                          type="button"
+                          onClick={() => setSelectedImageIndex(index)}
+                          className={`group relative overflow-hidden rounded-xl border border-white/10 bg-black/35 text-left transition-colors hover:border-primary/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70 ${
+                            generatedImages.length === 1
+                              ? "h-56 sm:h-72 lg:h-80"
+                              : "aspect-[4/3]"
+                          }`}
+                          aria-label={`View ${image.title || `generated image ${index + 1}`} full size`}
                         >
                           <img
                             src={image.url}
                             alt={image.title || `Generated image ${index + 1}`}
-                            className="block w-full h-auto object-contain"
+                            className="block h-full w-full object-contain"
                             loading="lazy"
                           />
-                        </a>
+                          <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-3 pb-2 pt-8 text-xs text-white opacity-90 transition-opacity group-hover:opacity-100">
+                            <span className="truncate">{image.title || `Image ${index + 1}`}</span>
+                            <span className="flex shrink-0 items-center gap-1 font-medium">
+                              <Maximize2 className="h-3.5 w-3.5" />
+                              View full
+                            </span>
+                          </span>
+                        </button>
                       ))}
                     </div>
                   )}
@@ -803,6 +829,79 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
           {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
         </p>
       </div>
+
+      <Dialog open={selectedImageIndex !== null} onOpenChange={(open) => !open && setSelectedImageIndex(null)}>
+        <DialogContent className="grid h-[94vh] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden bg-black/95 p-3 sm:max-w-[96vw] sm:p-4">
+          <div className="min-w-0 pr-10">
+            <DialogTitle className="truncate text-base text-white">
+              {selectedImage?.title || "Generated image"}
+            </DialogTitle>
+            <DialogDescription className="sr-only">
+              Complete generated image preview. Use the controls below to move between images, open the original, or download it.
+            </DialogDescription>
+            {generatedImages.length > 1 && (
+              <p className="mt-1 text-xs text-white/55">
+                Image {(selectedImageIndex ?? 0) + 1} of {generatedImages.length}
+              </p>
+            )}
+          </div>
+
+          <div className="relative flex min-h-0 items-center justify-center overflow-hidden rounded-xl border border-white/10 bg-black">
+            {selectedImage && (
+              <img
+                src={selectedImage.url}
+                alt={selectedImage.title || `Generated image ${(selectedImageIndex ?? 0) + 1}`}
+                className="max-h-full max-w-full object-contain"
+              />
+            )}
+
+            {generatedImages.length > 1 && (
+              <>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImageIndex((current) => current === null ? 0 : (current - 1 + generatedImages.length) % generatedImages.length)}
+                  className="absolute left-2 rounded-full border border-white/15 bg-black/70 p-2 text-white transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  aria-label="Previous image"
+                >
+                  <ChevronLeft className="h-5 w-5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedImageIndex((current) => current === null ? 0 : (current + 1) % generatedImages.length)}
+                  className="absolute right-2 rounded-full border border-white/15 bg-black/70 p-2 text-white transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                  aria-label="Next image"
+                >
+                  <ChevronRight className="h-5 w-5" />
+                </button>
+              </>
+            )}
+          </div>
+
+          <div className="flex flex-wrap items-center justify-center gap-2 sm:justify-end">
+            {selectedImage && (
+              <>
+                <a
+                  href={selectedImage.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-xs font-medium text-white transition-colors hover:bg-white/10"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Open original
+                </a>
+                <a
+                  href={selectedImage.url}
+                  download
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-primary-foreground transition-opacity hover:opacity-90"
+                >
+                  <Download className="h-3.5 w-3.5" />
+                  Download
+                </a>
+              </>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </motion.div>
   );
 }

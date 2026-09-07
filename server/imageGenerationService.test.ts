@@ -8,190 +8,236 @@ function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+function imageResponse(bytes = "fallback-image"): Response {
+  return new Response(Buffer.from(bytes), {
+    status: 200,
+    headers: { "Content-Type": "image/png" },
+  });
+}
+
 describe("generateImageWithFallback", () => {
-  it("uses OpenAI first and never calls fal.ai when OpenAI succeeds", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({
-        data: [{
-          b64_json: Buffer.from("openai-image").toString("base64"),
-          revised_prompt: "An OpenAI-rendered scene",
-        }],
-      }),
-    );
-    const storeImage = vi.fn().mockResolvedValue({
-      key: "generated-images/openai.png",
-      url: "/manus-storage/generated-images/openai.png",
+  it("uses the built-in provider once and never calls fal.ai when it succeeds", async () => {
+    const generateBuiltIn = vi.fn().mockResolvedValue({
+      url: "/manus-storage/generated-images/built-in.png",
     });
+    const fetchImpl = vi.fn();
+    const reference = {
+      b64Json: Buffer.from("source-image").toString("base64"),
+      mimeType: "image/png",
+    };
 
     const result = await generateImageWithFallback(
-      "A cinematic lighthouse",
-      { aspectRatio: "16:9", quality: "high" },
+      "A polished classroom product mockup",
+      { originalImages: [reference], quality: "high" },
       {
+        generateBuiltIn,
         fetchImpl,
-        storeImage,
-        openAiApiKey: "openai-test-key",
         falApiKey: "fal-test-key",
-        openAiModel: "gpt-image-2",
       },
     );
 
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/images/generations");
-
-    const request = fetchImpl.mock.calls[0]?.[1] as RequestInit;
-    expect(request.headers).toMatchObject({ Authorization: "Bearer openai-test-key" });
-    expect(JSON.parse(String(request.body))).toMatchObject({
-      model: "gpt-image-2",
-      size: "1536x1024",
-      quality: "high",
-      output_format: "png",
+    expect(generateBuiltIn).toHaveBeenCalledTimes(1);
+    expect(generateBuiltIn).toHaveBeenCalledWith({
+      prompt: "A polished classroom product mockup",
+      originalImages: [reference],
     });
-    expect(storeImage).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
     expect(result).toMatchObject({
       success: true,
-      provider: "openai",
+      provider: "built-in",
       model: "gpt-image-2",
       fallbackUsed: false,
-      imageUrl: "/manus-storage/generated-images/openai.png",
+      imageUrl: "/manus-storage/generated-images/built-in.png",
     });
   });
 
-  it("calls fal.ai only after the OpenAI request fails", async () => {
+  it("calls fal.ai once after a real built-in failure and stores the fallback durably", async () => {
+    const generateBuiltIn = vi.fn().mockRejectedValue(new Error("temporary built-in outage"));
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ error: "temporary OpenAI outage" }, 503))
-      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/fallback.png" }] }));
+      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/fallback.png" }] }))
+      .mockResolvedValueOnce(imageResponse());
+    const storeImage = vi.fn().mockResolvedValue({
+      key: "generated-images/fallback.png",
+      url: "/manus-storage/generated-images/fallback.png",
+    });
 
     const result = await generateImageWithFallback(
       "A multicultural classroom poster",
       { aspectRatio: "2:3" },
       {
+        generateBuiltIn,
         fetchImpl,
-        storeImage: vi.fn(),
-        openAiApiKey: "openai-test-key",
+        storeImage,
         falApiKey: "fal-test-key",
       },
     );
 
+    expect(generateBuiltIn).toHaveBeenCalledTimes(1);
     expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/images/generations");
-    expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://fal.run/fal-ai/flux-pro/v1.1-ultra");
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://fal.run/openai/gpt-image-2");
+    expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://fal.media/fallback.png");
+    const falRequest = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(falRequest.body))).toMatchObject({
+      image_size: "portrait_4_3",
+      quality: "high",
+      num_images: 1,
+      output_format: "png",
+    });
+    expect(storeImage).toHaveBeenCalledTimes(1);
     expect(result).toMatchObject({
       success: true,
       provider: "fal.ai",
+      model: "openai/gpt-image-2",
       fallbackUsed: true,
-      imageUrl: "https://fal.media/fallback.png",
+      storageKey: "generated-images/fallback.png",
+      imageUrl: "/manus-storage/generated-images/fallback.png",
     });
     expect(result.providerErrors?.[0]).toMatchObject({
-      provider: "openai",
+      provider: "built-in",
       code: "request_failed",
     });
   });
 
-  it("uses the hosted fal.ai fallback when OpenAI storage is unavailable", async () => {
-    const encodedImage = Buffer.from("openai-image-without-storage").toString("base64");
+  it("falls back when the built-in provider returns no image URL", async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ data: [{ b64_json: encodedImage }] }))
-      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/storage-fallback.png" }] }));
-    const storeImage = vi.fn().mockRejectedValue(new Error("Storage credentials unavailable"));
+      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/no-url-fallback.png" }] }))
+      .mockResolvedValueOnce(imageResponse());
 
     const result = await generateImageWithFallback(
-      "A hosted fallback result",
+      "A fallback image",
       {},
       {
+        generateBuiltIn: vi.fn().mockResolvedValue({}),
         fetchImpl,
-        storeImage,
-        openAiApiKey: "openai-test-key",
+        storeImage: vi.fn().mockResolvedValue({ key: "fallback.png", url: "/stored/fallback.png" }),
         falApiKey: "fal-test-key",
       },
     );
 
-    expect(fetchImpl).toHaveBeenCalledTimes(2);
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://api.openai.com/v1/images/generations");
-    expect(fetchImpl.mock.calls[1]?.[0]).toBe("https://fal.run/fal-ai/flux-pro/v1.1-ultra");
+    expect(result).toMatchObject({ success: true, provider: "fal.ai", fallbackUsed: true });
+    expect(result.providerErrors?.[0]).toMatchObject({
+      provider: "built-in",
+      code: "invalid_response",
+    });
+  });
+
+  it("uses fal.ai GPT Image 2 edit when a reference image is present", async () => {
+    const fetchImpl = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/reference-result.png" }] }))
+      .mockResolvedValueOnce(imageResponse());
+    const reference = {
+      b64Json: Buffer.from("source-image").toString("base64"),
+      mimeType: "image/png",
+    };
+
+    const result = await generateImageWithFallback(
+      "Place this printable in a realistic laptop mockup",
+      { originalImages: [reference] },
+      {
+        generateBuiltIn: vi.fn().mockRejectedValue(new Error("primary unavailable")),
+        fetchImpl,
+        storeImage: vi.fn().mockResolvedValue({ key: "edited.png", url: "/stored/edited.png" }),
+        falApiKey: "fal-test-key",
+      },
+    );
+
+    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://fal.run/openai/gpt-image-2/edit");
+    const request = fetchImpl.mock.calls[0]?.[1] as RequestInit;
+    expect(JSON.parse(String(request.body))).toMatchObject({
+      image_urls: [`data:image/png;base64,${reference.b64Json}`],
+      image_size: "auto",
+      quality: "high",
+      num_images: 1,
+    });
     expect(result).toMatchObject({
       success: true,
       provider: "fal.ai",
+      model: "openai/gpt-image-2/edit",
       fallbackUsed: true,
-      imageUrl: "https://fal.media/storage-fallback.png",
-    });
-    expect(result.providerErrors?.[0]).toMatchObject({
-      provider: "openai",
-      code: "storage_failed",
+      imageUrl: "/stored/edited.png",
     });
   });
 
-  it("keeps the OpenAI image as a last resort when storage and fal.ai both fail", async () => {
-    const encodedImage = Buffer.from("openai-final-fallback").toString("base64");
+  it("fails instead of returning a temporary fal.ai URL when durable storage fails", async () => {
     const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(jsonResponse({ data: [{ b64_json: encodedImage }] }))
-      .mockResolvedValueOnce(jsonResponse({ error: "fal unavailable" }, 503));
+      .mockResolvedValueOnce(jsonResponse({ images: [{ url: "https://fal.media/temporary.png" }] }))
+      .mockResolvedValueOnce(imageResponse());
 
     const result = await generateImageWithFallback(
-      "A final fallback result",
+      "A durable result",
       {},
       {
+        generateBuiltIn: vi.fn().mockRejectedValue(new Error("primary unavailable")),
         fetchImpl,
-        storeImage: vi.fn().mockRejectedValue(new Error("Storage credentials unavailable")),
-        openAiApiKey: "openai-test-key",
+        storeImage: vi.fn().mockRejectedValue(new Error("storage unavailable")),
         falApiKey: "fal-test-key",
       },
     );
 
-    expect(result).toMatchObject({
-      success: true,
-      provider: "openai",
-      fallbackUsed: false,
-      imageUrl: `data:image/png;base64,${encodedImage}`,
-    });
-    expect(result.providerErrors?.map((error) => error.code)).toEqual(["storage_failed", "request_failed"]);
+    expect(result.success).toBe(false);
+    expect(result.imageUrl).toBeUndefined();
+    expect(result.providerErrors?.map((error) => error.code)).toEqual(["request_failed", "storage_failed"]);
   });
 
-  it("treats a missing OpenAI key as unavailable before using fal.ai", async () => {
-    const fetchImpl = vi.fn().mockResolvedValue(
-      jsonResponse({ images: [{ url: "https://fal.media/key-fallback.png" }] }),
-    );
-
-    const result = await generateImageWithFallback(
-      "A print-ready geometric pattern",
-      {},
-      {
-        fetchImpl,
-        storeImage: vi.fn(),
-        openAiApiKey: "",
-        falApiKey: "fal-test-key",
-      },
-    );
-
-    expect(fetchImpl).toHaveBeenCalledTimes(1);
-    expect(fetchImpl.mock.calls[0]?.[0]).toBe("https://fal.run/fal-ai/flux-pro/v1.1-ultra");
-    expect(result).toMatchObject({ success: true, provider: "fal.ai", fallbackUsed: true });
-    expect(result.providerErrors?.[0]).toEqual({
-      provider: "openai",
-      code: "unavailable",
-      message: "OPENAI_API_KEY is not configured",
-    });
-  });
-
-  it("reports provider-specific failures without leaking credentials", async () => {
-    const fetchImpl = vi.fn()
-      .mockResolvedValueOnce(new Response("Bearer leaked-openai-key", { status: 401 }))
-      .mockResolvedValueOnce(new Response("Key leaked-fal-key", { status: 503 }));
+  it("reports a missing fallback key only after one built-in attempt", async () => {
+    const generateBuiltIn = vi.fn().mockRejectedValue(new Error("BUILT_IN_FORGE_API_KEY is not configured"));
+    const fetchImpl = vi.fn();
 
     const result = await generateImageWithFallback(
       "A test image",
       {},
+      { generateBuiltIn, fetchImpl, falApiKey: "" },
+    );
+
+    expect(generateBuiltIn).toHaveBeenCalledTimes(1);
+    expect(fetchImpl).not.toHaveBeenCalled();
+    expect(result.success).toBe(false);
+    expect(result.providerErrors).toEqual([
       {
-        fetchImpl,
+        provider: "built-in",
+        code: "unavailable",
+        message: "BUILT_IN_FORGE_API_KEY is not configured",
+      },
+      {
+        provider: "fal.ai",
+        code: "unavailable",
+        message: "FAL_API_KEY is not configured",
+      },
+    ]);
+  });
+
+  it("reports provider-specific failures without leaking credentials", async () => {
+    const result = await generateImageWithFallback(
+      "A test image",
+      {},
+      {
+        generateBuiltIn: vi.fn().mockRejectedValue(new Error("Bearer leaked-built-in-key")),
+        fetchImpl: vi.fn().mockResolvedValue(new Response("Key leaked-fal-key", { status: 503 })),
         storeImage: vi.fn(),
-        openAiApiKey: "openai-test-key",
         falApiKey: "fal-test-key",
       },
     );
 
     expect(result.success).toBe(false);
     expect(result.providerErrors).toHaveLength(2);
-    expect(result.providerErrors?.map(error => error.provider)).toEqual(["openai", "fal.ai"]);
-    expect(JSON.stringify(result.providerErrors)).not.toContain("leaked-openai-key");
+    expect(result.providerErrors?.map((error) => error.provider)).toEqual(["built-in", "fal.ai"]);
+    expect(JSON.stringify(result.providerErrors)).not.toContain("leaked-built-in-key");
     expect(JSON.stringify(result.providerErrors)).not.toContain("leaked-fal-key");
+    expect(JSON.stringify(result.providerErrors)).toContain("[redacted]");
+  });
+
+  it("rejects an empty prompt without calling either provider", async () => {
+    const generateBuiltIn = vi.fn();
+    const fetchImpl = vi.fn();
+
+    const result = await generateImageWithFallback(
+      "   ",
+      {},
+      { generateBuiltIn, fetchImpl, falApiKey: "fal-test-key" },
+    );
+
+    expect(result).toEqual({ success: false, error: "Prompt is required", providerErrors: [] });
+    expect(generateBuiltIn).not.toHaveBeenCalled();
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

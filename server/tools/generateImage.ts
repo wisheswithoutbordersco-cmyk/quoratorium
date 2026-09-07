@@ -1,13 +1,13 @@
 /**
  * Tool: generate_image
- * Generate images directly with OpenAI; fal.ai is the reliability fallback.
+ * Generate images with Q's preconfigured GPT Image service; fal.ai is the one reliability fallback.
  */
 import { registerTool, type ToolContext, type ToolResult } from "./index";
 import { generateImageWithFallback, type ImageAspectRatio } from "../imageGenerationService";
 
 registerTool({
   name: "generate_image",
-  description: "Create a new AI image with OpenAI, with fal.ai as its provider fallback. Use only for an explicit image-creation request, normally after scriptorium_generate fails or when the user specifically requests direct OpenAI generation. Never use for attached-image analysis, character identification, counting, description, or a request that asks only for a reusable prompt.",
+  description: "Create one new AI image through Q's reliable image pipeline. Use only for an explicit image-creation request. The server performs at most one provider fallback automatically, so never call this tool repeatedly for the same request. Never use it for attached-image analysis, character identification, counting, description, or a request that asks only for a reusable prompt.",
   parameters: {
     type: "object",
     properties: {
@@ -31,6 +31,7 @@ registerTool({
 
     const result = await generateImageWithFallback(prompt, {
       aspectRatio: (args.aspect_ratio || "1:1") as ImageAspectRatio,
+      quality: "high",
     });
 
     if (!result.success || !result.imageUrl) {

@@ -102,7 +102,6 @@ export async function runToolLoop(
       await import("./fileCreate");
       await import("./codeExecute");
       await import("./webResearch");
-      await import("./scriptorium");
       await import("./deploy");
       await import("./generateImage");
       await import("./proposeShopifyDraft");

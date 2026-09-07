@@ -46,7 +46,7 @@ export const CAPTAIN_Q_TOOL_GUIDANCE = `TOOLS AVAILABLE
 - Tools are optional capabilities, not the default response mode.
 - Use web_research only when the answer depends on current or externally verified information.
 - Use run_code for calculations, data analysis, or code execution when it improves correctness.
-- Use scriptorium_generate or generate_image only for an explicit request to create a new visual—not for image questions, prompt writing, or discussion.
+- Use generate_image only for an explicit request to create a new visual—not for image questions, prompt writing, or discussion. The server handles provider fallback automatically, so never repeat the tool after a failure.
 - Use create_file and deploy_project only for an explicit request to create files or a working application.
 - Select tools from the user's full intent. If no tool is needed, answer normally.
 - After a tool returns, explain the useful result naturally and never paste raw internal payloads or media URLs into prose.`;

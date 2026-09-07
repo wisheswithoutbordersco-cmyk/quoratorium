@@ -99,8 +99,8 @@ async function startServer() {
   // PWA icon route — public, no auth required
   app.use(pwaIconRouter);
 
-  // OpenAI-first image route. Register before the legacy Captain Q router so
-  // its historical fal-first handler cannot intercept this endpoint.
+  // Reliable image route: preconfigured GPT Image primary with one durable
+  // fal.ai GPT Image 2 fallback. Register before the legacy Captain Q router.
   app.use(imageGenerationRouter);
 
   // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
