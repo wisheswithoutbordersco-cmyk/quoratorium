@@ -107,6 +107,8 @@ export async function runToolLoop(
       await import("./deploy");
       await import("./generateImage");
       await import("./proposeShopifyDraft");
+      await import("./scriptorium");
+await import("./extractorium");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }
