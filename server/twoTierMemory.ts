@@ -107,6 +107,7 @@ export async function classifyMessage(content: string): Promise<ClassificationRe
   // Use LLM for nuanced classification
   try {
     const response = await invokeLLM({
+      model: "openai/gpt-4o-mini",
       messages: [
         {
           role: "system",
