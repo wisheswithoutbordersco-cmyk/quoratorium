@@ -79,7 +79,7 @@ export function getTool(name: string): ToolDefinition | undefined {
 
 // ─── Tool Execution Loop ────────────────────────────────────────────────────
 
-const MAX_TOOL_ITERATIONS = 6; // Safety limit to prevent infinite loops
+const MAX_TOOL_ITERATIONS = 50; // Safety limit to prevent infinite loops
 
 /**
  * Run Captain Q's autonomous tool-use loop:
