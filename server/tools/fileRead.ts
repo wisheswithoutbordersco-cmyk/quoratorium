@@ -18,29 +18,26 @@ registerTool({
       },
       sandbox_id: {
         type: "string",
-        description: "Optional sandbox ID. If omitted, uses the user's most recent sandbox.",
+        description: "Optional sandbox ID. If omitted, finds the user's sandbox automatically (including after restarts).",
       },
     },
     required: ["filename"],
     additionalProperties: false,
   },
   async execute(args: Record<string, any>, context: ToolContext): Promise<ToolResult> {
-    const { getUserSandboxId, getSandboxFile, getSandboxFiles, loadSandboxFromStore } = await import("../sandbox/projectStore");
+    const { getSandboxFile, getSandboxFiles, loadSandboxFromStore, resolveUserSandboxId } = await import("../sandbox/projectStore");
 
     const filename = args.filename;
     if (!filename) {
       return { success: false, output: "Missing filename" };
     }
 
-    const sandboxId: string | undefined = args.sandbox_id || getUserSandboxId(context.userId);
+    const sandboxId: string | undefined = args.sandbox_id || (await resolveUserSandboxId(context.userId));
     if (!sandboxId) {
       return { success: false, output: "No sandbox found for this user. Nothing has been created yet." };
     }
 
-    // Load from Supabase if the server restarted since the file was written
-    if (!getSandboxFile(sandboxId, filename)) {
-      await loadSandboxFromStore(sandboxId);
-    }
+    await loadSandboxFromStore(sandboxId);
 
     const file = getSandboxFile(sandboxId, filename);
     if (!file) {
