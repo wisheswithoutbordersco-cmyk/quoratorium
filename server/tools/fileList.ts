@@ -1,7 +1,7 @@
 /**
  * Tool: list_files
  * Lists all files in the user's current (or specified) sandbox so Captain Q
- * can see what already exists before creating, updating, or deploying.
+ * can see what already exists — even after a server restart.
  */
 import { registerTool, type ToolContext, type ToolResult } from "./index";
 
@@ -15,27 +15,23 @@ registerTool({
     properties: {
       sandbox_id: {
         type: "string",
-        description: "Optional sandbox ID (e.g. 'sb-a5daa2c1'). If omitted, lists the user's most recent sandbox.",
+        description: "Optional sandbox ID (e.g. 'sb-a5daa2c1'). If omitted, finds the user's sandbox automatically (including after restarts).",
       },
     },
     required: [],
     additionalProperties: false,
   },
   async execute(args: Record<string, any>, context: ToolContext): Promise<ToolResult> {
-    const { getUserSandboxId, getSandboxFiles, loadSandboxFromStore } = await import("../sandbox/projectStore");
+    const { getSandboxFiles, loadSandboxFromStore, resolveUserSandboxId } = await import("../sandbox/projectStore");
 
-    let sandboxId: string | undefined = args.sandbox_id || getUserSandboxId(context.userId);
+    const sandboxId: string | undefined = args.sandbox_id || (await resolveUserSandboxId(context.userId));
 
     if (!sandboxId) {
       return { success: true, output: "No sandbox exists yet for this user. No files have been created.", data: { files: [] } };
     }
 
-    // If the server restarted and the sandbox only lives in Supabase, load it first
-    let files = getSandboxFiles(sandboxId);
-    if (files.length === 0) {
-      const loaded = await loadSandboxFromStore(sandboxId);
-      if (loaded) files = getSandboxFiles(sandboxId);
-    }
+    await loadSandboxFromStore(sandboxId);
+    const files = getSandboxFiles(sandboxId);
 
     if (files.length === 0) {
       return { success: true, output: `Sandbox ${sandboxId} exists but contains no files.`, data: { sandboxId, files: [] } };
