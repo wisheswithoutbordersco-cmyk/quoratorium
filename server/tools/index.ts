@@ -99,7 +99,9 @@ export async function runToolLoop(
   // Lazy-load tool modules to avoid circular dependency issues with esbuild bundling
   if (toolRegistry.size === 0) {
     try {
-      await import("./fileCreate");
+            await import("./fileCreate");
+      await import("./fileList");
+      await import("./fileRead");
       await import("./codeExecute");
       await import("./webResearch");
       await import("./deploy");
