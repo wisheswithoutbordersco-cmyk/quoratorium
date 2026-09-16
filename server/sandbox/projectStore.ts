@@ -1,9 +1,9 @@
 /**
  * Sandbox Project Store
- * 
+ *
  * Manages sandboxed project files for Captain Q's autonomous deployments.
  * Each user gets a sandbox with files that can be deployed to a live URL.
- * 
+ *
  * Architecture:
  * - Files stored in-memory for fast access during a session
  * - Persisted to Supabase for durability across restarts
@@ -34,7 +34,7 @@ interface Sandbox {
 // ─── In-Memory Store ────────────────────────────────────────────────────────
 
 const sandboxes: Map<string, Sandbox> = new Map();
-const userSandboxMap: Map<string, string> = new Map(); // userId → most recent sandboxId
+const userSandboxMap: Map<string, string> = Map ? new Map() : new Map(); // userId → most recent sandboxId
 
 // ─── Core Operations ────────────────────────────────────────────────────────
 
@@ -75,8 +75,13 @@ export async function addFileToSandbox(
     updatedAt: Date.now(),
   });
 
-  // Persist to Supabase (non-blocking)
-  persistSandbox(sandbox).catch(() => {});
+  // Persist to Supabase (non-blocking, but failures are now LOUD)
+  persistSandbox(sandbox).catch((err) => {
+    console.error(
+      `[projectStore] SAVE FAILED for sandbox ${sandbox.id}, file "${filename}":`,
+      err?.message || err,
+    );
+  });
 
   return { sandboxId, filename };
 }
@@ -100,10 +105,43 @@ export function getSandboxFiles(sandboxId: string): SandboxFile[] {
 }
 
 /**
- * Get the user's current sandbox ID
+ * Get the user's current sandbox ID (memory only — does not survive restarts)
  */
 export function getUserSandboxId(userId: string): string | undefined {
   return userSandboxMap.get(userId);
+}
+
+/**
+ * Resolve a user's sandbox ID: memory first, then Supabase lookup.
+ * This is what lets Q find your sandbox again after a server restart.
+ */
+export async function resolveUserSandboxId(userId: string): Promise<string | undefined> {
+  const known = userSandboxMap.get(userId);
+  if (known && sandboxes.has(known)) return known;
+
+  const supabase = getSupabaseAdmin();
+  if (!supabase) {
+    console.error("[projectStore] Supabase admin client not configured — cannot look up sandbox for user", userId);
+    return undefined;
+  }
+
+  const { data, error } = await supabase
+    .from("sandboxes")
+    .select("id")
+    .eq("user_id", userId)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  if (error) {
+    console.error(`[projectStore] Lookup failed for user ${userId}:`, error.message);
+    return undefined;
+  }
+
+  const id = data?.[0]?.id as string | undefined;
+  if (!id) return undefined;
+
+  await loadSandboxFromStore(id);
+  return id;
 }
 
 /**
@@ -129,8 +167,10 @@ export async function deploySandbox(
 
   sandbox.deployedAt = Date.now();
 
-  // Persist deployment state
-  persistSandbox(sandbox).catch(() => {});
+  // Persist deployment state (non-blocking, but failures are now LOUD)
+  persistSandbox(sandbox).catch((err) => {
+    console.error(`[projectStore] SAVE FAILED for deploy of sandbox ${sandbox.id}:`, err?.message || err);
+  });
 
   return { success: true, sandboxId: targetId };
 }
@@ -140,8 +180,8 @@ export async function deploySandbox(
  */
 export function getSandboxUrl(sandboxId: string): string {
   // Return full URL so frontend can display it correctly
-  const baseUrl = process.env.NODE_ENV === "production" 
-    ? "https://quoratorium.com" 
+  const baseUrl = process.env.NODE_ENV === "production"
+    ? "https://quoratorium.com"
     : "http://localhost:3000";
   return `${baseUrl}/sandbox/${sandboxId}/`;
 }
@@ -179,13 +219,21 @@ export async function loadSandboxFromStore(sandboxId: string): Promise<boolean> 
   if (sandboxes.has(sandboxId)) return true;
 
   const supabase = getSupabaseAdmin();
-  if (!supabase) return false;
+  if (!supabase) {
+    console.error("[projectStore] Supabase admin client not configured — cannot load sandbox", sandboxId);
+    return false;
+  }
 
-  const { data } = await supabase
+  const { data, error } = await supabase
     .from("sandboxes")
     .select("*")
     .eq("id", sandboxId)
     .single();
+
+  if (error) {
+    console.error(`[projectStore] Failed to load sandbox ${sandboxId}:`, error.message);
+    return false;
+  }
 
   if (!data) return false;
 
@@ -217,7 +265,9 @@ export async function loadSandboxFromStore(sandboxId: string): Promise<boolean> 
 
 async function persistSandbox(sandbox: Sandbox): Promise<void> {
   const supabase = getSupabaseAdmin();
-  if (!supabase) return;
+  if (!supabase) {
+    throw new Error("Supabase admin client not configured — check SUPABASE_SERVICE_ROLE_KEY env var");
+  }
 
   const fileArray = Array.from(sandbox.files.values()).map((f) => ({
     filename: f.filename,
@@ -226,7 +276,7 @@ async function persistSandbox(sandbox: Sandbox): Promise<void> {
     updatedAt: f.updatedAt,
   }));
 
-  await supabase.from("sandboxes").upsert({
+  const { error } = await supabase.from("sandboxes").upsert({
     id: sandbox.id,
     user_id: sandbox.userId,
     project_id: sandbox.projectId,
@@ -234,6 +284,10 @@ async function persistSandbox(sandbox: Sandbox): Promise<void> {
     deployed_at: sandbox.deployedAt ? new Date(sandbox.deployedAt).toISOString() : null,
     updated_at: new Date().toISOString(),
   }, { onConflict: "id" });
+
+  if (error) {
+    throw new Error(`Supabase upsert failed for sandbox ${sandbox.id}: ${error.message}`);
+  }
 }
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
