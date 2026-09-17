@@ -3,7 +3,7 @@
  */
 import { motion } from "framer-motion";
 import { TopNav } from "@/components/TopNav";
-import { ExternalLink } from "lucide-react";
+import { ExternalLink, LockKeyhole } from "lucide-react";
 
 const apps = [
   {
@@ -48,6 +48,15 @@ const apps = [
     url: "https://repositorium-production.up.railway.app",
     color: "#2d2d44",
   },
+  {
+    name: "Recyclatorium",
+    letter: "R",
+    description: "Asset Lab — Analyze, recombine, transform, and package creative assets",
+    url: "https://quoratorium.com/sandbox/sb-a5daa2c1/",
+    color: "#1a1a2e",
+    ownerOnly: true,
+    status: "Working sandbox",
+  },
 ];
 
 export default function Launchpad() {
@@ -87,12 +96,25 @@ export default function Launchpad() {
                   <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                 </div>
                 <div>
-                  <h3 className="text-lg font-semibold text-foreground">
-                    {app.name}
-                  </h3>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-lg font-semibold text-foreground">
+                      {app.name}
+                    </h3>
+                    {app.ownerOnly && (
+                      <span className="inline-flex items-center gap-1 rounded-full border border-primary/25 bg-primary/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary">
+                        <LockKeyhole className="h-3 w-3" aria-hidden="true" />
+                        Owner only
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground mt-1">
                     {app.description}
                   </p>
+                  {app.status && (
+                    <p className="mt-3 text-xs font-medium text-muted-foreground/70">
+                      {app.status}
+                    </p>
+                  )}
                 </div>
               </motion.a>
             ))}
