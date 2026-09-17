@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { CAPTAIN_Q_SYSTEM_PROMPT, CAPTAIN_Q_TOOL_GUIDANCE } from "./captainQPrompt";
 
-describe("Captain Q assistant contract", () => {
+describe("Toríu assistant contract", () => {
   it("requires semantic interpretation and direct general-assistant behavior", () => {
     expect(CAPTAIN_Q_SYSTEM_PROMPT).toContain("full message, conversation, attachments, and context");
     expect(CAPTAIN_Q_SYSTEM_PROMPT).toContain("Never decide what the user wants from one isolated keyword");

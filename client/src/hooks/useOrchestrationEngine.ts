@@ -117,7 +117,7 @@ export function useOrchestrationEngine() {
   const workers: EngineWorker[] = [
     {
       id: "captain",
-      name: "Captain Q",
+      name: "Toríu",
       type: "captain",
       status: getWorkerStatus("captain", allEvents),
       provider: "OpenAI GPT-4o",

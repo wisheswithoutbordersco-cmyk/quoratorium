@@ -1,5 +1,5 @@
 /**
- * CAPTAIN Q BACKEND v2 — QUORATORIUM ENHANCEMENTS
+ * TORÍU BACKEND v2 — QUORATORIUM ENHANCEMENTS
  * Drop this into your Railway app (Quoratorium)
  * 
  * Features:
@@ -28,8 +28,8 @@ const { createClient } = require('@supabase/supabase-js');
 const FormData = require('form-data');
 
 const router = express.Router();
-console.log('>>> CAPTAIN Q ROUTER LOADED <<<');
-router.get('/api/test', (req, res) => res.json({ ok: true, message: 'Captain Q is alive' }));
+console.log('>>> TORÍU ROUTER LOADED <<<');
+router.get('/api/test', (req, res) => res.json({ ok: true, message: 'Toríu is alive' }));
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 let supabase = null;
 try {
@@ -37,12 +37,12 @@ try {
   const sbKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY || '';
   if (sbUrl && sbKey) {
     supabase = createClient(sbUrl, sbKey);
-    console.log('[Captain Q] Supabase connected');
+    console.log('[Toríu] Supabase connected');
   } else {
-    console.warn('[Captain Q] Supabase not configured — social queue disabled');
+    console.warn('[Toríu] Supabase not configured — social queue disabled');
   }
 } catch (e) {
-  console.warn('[Captain Q] Supabase init failed:', e.message);
+  console.warn('[Toríu] Supabase init failed:', e.message);
 }
 
 
@@ -148,7 +148,7 @@ router.post('/api/tts', express.json(), async (req, res) => {
 
 // ───────────────────────────────────────────────
 // 4. PRODUCTION STUDIO PROXY
-// Call your existing studio from Captain Q
+// Call your existing studio from Toríu
 // ───────────────────────────────────────────────
 router.post('/api/studio/generate', express.json(), async (req, res) => {
   try {
@@ -186,7 +186,7 @@ router.post('/api/studio/generate', express.json(), async (req, res) => {
 
 // ───────────────────────────────────────────────
 // 5. SOCIAL MEDIA QUEUE
-// Captain Q prepares posts; Make.com (or you) picks them up
+// Toríu prepares posts; Make.com (or you) picks them up
 // ───────────────────────────────────────────────
 
 // Create the social_queue table in Supabase first:
@@ -280,7 +280,7 @@ router.post('/api/pinterest/pin', express.json(), async (req, res) => {
 });
 
 // ───────────────────────────────────────────────
-// TOOL SCHEMAS — Feed this into Captain Q's system
+// TOOL SCHEMAS — Feed this into Toríu's system
 // so he knows when to use each capability
 // ───────────────────────────────────────────────
 const CAPTAIN_Q_TOOLS = [
@@ -306,7 +306,7 @@ const CAPTAIN_Q_TOOLS = [
   },
   {
     name: 'queue_social_post',
-    description: 'Queue a post for Instagram, TikTok, Threads, or Facebook. Captain Q will write the caption and hashtags. Use this when the user says "post this" or wants to share a design.',
+    description: 'Queue a post for Instagram, TikTok, Threads, or Facebook. Toríu will write the caption and hashtags. Use this when the user says "post this" or wants to share a design.',
     parameters: { type: 'object', properties: { platform: { type: 'string', enum: ['instagram','tiktok','threads','facebook'] }, image_url: { type: 'string' }, caption: { type: 'string' }, hashtags: { type: 'string' } }, required: ['platform','caption'] }
   }
 ];
@@ -326,7 +326,7 @@ SETUP INSTRUCTIONS
    app.use(cqRouter);
 
    // Pass CAPTAIN_Q_TOOLS to your OpenRouter function-calling setup
-   // so Captain Q knows what he can do.
+   // so Toríu knows what he can do.
 
 3. ENV VARS (Railway Dashboard):
    OPENROUTER_API_KEY=sk-or-v1-...

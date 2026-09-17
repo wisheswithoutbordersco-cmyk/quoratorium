@@ -1,7 +1,7 @@
 /**
  * Sandbox Project Store
  *
- * Manages sandboxed project files for Captain Q's autonomous deployments.
+ * Manages sandboxed project files for Toríu's autonomous deployments.
  * Each user gets a sandbox with files that can be deployed to a live URL.
  *
  * Architecture:
@@ -34,7 +34,7 @@ interface Sandbox {
 // ─── In-Memory Store ────────────────────────────────────────────────────────
 
 const sandboxes: Map<string, Sandbox> = new Map();
-const userSandboxMap: Map<string, string> = Map ? new Map() : new Map(); // userId → most recent sandboxId
+const userSandboxMap: Map<string, string> = new Map(); // userId → most recent sandboxId
 
 // ─── Core Operations ────────────────────────────────────────────────────────
 

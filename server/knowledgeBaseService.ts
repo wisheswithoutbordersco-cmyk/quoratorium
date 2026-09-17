@@ -282,7 +282,7 @@ export async function clearUserKnowledge(userId: string): Promise<boolean> {
 
 /**
  * Get RAG context for a conversation query
- * This is the main entry point used by Captain Q to augment responses
+ * This is the main entry point used by Toríu to augment responses
  */
 export async function getRAGContext(userId: string, query: string): Promise<string> {
   const results = await searchKnowledge(userId, query, { threshold: 0.65, limit: 3 });

@@ -76,7 +76,7 @@ export const sharingRouter = router({
       md += `*Exported from Q Workspace on ${new Date().toISOString().split("T")[0]}*\n\n---\n\n`;
 
       for (const msg of msgs || []) {
-        const role = msg.role === "user" ? "**You**" : "**Captain Q**";
+        const role = msg.role === "user" ? "**You**" : "**Toríu**";
         md += `### ${role}\n\n${msg.content}\n\n---\n\n`;
       }
 

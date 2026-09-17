@@ -1,4 +1,4 @@
-// shopify.ts - Shopify tool for Captain Q
+// shopify.ts - Shopify tool for Toríu
 export async function shopifyTool(action: string, params: any) {
   const baseUrl = `https://${process.env.SHOPIFY_SHOP_DOMAIN}/admin/api/2024-07`
   const headers = {

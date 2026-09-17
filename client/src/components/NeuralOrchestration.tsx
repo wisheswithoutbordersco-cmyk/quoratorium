@@ -26,10 +26,10 @@ interface NeuralOrchestrationProps {
 }
 
 const WORKER_CONFIGS: Record<string, { label: string; color: string; glowColor: string }> = {
-  captain: { label: "Captain Q", color: "#7c3aed", glowColor: "rgba(124, 58, 237, 0.6)" },
+  captain: { label: "Toríu", color: "#d86618", glowColor: "rgba(216, 102, 24, 0.6)" },
   builder: { label: "Builder", color: "#3b82f6", glowColor: "rgba(59, 130, 246, 0.6)" },
   validator: { label: "Validator", color: "#10b981", glowColor: "rgba(16, 185, 129, 0.6)" },
-  research: { label: "Research", color: "#8b5cf6", glowColor: "rgba(139, 92, 246, 0.6)" },
+  research: { label: "Research", color: "#f59a44", glowColor: "rgba(245, 154, 68, 0.6)" },
   artist: { label: "Artist", color: "#f59e0b", glowColor: "rgba(245, 158, 11, 0.6)" },
   browser: { label: "Browser", color: "#06b6d4", glowColor: "rgba(6, 182, 212, 0.6)" },
   executor: { label: "Executor", color: "#f97316", glowColor: "rgba(249, 115, 22, 0.6)" },
@@ -50,7 +50,7 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
     const result: WorkerNode[] = [
       {
         id: "captain",
-        label: "Captain Q",
+        label: "Toríu",
         color: WORKER_CONFIGS.captain.color,
         glowColor: WORKER_CONFIGS.captain.glowColor,
         x: centerX,
@@ -143,7 +143,7 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
       <svg
         viewBox="0 0 100 100"
         className="w-full h-full"
-        style={{ filter: "drop-shadow(0 0 2px rgba(124, 58, 237, 0.2))" }}
+        style={{ filter: "drop-shadow(0 0 2px rgba(216, 102, 24, 0.2))" }}
       >
         {/* Connection lines from captain to each worker */}
         {nodes.slice(1).map((node) => {

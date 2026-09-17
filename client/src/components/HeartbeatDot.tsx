@@ -1,5 +1,5 @@
 /**
- * Heartbeat Dot — Tiny pulsing indicator near Captain Q's avatar during generation
+ * Heartbeat Dot — Tiny pulsing indicator near Toríu's avatar during generation
  * Part of Patent 3: Anti-Loop Heartbeat Interrupt
  */
 import { useUIStore } from "@/stores";

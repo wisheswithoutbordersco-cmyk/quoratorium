@@ -28,7 +28,7 @@ import { toast } from "sonner";
 import { HolographicCode } from "@/components/HolographicCode";
 import { LivePreview } from "@/components/LivePreview";
 import { DeployModal } from "@/components/DeployModal";
-import { QIdentity } from "@/components/QIdentity";
+import { ToriuAvatar } from "@/components/ToriuAvatar";
 import { useConversationStore, useOrchestrationStore, type Message } from "@/stores";
 import { duration, ease } from "@/lib/motion";
 import { nanoid } from "nanoid";
@@ -56,6 +56,27 @@ const safeParseInt = (val: string | null | undefined): number | undefined => {
 
 const SUPPORTED_CHAT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
 
+let activeVoiceAudio: HTMLAudioElement | null = null;
+let activeVoiceUrl: string | null = null;
+let activeVoiceRequestController: AbortController | null = null;
+
+function stopActiveVoiceAudio() {
+  activeVoiceRequestController?.abort();
+  activeVoiceRequestController = null;
+  if (activeVoiceAudio) {
+    activeVoiceAudio.pause();
+    activeVoiceAudio.currentTime = 0;
+    activeVoiceAudio = null;
+  }
+  if (activeVoiceUrl) {
+    URL.revokeObjectURL(activeVoiceUrl);
+    activeVoiceUrl = null;
+  }
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event("q:toriu-voice-stop"));
+  }
+}
+
 function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -79,6 +100,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
   const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
+  const [autoPlayMessageId, setAutoPlayMessageId] = useState<string | null>(null);
   const [activeMemoryCount, setActiveMemoryCount] = useState(0);
   const [activeKnowledgeSources, setActiveKnowledgeSources] = useState<string[]>([]);
   const [showSignUpWall, setShowSignUpWall] = useState(false);
@@ -94,6 +116,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   const [livePreviewCode, setLivePreviewCode] = useState<string | null>(null);
   const [showPreview, setShowPreview] = useState(false);
   const [showDeployModal, setShowDeployModal] = useState(false);
+  const handleVoiceStarted = useCallback(() => setAutoPlayMessageId(null), []);
   const utils = trpc.useUtils();
 
   // Owner status: when isOwner=true, bypass all guest limits and sign-up wall
@@ -112,7 +135,17 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
+    setAutoPlayMessageId(null);
+    stopActiveVoiceAudio();
   }, [activeConversationId]);
+
+  useEffect(() => {
+    return () => {
+      abortControllerRef.current?.abort();
+      stopActiveVoiceAudio();
+      setTyping(false);
+    };
+  }, [setTyping]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -140,6 +173,9 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
   const handleSend = useCallback(async () => {
     if (!input.trim() && pendingUploads.length === 0) return;
+
+    setAutoPlayMessageId(null);
+    stopActiveVoiceAudio();
 
     // Guest limit check (client-side enforcement)
     // Owner is always exempt from guest limits
@@ -329,7 +365,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 timestamp: new Date(),
               });
             } else if (event.type === "tool_mode") {
-              // Captain Q entered/exited autonomous tool-use mode
+              // Toríu entered/exited autonomous tool-use mode
               if (event.active) {
                 accumulated += "\n\n🛠️ **Using tools autonomously...**\n";
                 updateMessage(assistantId, { content: accumulated });
@@ -423,6 +459,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         setLivePreviewCode(code);
         setShowPreview(true);
       }
+
+      if (accumulated.trim()) {
+        setAutoPlayMessageId(assistantId);
+      }
     } catch (error: any) {
       if (error.name === "AbortError") return;
       updateMessage(assistantId, { content: "I encountered an issue: " + (error.message || "Please try again.") });
@@ -446,7 +486,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
       .reduce((total, attachment) => total + attachment.size, 0);
     const remainingSlots = Math.max(0, MAX_CHAT_ATTACHMENTS - pendingUploads.length);
     if (files.length > remainingSlots) {
-      toast.error(`Captain Q accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`);
+      toast.error(`Toríu accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`);
     }
     for (const file of files.slice(0, remainingSlots)) {
       if (file.type.startsWith("image/") && !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)) {
@@ -539,7 +579,13 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
         <AnimatePresence mode="popLayout">
           {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} isStreaming={msg.id === streamingMessageId} />
+            <MessageBubble
+              key={msg.id}
+              message={msg}
+              isStreaming={msg.id === streamingMessageId}
+              autoPlayVoice={msg.id === autoPlayMessageId}
+              onVoiceStarted={handleVoiceStarted}
+            />
           ))}
         </AnimatePresence>
 
@@ -551,7 +597,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             exit={{ opacity: 0, y: -4 }}
           >
             <div className="relative">
-              <QIdentity size={16} />
+              <ToriuAvatar size={18} active />
               <motion.div
                 className="absolute inset-0 rounded-full"
                 style={{ boxShadow: "0 0 8px 2px rgba(255,255,255,0.15)" }}
@@ -654,7 +700,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             value={input}
             onChange={(e) => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={!isAuthenticated && !isOwner && isGuestLimitReached() ? "Sign up to continue chatting..." : "Ask Captain Q to build, research, or validate..."}
+            placeholder={!isAuthenticated && !isOwner && isGuestLimitReached() ? "Sign up to continue chatting..." : "Ask Toríu to build, research, or validate..."}
             className="flex-1 bg-transparent text-base sm:text-sm text-foreground placeholder:text-muted-foreground/40 resize-none outline-none max-h-[120px] min-h-[44px] sm:min-h-0 py-2 sm:py-0"
             rows={1}
             disabled={!isAuthenticated && !isOwner && isGuestLimitReached()}
@@ -683,7 +729,17 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   );
 }
 
-function MessageBubble({ message, isStreaming }: { message: Message; isStreaming?: boolean }) {
+function MessageBubble({
+  message,
+  isStreaming,
+  autoPlayVoice = false,
+  onVoiceStarted,
+}: {
+  message: Message;
+  isStreaming?: boolean;
+  autoPlayVoice?: boolean;
+  onVoiceStarted?: () => void;
+}) {
   const isUser = message.role === "user";
   const [showPushDialog, setShowPushDialog] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
@@ -717,8 +773,8 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
       <div className={"max-w-[90%] sm:max-w-[85%] " + (isUser ? "order-2" : "order-1")}>
         {!isUser && (
           <div className="flex items-center gap-1.5 mb-1">
-            <QIdentity size={16} />
-            <span className="text-[9px] text-primary/60 font-medium tracking-wider uppercase">Captain Q</span>
+            <ToriuAvatar size={18} />
+            <span className="text-[9px] text-primary/60 font-medium tracking-wider uppercase">Toríu</span>
           </div>
         )}
         <div
@@ -801,14 +857,14 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
           )}
           {/* Voice TTS button - shown on assistant messages */}
           {!isUser && !isStreaming && message.content && (
-            <VoiceButton text={message.content} autoPlay={true} />
+            <VoiceButton text={message.content} autoPlay={autoPlayVoice} onAutoPlayStarted={onVoiceStarted} />
           )}
           {/* Push to GitHub button - shown after code generation */}
           {hasCode && !isStreaming && (
             <div className="mt-3 pt-2 border-t border-white/5">
               <button
                 onClick={() => setShowPushDialog(!showPushDialog)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-purple-500/10 border border-white/10 hover:border-purple-500/20 text-[11px] text-white/60 hover:text-purple-300 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all"
               >
                 <Github className="w-3.5 h-3.5" />
                 Push to GitHub
@@ -906,19 +962,31 @@ function MessageBubble({ message, isStreaming }: { message: Message; isStreaming
   );
 }
 
-function VoiceButton({ text, autoPlay }: { text: string; autoPlay?: boolean }) {
+function VoiceButton({
+  text,
+  autoPlay,
+  onAutoPlayStarted,
+}: {
+  text: string;
+  autoPlay?: boolean;
+  onAutoPlayStarted?: () => void;
+}) {
   const [playing, setPlaying] = useState(false);
   const [loading, setLoading] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const requestControllerRef = useRef<AbortController | null>(null);
   const hasAutoPlayed = useRef(false);
 
   const handlePlay = async () => {
     if (playing && audioRef.current) {
-      audioRef.current.pause();
-      audioRef.current.currentTime = 0;
-      setPlaying(false);
+      stopActiveVoiceAudio();
       return;
     }
+    stopActiveVoiceAudio();
+    requestControllerRef.current?.abort();
+    const controller = new AbortController();
+    requestControllerRef.current = controller;
+    activeVoiceRequestController = controller;
     setLoading(true);
     try {
       // Strip markdown AND tool status messages for cleaner speech
@@ -944,38 +1012,71 @@ function VoiceButton({ text, autoPlay }: { text: string; autoPlay?: boolean }) {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: cleanText, voice: 'nova' }),
+        signal: controller.signal,
       });
       if (!res.ok) throw new Error('TTS failed');
       const blob = await res.blob();
+      if (controller.signal.aborted) return;
       const url = URL.createObjectURL(blob);
       const audio = new Audio(url);
       audioRef.current = audio;
-      audio.onended = () => { setPlaying(false); URL.revokeObjectURL(url); };
-      audio.play();
+      activeVoiceAudio = audio;
+      activeVoiceUrl = url;
+      audio.onended = () => {
+        if (activeVoiceAudio === audio) activeVoiceAudio = null;
+        if (activeVoiceUrl === url) activeVoiceUrl = null;
+        setPlaying(false);
+        URL.revokeObjectURL(url);
+      };
+      await audio.play();
       setPlaying(true);
     } catch (e) {
-      console.error('[TTS]', e);
+      if ((e as Error).name !== 'AbortError') console.error('[TTS]', e);
     } finally {
-      setLoading(false);
+      if (requestControllerRef.current === controller) {
+        requestControllerRef.current = null;
+        setLoading(false);
+      }
+      if (activeVoiceRequestController === controller) {
+        activeVoiceRequestController = null;
+      }
     }
   };
 
-  // Auto-play voice when message appears (no button needed)
+  useEffect(() => {
+    const markStopped = () => setPlaying(false);
+    window.addEventListener("q:toriu-voice-stop", markStopped);
+    return () => window.removeEventListener("q:toriu-voice-stop", markStopped);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      requestControllerRef.current?.abort();
+      if (audioRef.current && activeVoiceAudio === audioRef.current) {
+        stopActiveVoiceAudio();
+      }
+    };
+  }, []);
+
+  // Restored history stays silent. Only the response that just completed live
+  // receives autoPlay=true from ConversationPanel.
   useEffect(() => {
     if (autoPlay && !hasAutoPlayed.current && text && text.length > 0) {
       hasAutoPlayed.current = true;
-      // Small delay to let the UI render first
-      const timer = setTimeout(() => handlePlay(), 500);
+      const timer = setTimeout(() => {
+        onAutoPlayStarted?.();
+        void handlePlay();
+      }, 500);
       return () => clearTimeout(timer);
     }
-  }, [autoPlay, text]);
+  }, [autoPlay, text, onAutoPlayStarted]);
 
   return (
     <div className="mt-2 pt-1.5 border-t border-white/5">
       <button
         onClick={handlePlay}
         disabled={loading}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-cyan-500/10 border border-white/10 hover:border-cyan-500/20 text-[11px] text-white/60 hover:text-cyan-300 transition-all disabled:opacity-50"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all disabled:opacity-50"
       >
         {playing ? <Square className="w-3 h-3" /> : <Volume2 className="w-3.5 h-3.5" />}
         {loading ? 'Generating...' : playing ? 'Stop' : 'Listen'}

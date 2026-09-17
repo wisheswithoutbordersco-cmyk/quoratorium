@@ -2,7 +2,7 @@
  * Global Memory tRPC Router
  * Provides frontend access to Supabase-backed persistent memory:
  * - User preferences (cross-project, cross-session)
- * - Agent memory (what Captain Q learns over time)
+ * - Agent memory (what Toríu learns over time)
  * - Knowledge base (pgvector RAG)
  */
 import { z } from "zod";

@@ -229,7 +229,7 @@ export default function Jobs() {
               </div>
               <h3 className="text-sm font-medium text-foreground/80 mb-2">No jobs in queue</h3>
               <p className="text-xs text-muted-foreground/60 max-w-sm mx-auto leading-relaxed">
-                Background tasks like AI chat completions, code generation, deployments, and research operations will appear here as they run. Jobs are created automatically when you interact with Captain Q.
+                Background tasks like AI chat completions, code generation, deployments, and research operations will appear here as they run. Jobs are created automatically when you interact with Toríu.
               </p>
             </div>
           )}

@@ -1,4 +1,4 @@
-// Durable private object-storage helpers for Captain Q.
+// Durable private object-storage helpers for Toríu.
 // Forge/S3 remains the preferred backend when configured. Railway falls back to
 // the existing Supabase service-role connection and a private storage bucket.
 

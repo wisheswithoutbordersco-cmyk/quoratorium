@@ -113,7 +113,7 @@ export function DeployModal({ projectId, projectName, onClose }: DeployModalProp
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-blue-500/20 border border-orange-500/20 flex items-center justify-center">
                 <Rocket className="w-4 h-4 text-purple-400" />
               </div>
               <div>
@@ -149,7 +149,7 @@ export function DeployModal({ projectId, projectName, onClose }: DeployModalProp
                       <button
                         key={platform.id}
                         onClick={() => handleDeploy(platform.id)}
-                        className="w-full group flex items-center gap-4 p-4 rounded-xl border border-white/5 hover:border-purple-500/20 bg-white/[0.02] hover:bg-purple-500/5 transition-all text-left"
+                        className="w-full group flex items-center gap-4 p-4 rounded-xl border border-white/5 hover:border-orange-500/20 bg-white/[0.02] hover:bg-orange-500/5 transition-all text-left"
                       >
                         <PlatformLogo platform={platform.id} />
                         <div className="flex-1">
@@ -200,7 +200,7 @@ export function DeployModal({ projectId, projectName, onClose }: DeployModalProp
                     animate={{ y: [0, -8, 0] }}
                     transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
                   >
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-purple-500/20 to-blue-500/20 border border-purple-500/20 flex items-center justify-center">
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500/20 to-blue-500/20 border border-orange-500/20 flex items-center justify-center">
                       <Rocket className="w-7 h-7 text-purple-400" />
                     </div>
                     {/* Exhaust particles */}
@@ -218,7 +218,7 @@ export function DeployModal({ projectId, projectName, onClose }: DeployModalProp
                   {/* Progress bar */}
                   <div className="w-full max-w-xs h-1.5 rounded-full bg-white/5 overflow-hidden">
                     <motion.div
-                      className="h-full rounded-full bg-gradient-to-r from-purple-500 to-blue-500"
+                      className="h-full rounded-full bg-gradient-to-r from-orange-500 to-blue-500"
                       initial={{ width: "0%" }}
                       animate={{ width: `${Math.min(progress, 100)}%` }}
                       transition={{ duration: 0.5, ease: "easeOut" }}
@@ -344,7 +344,7 @@ function PlatformLogo({ platform }: { platform: Platform }) {
       );
     case "railway":
       return (
-        <div className={`${baseClass} bg-purple-500/5 border-purple-500/20`}>
+        <div className={`${baseClass} bg-orange-500/5 border-orange-500/20`}>
           <svg viewBox="0 0 24 24" className="w-5 h-5" fill="#9B59B6">
             <path d="M.113 14.669a.757.757 0 0 0 .76.756h8.502a.757.757 0 0 0 .756-.756V5.913a.757.757 0 0 0-.756-.756H.873a.757.757 0 0 0-.76.756v8.756zm13.869 0a.757.757 0 0 0 .756.756h8.502a.757.757 0 0 0 .76-.756V5.913a.757.757 0 0 0-.76-.756h-8.502a.757.757 0 0 0-.756.756v8.756z" />
           </svg>

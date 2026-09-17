@@ -1,5 +1,5 @@
 /**
- * CAPTAIN Q — Multi-Model Intelligence Router
+ * TORÍU — Multi-Model Intelligence Router
  * 
  * Automatically picks the best AI model for each task type.
  * All models accessed through OpenRouter with one key.
@@ -22,7 +22,7 @@ const openrouter = new OpenAI({
   apiKey: OPENROUTER_KEY,
   defaultHeaders: {
     'HTTP-Referer': 'https://quoratorium.com',
-    'X-Title': 'Captain Q',
+    'X-Title': 'Toríu',
   },
 });
 
@@ -158,7 +158,7 @@ export async function smartChat(
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     {
       role: 'system',
-      content: systemPrompt || `You are Captain Q, an advanced AI assistant. You have been routed to the ${model} model because it's best suited for this type of request. Give your best answer.`,
+      content: systemPrompt || `You are Toríu, an advanced AI assistant. You have been routed to the ${model} model because it's best suited for this type of request. Give your best answer.`,
     },
     ...(history || []),
     { role: 'user', content: userMessage },
@@ -196,7 +196,7 @@ export async function handleSmartChat(req: Request, res: Response) {
     // If user forces a specific model, use it directly
     if (model) {
       const messages: OpenAI.ChatCompletionMessageParam[] = [
-        { role: 'system', content: 'You are Captain Q, an advanced AI assistant.' },
+        { role: 'system', content: 'You are Toríu, an advanced AI assistant.' },
         ...(history || []),
         { role: 'user', content: message },
       ];

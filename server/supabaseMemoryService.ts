@@ -179,7 +179,7 @@ export async function clearAllUserMemory(userId: string): Promise<boolean> {
   }
 }
 
-// ─── AGENT MEMORY (What Captain Q Learns Over Time) ──────────────────────────
+// ─── AGENT MEMORY (What Toríu Learns Over Time) ──────────────────────────
 
 /**
  * Store or update an agent memory entry
@@ -286,10 +286,10 @@ export async function clearAllAgentMemory(userId: string): Promise<boolean> {
   }
 }
 
-// ─── MEMORY CONTEXT FOR CAPTAIN Q ───────────────────────────────────────────
+// ─── MEMORY CONTEXT FOR TORÍU ───────────────────────────────────────────
 
 /**
- * Build a comprehensive memory context string for Captain Q.
+ * Build a comprehensive memory context string for Toríu.
  * Combines Supabase-stored global preferences with agent learnings.
  * This is read at the start of every conversation to personalize responses.
  */

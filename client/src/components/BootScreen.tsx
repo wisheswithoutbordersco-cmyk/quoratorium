@@ -4,7 +4,7 @@
  */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { HyperBlackQHero } from "./HyperBlackQ";
+import { ToriuAvatar } from "./ToriuAvatar";
 
 const BOOT_LINES = [
   "Initializing Quoratorium v3.0...",
@@ -12,7 +12,7 @@ const BOOT_LINES = [
   "Connecting to DeepSeek (Builder)...",
   "Connecting to Gemini (Validator)...",
   "Connecting to OpenRouter (Router)...",
-  "Calibrating Captain Q routing...",
+  "Calibrating Toríu routing...",
   "System ready.",
 ];
 
@@ -62,7 +62,7 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
       {!complete && (
         <motion.div
           className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
-          style={{ backgroundColor: "#000000" }}
+          style={{ backgroundColor: "#050302" }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
         >
@@ -71,21 +71,21 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
             <motion.div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
               style={{
-                background: "radial-gradient(circle, rgba(255,255,255,0.02) 0%, transparent 70%)",
+                background: "radial-gradient(circle, rgba(216,102,24,0.14) 0%, transparent 70%)",
               }}
               animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
             />
           </div>
 
-          {/* Q Emblem — hyper-black glass */}
+          {/* Toríu agent identity */}
           <motion.div
             className="relative mb-8"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
           >
-            {/* Subtle ambient glow — dark, no green */}
+            {/* Subtle ember glow */}
             <motion.div
               className="absolute inset-0 flex items-center justify-center"
               style={{ filter: "blur(24px)" }}
@@ -95,12 +95,17 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
               <div
                 className="w-24 h-24 rounded-full"
                 style={{
-                  background: "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)",
+                  background: "radial-gradient(circle, rgba(239,126,43,0.22) 0%, transparent 70%)",
                 }}
               />
             </motion.div>
-            <HyperBlackQHero className="relative z-10" />
+            <ToriuAvatar size={112} active className="relative z-10" />
           </motion.div>
+
+          <div className="mb-6 text-center">
+            <p className="font-display text-lg font-semibold tracking-[0.08em] text-foreground">TORÍU</p>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-primary/70">Quoratorium orchestration agent</p>
+          </div>
 
           {/* Boot text */}
           <div className="w-80 font-mono text-[10px] space-y-1 mb-6">
@@ -112,7 +117,7 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
                 animate={{ opacity: 1, x: 0 }}
                 transition={{ duration: 0.2 }}
               >
-                <span className={i === currentLine && !complete ? "text-emerald-400" : "text-emerald-500"}>
+                <span className={i === currentLine && !complete ? "text-primary" : "text-primary/60"}>
                   {i < currentLine || complete ? "✓" : "›"}
                 </span>
                 <span className={i === currentLine && !complete ? "text-foreground/80" : "text-muted-foreground/60"}>
@@ -127,8 +132,8 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
             <motion.div
               className="h-full rounded-full"
               style={{
-                background: "linear-gradient(90deg, #16a34a, #22c55e)",
-                boxShadow: "0 0 8px rgba(34,197,94,0.5)",
+                background: "linear-gradient(90deg, #9a3d0b, #ef852d)",
+                boxShadow: "0 0 10px rgba(216,102,24,0.45)",
               }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.1 }}

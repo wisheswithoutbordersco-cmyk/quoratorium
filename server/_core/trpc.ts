@@ -50,7 +50,7 @@ export const adminProcedure = t.procedure.use(
 
 /**
  * Required for procedures that can reach an external business system.
- * Normal Captain Q chat keeps the existing workspace access behavior, while
+ * Normal Toríu chat keeps the existing workspace access behavior, while
  * business procedures require a separate signed, short-lived owner session.
  */
 export const businessActionProcedure = t.procedure.use(

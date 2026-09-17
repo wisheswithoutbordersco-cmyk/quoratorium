@@ -79,7 +79,7 @@ function buildSrcdoc(code: string): string {
     .comment { color: #6b7280; }
     .keyword { color: #93c5fd; }
     .string { color: #86efac; }
-    .function { color: #c4b5fd; }
+    .function { color: #ffd0a8; }
   </style>
 </head>
 <body>

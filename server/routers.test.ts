@@ -109,7 +109,7 @@ vi.mock("./db", () => ({
 // Mock the LLM module
 vi.mock("./_core/llm", () => ({
   invokeLLM: vi.fn().mockResolvedValue({
-    choices: [{ message: { content: "Hello! I'm Captain Q. How can I help you today?" } }],
+    choices: [{ message: { content: "Hello! I'm Toríu. How can I help you today?" } }],
   }),
 }));
 
@@ -202,10 +202,10 @@ describe("ai router", () => {
   });
 
   it("sends a chat message and gets AI response", async () => {
-    const result = await caller.ai.chat({ message: "Hello Captain Q" });
+    const result = await caller.ai.chat({ message: "Hello Toríu" });
     expect(result).toBeDefined();
     expect(result.role).toBe("assistant");
-    expect(result.content).toContain("Captain Q");
+    expect(result.content).toContain("Toríu");
     expect(result.timestamp).toBeGreaterThan(0);
   });
 

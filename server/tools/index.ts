@@ -1,7 +1,7 @@
 /**
- * Captain Q — Autonomous Tool-Use Framework
+ * Toríu — Autonomous Tool-Use Framework
  * 
- * Provides a registry of tools that Captain Q can autonomously invoke
+ * Provides a registry of tools that Toríu can autonomously invoke
  * via OpenAI-style function calling. The orchestrator handles:
  * - Tool registration with typed schemas
  * - Execution of tool calls returned by the LLM
@@ -82,7 +82,7 @@ export function getTool(name: string): ToolDefinition | undefined {
 const MAX_TOOL_ITERATIONS = 50; // Safety limit to prevent infinite loops
 
 /**
- * Run Captain Q's autonomous tool-use loop:
+ * Run Toríu's autonomous tool-use loop:
  * 1. Send messages + tools to LLM
  * 2. If LLM returns tool_calls, execute them
  * 3. Feed results back and repeat until LLM responds with text
@@ -99,7 +99,7 @@ export async function runToolLoop(
   // Lazy-load tool modules to avoid circular dependency issues with esbuild bundling
   if (toolRegistry.size === 0) {
     try {
-            await import("./fileCreate");
+      await import("./fileCreate");
       await import("./fileList");
       await import("./fileRead");
       await import("./codeExecute");
@@ -108,7 +108,7 @@ export async function runToolLoop(
       await import("./generateImage");
       await import("./proposeShopifyDraft");
       await import("./scriptorium");
-await import("./extractorium");
+      await import("./extractatorium");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }
@@ -122,7 +122,7 @@ await import("./extractorium");
   // Clone messages to avoid mutating the original
   const conversationMessages = [...messages];
 
-  // Preserve the caller's full Captain Q context and append one concise tool
+  // Preserve the caller's full Toríu context and append one concise tool
   // contract. The previous implementation prepended a second, conflicting copy
   // of the assistant prompt and pushed the model toward unnecessary actions.
   if (conversationMessages[0]?.role === "system") {
@@ -167,7 +167,7 @@ await import("./extractorium");
               "Authorization": `Bearer ${openrouterKey}`,
               "Content-Type": "application/json",
               "HTTP-Referer": "https://quoratorium.com",
-              "X-Title": "Captain Q Tools",
+              "X-Title": "Toríu Tools",
             },
             body: JSON.stringify({
               model: candidate,
@@ -193,7 +193,7 @@ await import("./extractorium");
       }
     }
 
-    // A separate OpenAI call keeps Captain Q available even when OpenRouter is
+    // A separate OpenAI call keeps Toríu available even when OpenRouter is
     // configured but rejects a new model or has a temporary outage.
     if (!result && process.env.OPENAI_API_KEY) {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
@@ -229,7 +229,7 @@ await import("./extractorium");
         });
       } catch (error: any) {
         providerErrors.push(`Forge ${CAPTAIN_FORGE_MODEL}: ${error?.message || "request failed"}`);
-        throw new Error(`All Captain Q providers failed: ${providerErrors.join(" | ")}`);
+        throw new Error(`All Toríu providers failed: ${providerErrors.join(" | ")}`);
       }
     }
 

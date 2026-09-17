@@ -6,7 +6,7 @@ const URL_PATTERN = /https?:\/\/[^\s"'<>]+/i;
 const BROWSER_ACTION_PATTERN = /\b(?:open|visit|browse|read|inspect|extract|scrape|capture|screenshot)\b/i;
 
 /**
- * Deterministic routing is intentionally narrow. Captain Q's model should
+ * Deterministic routing is intentionally narrow. Toríu's model should
  * interpret conversation, research, writing, vision, creation, and tool needs
  * from the complete request rather than from isolated words.
  */

@@ -12,7 +12,7 @@ import { useOrchestrationStore } from "@/stores";
 const builderDefs = [
   {
     id: "captain",
-    name: "Captain Q",
+    name: "Toríu",
     type: "Orchestrator",
     icon: Bot,
     capabilities: ["Planning", "Routing", "Analysis", "Coordination"],
@@ -52,7 +52,7 @@ export default function Builders() {
   const getAgentStats = (agentId: string) => {
     if (!recentActivity) return { tasksCompleted: 0, lastTask: "Awaiting tasks" };
     
-    const agentName = agentId === "captain" ? "Captain Q" : 
+    const agentName = agentId === "captain" ? "Toríu" :
                       agentId === "builder" ? "Builder" :
                       agentId === "validator" ? "Validator" : "Deployer";
     

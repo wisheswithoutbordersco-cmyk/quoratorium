@@ -75,16 +75,16 @@ function getSystemPrompt(_intent: ExtendedIntent): string {
 
 function getWorkerName(intent: ExtendedIntent): string {
   switch (intent) {
-    case "browser": return "Captain Q · Browser";
-    case "execute": return `Captain Q · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
-    default: return "Captain Q";
+    case "browser": return "Toríu · Browser";
+    case "execute": return `Toríu · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
+    default: return "Toríu";
   }
 }
 
 /**
  * Only unmistakable side-effect requests bypass the general assistant. All
  * semantic interpretation—including research, images, writing, planning, and
- * tool selection—stays with the same Captain Q model.
+ * tool selection—stays with the same Toríu model.
  */
 export function detectExtendedIntent(message: string, hasImageAttachment = false): ExtendedIntent {
   return detectCaptainRoute(message, hasImageAttachment);
@@ -124,7 +124,7 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Keep ordinary Captain Q conversation on Anthony's existing owner workspace.
+    // Keep ordinary Toríu conversation on Anthony's existing owner workspace.
     // External business procedures use a separate short-lived action session.
     let userId: number | null = null;
     let isGuest = true;
@@ -860,7 +860,7 @@ async function handleMultiStepChain(
   userId: number | null,
   conversationId: number | null
 ) {
-  let assistantResponse = "🔗 **Captain Q: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n";
+  let assistantResponse = "🔗 **Toríu: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n";
   res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await executeTaskChain(
@@ -939,7 +939,7 @@ async function handleStandardChat(
   let toolsUsed: string[] = [];
   let generatedImages: Array<{ url: string; title: string }> = [];
 
-  // One capable Captain Q model interprets the complete request and decides
+  // One capable Toríu model interprets the complete request and decides
   // whether a tool is needed. A valid no-tool answer is final; it is never
   // discarded and sent through a second, inconsistent model path.
   try {
@@ -1001,7 +1001,7 @@ async function handleStandardChat(
       res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed })}\n\n`);
     }
   } catch (primaryError: any) {
-    console.warn("[Captain Q] Unified reasoning loop failed, using direct model fallback:", primaryError?.message || primaryError);
+    console.warn("[Toríu] Unified reasoning loop failed, using direct model fallback:", primaryError?.message || primaryError);
     if (process.env.OPENROUTER_API_KEY) {
       fullResponse = await streamOpenRouterCollecting(res, messages, CAPTAIN_OPENROUTER_MODEL);
     } else if (process.env.OPENAI_API_KEY) {
@@ -1281,7 +1281,7 @@ async function streamOpenRouterCollecting(
     baseURL: "https://openrouter.ai/api/v1",
     defaultHeaders: {
       "HTTP-Referer": "https://quoratorium.com",
-      "X-Title": "Captain Q",
+      "X-Title": "Toríu",
     },
   });
   const reasoning = getCaptainReasoning(model);

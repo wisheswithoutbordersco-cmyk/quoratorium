@@ -5,7 +5,7 @@ import {
   isGpt5Family,
 } from "./assistantConfig";
 
-describe("Captain Q model configuration", () => {
+describe("Toríu model configuration", () => {
   it("uses the current ChatGPT-style multimodal OpenRouter model by default", () => {
     expect(CAPTAIN_OPENROUTER_MODEL).toBe("openai/gpt-5.2-chat");
   });

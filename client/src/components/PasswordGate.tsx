@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { HyperBlackQHero } from "./HyperBlackQ";
 
 const STORAGE_KEY = "q-auth-token";
 const VALID_HASH = "a1b2c3d4"; // Simple marker — real check is server-side
@@ -47,20 +48,17 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#000000]">
+    <div className="min-h-screen flex items-center justify-center bg-[#050302] px-4">
       <div
-        className={`w-full max-w-sm mx-4 p-8 rounded-2xl bg-[#050505] border border-white/[0.06] ${shake ? "animate-shake" : ""}`}
-        style={{ boxShadow: "0 0 60px rgba(124, 58, 237, 0.08), 0 24px 48px rgba(0, 0, 0, 0.8)" }}
+        className={`w-full max-w-sm p-8 rounded-3xl bg-[#0b0704] border border-primary/20 ${shake ? "animate-shake" : ""}`}
+        style={{ boxShadow: "0 0 70px rgba(216, 102, 24, 0.12), 0 24px 48px rgba(0, 0, 0, 0.8)" }}
       >
         <div className="flex flex-col items-center gap-4 mb-8">
-          <img
-            src="/q-logo.jpg"
-            alt="Quoratorium"
-            className="w-[120px] h-auto mx-auto select-none"
-            draggable={false}
-          />
-          <h1 className="text-xl font-bold text-white tracking-wide">QUORATORIUM</h1>
-          <p className="text-sm text-white/40">Enter access code to continue</p>
+          <HyperBlackQHero className="scale-75" />
+          <div className="text-center">
+            <h1 className="font-display text-xl font-bold text-white tracking-[0.12em]">QUORATORIUM</h1>
+            <p className="mt-2 text-sm text-white/40">Enter your access code to meet Toríu.</p>
+          </div>
         </div>
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
@@ -69,15 +67,15 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
             onChange={(e) => { setPassword(e.target.value); setError(false); }}
             placeholder="Access code"
             autoFocus
-            className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-white/[0.08] text-white placeholder:text-white/30 focus:outline-none focus:border-[#7c3aed]/60 transition-colors text-center text-lg tracking-widest"
+            className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-primary/15 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/60 transition-colors text-center text-lg tracking-widest"
           />
           {error && (
             <p className="text-red-400 text-xs text-center">Invalid access code</p>
           )}
           <button
             type="submit"
-            className="w-full py-3 rounded-xl bg-[#0a0a0a] border border-[#7c3aed]/40 text-white/90 font-medium tracking-wide transition-all duration-300 hover:bg-[#0d0d0d] hover:border-[#8b5cf6]/70 hover:text-white"
-            style={{ boxShadow: "0 0 18px rgba(124, 58, 237, 0.15), inset 0 0 12px rgba(124, 58, 237, 0.06)" }}
+            className="w-full py-3 rounded-xl bg-primary border border-primary text-white font-semibold tracking-wide transition-all duration-200 hover:bg-[#e87825] hover:border-[#f59a44] active:scale-[0.97]"
+            style={{ boxShadow: "0 0 18px rgba(216, 102, 24, 0.15), inset 0 0 12px rgba(216, 102, 24, 0.06)" }}
           >
             Enter
           </button>

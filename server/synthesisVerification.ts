@@ -1,7 +1,7 @@
 /**
  * Patent 2: Synthesis Verification (Captain/Wingman Architecture)
  * 
- * When Captain Q receives a prompt:
+ * When Toríu receives a prompt:
  * 1. Distribute to multiple AI models (wingmen)
  * 2. Collect independent responses
  * 3. Compare responses, detect contradictions, identify agreement

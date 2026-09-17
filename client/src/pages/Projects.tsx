@@ -69,7 +69,7 @@ export default function Projects() {
 
   const triggerBuild = (projectId: number) => {
     setBuildingProjectId(projectId);
-    setBuildProgress("Captain Q is analyzing your project...");
+    setBuildProgress("Toríu is analyzing your project...");
     buildProject.mutate({
       projectId,
       task: newProject.description || "Build a " + newProject.projectType + " project called " + newProject.name,
@@ -166,7 +166,7 @@ export default function Projects() {
                       {(project.status === "completed" || project.current_phase > 1) && (
                         <motion.button
                           onClick={(e) => { e.stopPropagation(); setDeployModalProject({ id: project.id, name: project.name }); }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-[10px] font-medium hover:bg-purple-500/20 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 text-[10px] font-medium hover:bg-orange-500/20 transition-colors"
                           whileTap={{ scale: 0.95 }}
                         >
                           <Rocket size={10} />
@@ -198,7 +198,7 @@ export default function Projects() {
                             style={{
                               backgroundColor:
                                 i < (project.current_phase || 0)
-                                  ? project.status === "completed" ? "#10B981" : "#7C3AED"
+                                  ? project.status === "completed" ? "#10B981" : "#d86618"
                                   : "rgba(255,255,255,0.08)",
                             }}
                           />
@@ -252,7 +252,7 @@ export default function Projects() {
               {wizardStep === 1 && (
                 <>
                   <h2 className="text-base font-display text-foreground mb-1">What are you building?</h2>
-                  <p className="text-xs text-muted-foreground mb-4">Captain Q will analyze your project and create a build plan</p>
+                  <p className="text-xs text-muted-foreground mb-4">Toríu will analyze your project and create a build plan</p>
                   <div className="grid grid-cols-2 gap-2 mb-4">
                     {PROJECT_TYPES.map((type) => (
                       <button
@@ -280,7 +280,7 @@ export default function Projects() {
               {wizardStep === 2 && (
                 <>
                   <h2 className="text-base font-display text-foreground mb-1">Project Details</h2>
-                  <p className="text-xs text-muted-foreground mb-4">Describe what you want - Captain Q will break it into phases</p>
+                  <p className="text-xs text-muted-foreground mb-4">Describe what you want - Toríu will break it into phases</p>
                   <div className="space-y-3 mb-4">
                     <div>
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">
@@ -297,7 +297,7 @@ export default function Projects() {
                     </div>
                     <div>
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">
-                        What should Captain Q build?
+                        What should Toríu build?
                       </label>
                       <textarea
                         value={newProject.description}
@@ -330,7 +330,7 @@ export default function Projects() {
                     </button>
                   </div>
                   <p className="text-[9px] text-muted-foreground/40 mt-3 text-center">
-                    Captain Q will route to Builder (OpenAI) for code generation and Validator (Claude) for review
+                    Toríu will route to Builder (OpenAI) for code generation and Validator (Claude) for review
                   </p>
                 </>
               )}
@@ -357,7 +357,7 @@ function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
     active: { color: "#10B981", label: "Active" },
     paused: { color: "#F59E0B", label: "Paused" },
-    completed: { color: "#7C3AED", label: "Completed" },
+    completed: { color: "#d86618", label: "Completed" },
     archived: { color: "#8A8A9A", label: "Archived" },
   };
   const c = config[status] || { color: "#8A8A9A", label: status };

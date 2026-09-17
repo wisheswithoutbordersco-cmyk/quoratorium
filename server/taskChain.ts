@@ -57,7 +57,7 @@ export async function executeTaskChain(
       user_id: userId,
       project_id: projectId,
       event_type: "pipeline_start",
-      agent_name: "Captain Q",
+      agent_name: "Toríu",
       summary: `Task chain started: ${steps.length} steps planned`,
       payload: { steps: steps.map(s => s.name) },
     }).catch(() => {});
@@ -143,7 +143,7 @@ export async function executeTaskChain(
       user_id: userId,
       project_id: projectId,
       event_type: "pipeline_complete",
-      agent_name: "Captain Q",
+      agent_name: "Toríu",
       summary: `Task chain completed in ${Math.round(totalDuration / 1000)}s — ${steps.filter(s => s.status === "completed").length}/${steps.length} steps succeeded`,
     }).catch(() => {});
   }

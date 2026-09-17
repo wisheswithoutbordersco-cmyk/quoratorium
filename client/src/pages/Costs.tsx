@@ -21,8 +21,8 @@ function formatCost(cost: number): string {
 const MODEL_COLORS: Record<string, string> = {
   "gpt-4o": "bg-emerald-500",
   "gpt-4o-mini": "bg-emerald-300",
-  "claude-sonnet-4-20250514": "bg-purple-500",
-  "claude-3.5-sonnet": "bg-purple-500",
+  "claude-sonnet-4-20250514": "bg-orange-500",
+  "claude-3.5-sonnet": "bg-orange-500",
   "sonar": "bg-blue-500",
   "sonar-pro": "bg-blue-400",
   "dall-e-3": "bg-amber-500",

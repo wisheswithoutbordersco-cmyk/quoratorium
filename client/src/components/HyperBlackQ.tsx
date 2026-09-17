@@ -1,5 +1,5 @@
 /**
- * HyperBlackQ — Hyper-black glass Q emblem
+ * HyperBlackQ — Quoratorium's graphite-and-ember Q emblem
  *
  * Pure dark aesthetic: barely-there depth, subtle glass refraction,
  * dark-on-dark. No green, no matrix code, no colorful accents.
@@ -40,7 +40,7 @@ export function HyperBlackQ({ size = 32, state = "idle", className = "" }: Hyper
       {(state === "loading" || state === "thinking") && (
         <motion.div
           className="absolute inset-0 rounded-full"
-          style={{ border: "1px solid rgba(255,255,255,0.06)" }}
+        style={{ border: "1px solid rgba(232,122,37,0.18)" }}
           animate={{ scale: [1, 2], opacity: [0.3, 0] }}
           transition={{
             duration: state === "loading" ? 1.5 : 2,
@@ -74,9 +74,9 @@ export function HyperBlackQSmall({ className = "" }: { className?: string }) {
       style={{ width: 20, height: 20 }}
       animate={{
         filter: [
-          "drop-shadow(0 0 3px rgba(255,255,255,0.06))",
-          "drop-shadow(0 0 6px rgba(255,255,255,0.12))",
-          "drop-shadow(0 0 3px rgba(255,255,255,0.06))",
+          "drop-shadow(0 0 3px rgba(216,102,24,0.18))",
+          "drop-shadow(0 0 8px rgba(245,154,68,0.32))",
+          "drop-shadow(0 0 3px rgba(216,102,24,0.18))",
         ],
       }}
       transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
@@ -101,9 +101,9 @@ export function HyperBlackQHero({ className = "" }: { className?: string }) {
       <motion.div
         animate={{
           filter: [
-            "drop-shadow(0 0 20px rgba(255,255,255,0.04)) drop-shadow(0 0 60px rgba(255,255,255,0.02))",
-            "drop-shadow(0 0 30px rgba(255,255,255,0.08)) drop-shadow(0 0 80px rgba(255,255,255,0.04))",
-            "drop-shadow(0 0 20px rgba(255,255,255,0.04)) drop-shadow(0 0 60px rgba(255,255,255,0.02))",
+            "drop-shadow(0 0 20px rgba(216,102,24,0.18)) drop-shadow(0 0 60px rgba(216,102,24,0.08))",
+            "drop-shadow(0 0 30px rgba(245,154,68,0.28)) drop-shadow(0 0 80px rgba(216,102,24,0.12))",
+            "drop-shadow(0 0 20px rgba(216,102,24,0.18)) drop-shadow(0 0 60px rgba(216,102,24,0.08))",
           ],
         }}
         transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -145,21 +145,21 @@ function QGlassSVG({ size, state }: { size: number; state: QState }) {
 
         {/* Outer ring gradient */}
         <linearGradient id={`${id}-ring`} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.12)" />
-          <stop offset="50%" stopColor="rgba(255,255,255,0.04)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0.10)" />
+          <stop offset="0%" stopColor="rgba(255,176,100,0.55)" />
+          <stop offset="50%" stopColor="rgba(216,102,24,0.2)" />
+          <stop offset="100%" stopColor="rgba(154,61,11,0.5)" />
         </linearGradient>
 
         {/* Inner ring — barely visible */}
         <linearGradient id={`${id}-inner`} x1="100%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.06)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0.01)" />
+          <stop offset="0%" stopColor="rgba(245,154,68,0.2)" />
+          <stop offset="100%" stopColor="rgba(216,102,24,0.03)" />
         </linearGradient>
 
         {/* Tail gradient */}
         <linearGradient id={`${id}-tail`} x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="rgba(255,255,255,0.18)" />
-          <stop offset="100%" stopColor="rgba(255,255,255,0.06)" />
+          <stop offset="0%" stopColor="rgba(255,176,100,0.9)" />
+          <stop offset="100%" stopColor="rgba(216,102,24,0.55)" />
         </linearGradient>
       </defs>
 
@@ -212,7 +212,7 @@ function QGlassSVG({ size, state }: { size: number; state: QState }) {
            C70 61 61 70 50 70
            C39 70 30 61 30 50
            C30 39 39 30 50 30Z"
-        fill="rgba(255,255,255,0.055)"
+        fill="rgba(245,154,68,0.16)"
       />
 
       {/* Q tail — the distinctive diagonal stroke */}
@@ -231,14 +231,14 @@ function QGlassSVG({ size, state }: { size: number; state: QState }) {
         cx="76"
         cy="78"
         r="2.5"
-        fill="rgba(255,255,255,0.14)"
+        fill="rgba(255,176,100,0.72)"
       />
 
       {/* Top-left micro-highlight — glass refraction */}
       <path
         d="M32 30 Q38 24 46 26"
         fill="none"
-        stroke="rgba(255,255,255,0.10)"
+        stroke="rgba(255,190,126,0.32)"
         strokeWidth="1.5"
         strokeLinecap="round"
       />
@@ -251,15 +251,15 @@ function QGlassSVG({ size, state }: { size: number; state: QState }) {
 function getSVGFilter(state: QState): string {
   switch (state) {
     case "idle":
-      return "drop-shadow(0 0 4px rgba(255,255,255,0.06))";
+      return "drop-shadow(0 0 4px rgba(216,102,24,0.18))";
     case "thinking":
-      return "drop-shadow(0 0 8px rgba(255,255,255,0.12))";
+      return "drop-shadow(0 0 8px rgba(245,154,68,0.32))";
     case "loading":
-      return "drop-shadow(0 0 6px rgba(255,255,255,0.10))";
+      return "drop-shadow(0 0 6px rgba(232,122,37,0.28))";
     case "error":
       return "drop-shadow(0 0 6px rgba(239,68,68,0.20))";
     case "success":
-      return "drop-shadow(0 0 10px rgba(255,255,255,0.16))";
+      return "drop-shadow(0 0 10px rgba(245,154,68,0.4))";
   }
 }
 
@@ -268,9 +268,9 @@ function getGlowGradient(state: QState): string {
     case "error":
       return "radial-gradient(circle, rgba(239,68,68,0.08) 0%, transparent 70%)";
     case "success":
-      return "radial-gradient(circle, rgba(255,255,255,0.06) 0%, transparent 70%)";
+      return "radial-gradient(circle, rgba(245,154,68,0.14) 0%, transparent 70%)";
     default:
-      return "radial-gradient(circle, rgba(255,255,255,0.04) 0%, transparent 70%)";
+      return "radial-gradient(circle, rgba(216,102,24,0.1) 0%, transparent 70%)";
   }
 }
 

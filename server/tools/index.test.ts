@@ -28,7 +28,7 @@ describe("runToolLoop", () => {
 
     const result = await runToolLoop(
       [
-        { role: "system", content: "You are Captain Q." },
+        { role: "system", content: "You are Toríu." },
         { role: "user", content: "What is this character's name?" },
       ],
       { userId: "owner" },
@@ -41,7 +41,7 @@ describe("runToolLoop", () => {
     const payload = JSON.parse(fetchMock.mock.calls[0][1].body);
     expect(payload.model).toBe("openai/gpt-5.2-chat");
     expect(payload.tool_choice).toBe("auto");
-    expect(payload.messages[0].content.match(/You are Captain Q\./g)).toHaveLength(1);
+    expect(payload.messages[0].content.match(/You are Toríu\./g)).toHaveLength(1);
     expect(payload.messages[0].content).toContain("Tools are optional capabilities");
     const toolNames = payload.tools.map((tool: any) => tool.function.name);
     expect(toolNames).toContain("generate_image");
@@ -55,7 +55,7 @@ describe("runToolLoop", () => {
         status: 400,
         text: async () => "unsupported model",
       })
-      .mockResolvedValueOnce(response({ role: "assistant", content: "Captain Q is online." }));
+      .mockResolvedValueOnce(response({ role: "assistant", content: "Toríu is online." }));
 
     const result = await runToolLoop(
       [{ role: "user", content: "Say hello" }],
@@ -63,7 +63,7 @@ describe("runToolLoop", () => {
       "openai/unavailable-model",
     );
 
-    expect(result.response).toBe("Captain Q is online.");
+    expect(result.response).toBe("Toríu is online.");
     expect(fetchMock).toHaveBeenCalledTimes(2);
     const retryPayload = JSON.parse(fetchMock.mock.calls[1][1].body);
     expect(retryPayload.model).toBe("openai/gpt-5");

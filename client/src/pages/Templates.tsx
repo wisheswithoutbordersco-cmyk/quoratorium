@@ -43,8 +43,8 @@ const TEMPLATES: Template[] = [
     name: "AI SaaS Dashboard",
     description: "Analytics dashboard for AI/ML products with usage metrics, model performance, and billing",
     icon: BarChart3,
-    color: "#8B5CF6",
-    glow: "rgba(139,92,246,0.3)",
+    color: "#f59a44",
+    glow: "rgba(245, 154, 68,0.3)",
     prompt: "Build an AI SaaS Dashboard with: real-time API usage metrics and charts, model performance monitoring (latency, accuracy, error rates), user management with tier-based access, billing overview with usage-based pricing display, API key management, webhook configuration, and a modern dark-themed UI with gradient accents. Use React + Tailwind + Chart.js with purple/indigo color scheme.",
     category: "SaaS",
   },
@@ -181,7 +181,7 @@ export default function Templates() {
               <h1 className="text-xl font-display text-foreground">Templates Gallery</h1>
             </div>
             <p className="text-sm text-muted-foreground">
-              Start with a pre-configured template. Captain Q will generate the full project code.
+              Start with a pre-configured template. Toríu will generate the full project code.
             </p>
           </motion.div>
 

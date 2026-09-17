@@ -173,7 +173,7 @@
 
 ## UX Upgrade 1: Multi-Agent Orchestration Visual
 - [x] Build neural network graph component (SVG/CSS animated nodes and connections)
-- [x] Captain Q central node with worker nodes (Builder=blue, Validator=green, Research=purple, Artist=gold, Browser=cyan, Executor=orange)
+- [x] Toríu central node with worker nodes (Builder=blue, Validator=green, Research=purple, Artist=gold, Browser=cyan, Executor=orange)
 - [x] Animated particles/lines flowing between nodes during active tasks
 - [x] Idle state: gentle breathing/pulse, dim connections
 - [x] Active state: bright particles, pulsing nodes, glowing connections
@@ -281,9 +281,9 @@
 - [x] Enable RLS on all Supabase tables with user-scoped policies
 - [x] Build knowledge base service (store embeddings, semantic search via pgvector)
 - [x] Build global user memory service (categories: coding_style, design_preferences, frameworks, etc.)
-- [x] Build agent memory persistence service (what Captain Q learns over time)
-- [x] Wire memory into Captain Q: read user memory at conversation start
-- [x] Wire memory into Captain Q: auto-update memory from interactions
+- [x] Build agent memory persistence service (what Toríu learns over time)
+- [x] Wire memory into Toríu: read user memory at conversation start
+- [x] Wire memory into Toríu: auto-update memory from interactions
 - [x] Create tRPC routes for knowledge base CRUD and memory management
 - [x] TypeScript clean, tests pass
 - [x] Deploy publicly with owner-only visibility
@@ -487,8 +487,8 @@
 - [x] 4-tier pricing: Free ($0), Pro ($29), Business ($99), Enterprise ($499)
 - [x] Deploy publicly
 
-## Captain Q Speed & Orchestration Fix (May 24 2026)
-- [x] Find and remove 24-hour ETA from Captain Q system prompt
+## Toríu Speed & Orchestration Fix (May 24 2026)
+- [x] Find and remove 24-hour ETA from Toríu system prompt
 - [x] Rewrite system prompt: build immediately, no "I'll keep you updated" delays
 - [x] Fix orchestration panel phases to show rapid progress (30s/1-2min/30s/30s)
 - [x] Ensure build intent generates actual code immediately, not just a plan
@@ -496,9 +496,9 @@
 - [x] Deploy publicly
 
 ## Streaming & Live Activity Fix (May 24 2026)
-- [x] Rewrite Captain Q system prompt: no ETAs > 3 minutes, build immediately, no "I'll keep you updated"
+- [x] Rewrite Toríu system prompt: no ETAs > 3 minutes, build immediately, no "I'll keep you updated"
 - [x] Fix SSE streaming parser: carry-over buffer prevents dropped tokens on JSON spanning two network reads
-- [x] Add typing/thinking animation while Captain Q is processing (pulsing PROCESSING indicator)
+- [x] Add typing/thinking animation while Toríu is processing (pulsing PROCESSING indicator)
 - [x] Add blinking cursor animation during streaming response
 - [x] NaN tRPC fix: safeParseInt helper prevents NaN from non-numeric project IDs ("proj-1")
 - [x] Deploy publicly
@@ -514,7 +514,7 @@
 - [x] Mobile: full-screen overlay with close button (not split-pane)
 - [x] Preview panel toolbar: file name display + Deploy button (placeholder)
 - [x] Hyper-black glass aesthetic: subtle dark gray border, no colorful accents
-- [x] Auto-extract code blocks from Captain Q responses and render in preview
+- [x] Auto-extract code blocks from Toríu responses and render in preview
 - [x] Deploy publicly
 
 ## Patent 1: Two-Tier Sandboxed Memory System (May 24 2026)
@@ -543,7 +543,7 @@
 - [ ] Adaptive timing: shorten interval on early loop indicators
 - [ ] Heartbeat pulse animation in UI (tiny pulsing dot near avatar)
 
-## Captain Q Personality Update (May 24 2026)
+## Toríu Personality Update (May 24 2026)
 - [ ] Rewrite system prompt: conversational, direct, peer-like, with personality
 - [ ] Address user as Anthony, be a brilliant friend not a robot
 
@@ -582,7 +582,7 @@
 - [x] TypeScript clean, tests pass (48/48)
 - [x] Deploy publicly
 
-## Captain Q Personality Update (May 24 2026)
+## Toríu Personality Update (May 24 2026)
 - [x] Rewrite system prompt: conversational, direct, peer-like (no corporate-speak)
 - [x] Remove "I'd be happy to help", "processing your request", "I'll keep you updated"
 - [x] Add personality: witty when appropriate, honest about complexity, opinionated
@@ -634,7 +634,7 @@
 - [x] TypeScript clean (0 errors), tests pass (48/48)
 - [x] Deploy publicly
 
-## Captain Q Autonomous Agent Upgrade (May 24 2026)
+## Toríu Autonomous Agent Upgrade (May 24 2026)
 
 ### Tool-Use Execution Framework
 - [x] Create server/tools/index.ts — tool registry with name, description, parameters schema, execute function
@@ -643,7 +643,7 @@
 - [x] Create server/tools/webResearch.ts — call Perplexity/Sonar API for web research
 - [x] Create server/tools/deploy.ts — deploy generated code to sandboxed environment
 - [x] Build tool-use orchestrator: parse LLM tool_calls, execute tools, feed results back into conversation loop
-- [x] Support multi-step tool chains (Captain Q calls tool → gets result → decides next tool → repeats until done)
+- [x] Support multi-step tool chains (Toríu calls tool → gets result → decides next tool → repeats until done)
 - [x] Stream tool execution status to client via SSE (tool_start, tool_result, tool_error events)
 
 ### Sandboxed Deployment System
@@ -651,7 +651,7 @@
 - [x] Create GET /api/sandbox/:projectId endpoint — serves deployed project files (HTML/CSS/JS) from store
 - [x] Support multi-file projects (index.html + style.css + script.js + React bundles)
 - [x] Generate unique URLs for each deployed project (e.g., /sandbox/proj_abc123)
-- [x] Captain Q can update/fix deployed projects and the URL stays the same
+- [x] Toríu can update/fix deployed projects and the URL stays the same
 - [x] Add "View Live" link in chat when a project is deployed (sandbox_url SSE event)
 - [x] Show deployed project in the live preview panel automatically
 
@@ -659,7 +659,7 @@
 - [x] Debug why twoTierMemory.ts classifyImportance is not storing user introductions
 - [x] Add explicit pattern: "I'm [name]" / "My name is [name]" → ALWAYS store as protected memory (category: identity)
 - [x] Fix memory recall: inject stored user name into system prompt on every message (recallProtectedMemories was imported but never called!)
-- [x] Fix Captain Q identity confusion: system prompt clearly states "You ARE Captain Q" and "NEVER call the user Captain"
+- [x] Fix Toríu identity confusion: system prompt clearly states "You ARE Toríu" and "NEVER call the user Captain"
 - [x] Add memory recall at conversation start (load user's name from protected memories)
 
 ### Personality & Intent Detection Rewrite
@@ -667,7 +667,7 @@
 - [x] Conversation intent: respond naturally, no code, no markdown code blocks unless asked
 - [x] Build intent: use tools to create files, generate code, deploy
 - [x] Research intent: use web research tool, summarize findings conversationally
-- [x] Captain Q identity: he's the leader, confident, direct, peer-like — not a servant
+- [x] Toríu identity: he's the leader, confident, direct, peer-like — not a servant
 - [x] Never dump code unprompted — only when user says "build", "create", "code", "make me a..."
 
 ### Integration & Deployment
@@ -744,7 +744,7 @@
 - [x] Route primary image generation directly through the configured `OPENAI_API_KEY` and OpenAI Images API.
 - [x] Retain fal.ai exclusively as fallback after an OpenAI request fails or OpenAI is unavailable.
 - [x] Return clear provider metadata and provider-specific failure details without exposing credentials.
-- [x] Update Captain Q image tool and orchestration route so neither can force fal.ai as the primary provider.
+- [x] Update Toríu image tool and orchestration route so neither can force fal.ai as the primary provider.
 - [x] Add targeted Vitest coverage proving OpenAI is attempted first and fal.ai runs only after OpenAI failure.
 - [x] Run TypeScript checks and the relevant test suite, then record the validation results here.
 
@@ -755,13 +755,13 @@ Validation status: `server/imageGenerationService.test.ts` passes 4/4 tests, `pn
 
 Regression validation status: targeted routing coverage passes 5/5 tests, including OpenAI success with unavailable storage; `pnpm check` passes; and the production build completes successfully. Railway deployed commit `d21b241`, and the live endpoint returned `provider: openai`, `model: gpt-image-2`, and `fallbackUsed: false`. Because Railway does not provide the Manus storage credentials, the successful OpenAI image is returned as a PNG data URL instead of falling through to fal.ai.
 
-## Captain Q Image Attachment and Rendering Repair (Aug 26 2026)
-- [x] Target the deployed Quoratorium/Captain Q codebase that matches the reported mobile interface.
+## Toríu Image Attachment and Rendering Repair (Aug 26 2026)
+- [x] Target the deployed Quoratorium/Toríu codebase that matches the reported mobile interface.
 - [x] Send supported PNG, JPG, WEBP, and GIF attachment bytes to the streaming backend instead of storing only filename metadata.
 - [x] Build validated multimodal messages so GPT-4o can inspect the current upload and recent in-session image context.
 - [x] Prevent negated or conversational phrases such as “without trying to generate a picture” and “can you see the picture?” from entering image-generation mode.
 - [x] Restrict the autonomous tool loop to explicit build requests so ordinary prompt-writing and image questions stay in normal chat.
-- [x] Route ordinary and image-attached Captain Q conversation through GPT-4o for stronger general and vision responses.
+- [x] Route ordinary and image-attached Toríu conversation through GPT-4o for stronger general and vision responses.
 - [x] Render generated images as structured chat media, persist image metadata, and remove raw image URLs/base64 payloads from visible response text.
 - [x] When OpenAI image storage is unavailable, try the hosted fal.ai fallback before using inline base64 as a final safety net.
 - [x] Enforce 10 MB per image, 20 MB total, four-attachment, and supported MIME-type limits on both client and server.
@@ -769,21 +769,21 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Validation: 30/30 focused regression tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push commit `4bd9ef9` and confirm Railway reports successful deployment to `quoratorium.com`.
 
-## Captain Q Vision Over-Refusal Correction (Aug 26 2026)
-- [x] Confirm the image reaches Captain Q and the remaining failure is an overbroad model refusal, not attachment transport.
+## Toríu Vision Over-Refusal Correction (Aug 26 2026)
+- [x] Confirm the image reaches Toríu and the remaining failure is an overbroad model refusal, not attachment transport.
 - [x] Add image-only guidance that permits counting and describing visible people, characters, artwork, objects, text, and scenes.
 - [x] Preserve the restriction on naming unknown real people, confirming facial identity, or performing biometric matching.
 - [x] Require direct answers to harmless questions such as “How many people are in this picture?” without mentioning identity limitations unless identity was actually requested.
-- [x] Keep text-only Captain Q prompts unchanged.
+- [x] Keep text-only Toríu prompts unchanged.
 - [x] Validation: 31/31 focused regressions pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push commit `1870a55` and confirm Railway reports successful deployment to `quoratorium.com`.
 
-## Captain Q Systemic Intelligence Upgrade (Aug 27 2026)
-- [x] Replace keyword-first worker switching with one coherent general Captain Q assistant across streaming and alternate chat routes.
+## Toríu Systemic Intelligence Upgrade (Aug 27 2026)
+- [x] Replace keyword-first worker switching with one coherent general Toríu assistant across streaming and alternate chat routes.
 - [x] Move the primary model from GPT-4o and mixed Gemini/DeepSeek paths to the current multimodal, tool-capable `openai/gpt-5.2-chat`, with current GPT-5 Forge/OpenAI fallbacks.
 - [x] Replace the prescriptive rule pile with a semantic assistant contract that interprets the full message, history, attachments, and user context.
 - [x] Make conversation the default and reserve deterministic routing only for unmistakable browser and code-execution actions.
-- [x] Let Captain Q select web, execution, image, file, and deployment tools only when the full request requires them.
+- [x] Let Toríu select web, execution, image, file, and deployment tools only when the full request requires them.
 - [x] Keep valid no-tool answers instead of discarding them and sending the request through a second model.
 - [x] Remove generic autonomous-tool announcements; tool status appears only after an actual tool call begins.
 - [x] Separate attached-image understanding, reusable prompt writing, and explicit image creation across the system prompt and tool descriptions.
@@ -792,35 +792,35 @@ Regression validation status: targeted routing coverage passes 5/5 tests, includ
 - [x] Model-level evaluation with the actual Chucky screenshot: 5/5 scenarios passed, including “That’s Chucky,” no tool for image discussion or prompt writing, image tool for explicit creation, and web research for current information.
 - [x] Browser verification at 390×844: exact Chucky question and JPEG bytes were submitted, response rendered as “That’s Chucky,” and no autonomous-tool status appeared.
 - [x] Validation: 58 relevant automated tests pass, `pnpm check` passes, and `pnpm build` completes successfully. The broader credential-validation suite remains environment-dependent and is not part of this code change.
-- [x] Direct production verification exposed a provider/model failure after the first deployment; add ordered OpenRouter model retries plus independent OpenAI and Forge fallbacks so one provider rejection cannot take Captain Q offline.
+- [x] Direct production verification exposed a provider/model failure after the first deployment; add ordered OpenRouter model retries plus independent OpenAI and Forge fallbacks so one provider rejection cannot take Toríu offline.
 - [x] Revalidate the provider correction: 55 focused tests pass, `pnpm check` passes, and `pnpm build` completes successfully.
 - [x] Push systemic upgrade `8bc6392` and provider-fallback hotfix `816d0ad`; confirm Railway success, text smoke response, and the exact live Chucky image response on `quoratorium.com`.
 
-## Captain Q Ten-Image Capacity Upgrade (Aug 27 2026)
+## Toríu Ten-Image Capacity Upgrade (Aug 27 2026)
 - [x] Replace the hidden four-attachment cap with one shared client/server limit of 10 attachments per message.
 - [x] Preserve the existing 10 MB per-image and 20 MB combined raw-image safety limits under the 50 MB JSON request ceiling.
 - [x] Enforce remaining attachment slots across repeated file selections and show a clear limit message instead of silently dropping extras.
 - [x] Add regressions for ten images in one turn and five images followed by five more in the next turn.
 - [x] Model-level verification with ten real uploaded JPEG screenshots: all 10 were accepted, Q answered `10`, and no tool was invoked.
 - [x] Model-level verification with five screenshots plus five in the next message: Q retained both batches and answered `10`.
-- [x] Focused Captain Q tests, `pnpm check`, and `pnpm build` pass.
-- [x] Push commit `eb47b7f`, deploy through Railway, and verify all ten live attachments plus Captain Q's `10` response on `quoratorium.com`.
+- [x] Focused Toríu tests, `pnpm check`, and `pnpm build` pass.
+- [x] Push commit `eb47b7f`, deploy through Railway, and verify all ten live attachments plus Toríu's `10` response on `quoratorium.com`.
 
 ## Secure Business Action Foundation — August 27, 2026
 
-- [x] Preserve ordinary Captain Q workspace access while separating all external business procedures behind an independent owner action session.
+- [x] Preserve ordinary Toríu workspace access while separating all external business procedures behind an independent owner action session.
 - [x] Confirm Clerk's Cloudflare-hosted custom domain is blocked by a known Error 1000 conflict, remove Clerk from the business-action dependency chain, and require no further Clerk or DNS changes.
 - [x] Add a server-side owner action code verified with salted `scrypt`, five-attempt IP rate limiting, and a signed HTTP-only SameSite=Strict cookie that expires after 30 minutes.
 - [x] Persist uploaded chat images as owner-scoped durable assets, reissue signed URLs after conversation reload, and remove only conversation-owned references on deletion.
 - [x] Build the reusable action lifecycle: proposed, confirmed, executing, completed, cancelled, failed, and expired, with idempotency and concurrency-safe transitions.
-- [x] Add Captain Q's proposal-only Shopify draft tool. The model cannot contact Shopify or publish a product.
+- [x] Add Toríu's proposal-only Shopify draft tool. The model cannot contact Shopify or publish a product.
 - [x] Add owner-only proposal, edit, cancel, connect, and confirm procedures.
 - [x] Verify Shopify connections with Shopify's official client-credentials grant plus a read-only GraphQL query, require `write_products`, encrypt the permanent client ID and secret with AES-256-GCM, cache the 24-hour access token only in server memory, and renew it automatically before expiry.
 - [x] Implement the Shopify executor with `productSet`, a deterministic handle, and hard-coded `status: DRAFT`; reject any non-draft response and include no publish mutation.
 - [x] Add mobile proposal cards with Edit, Cancel, Review and confirm, a second explicit **Create DRAFT** step, and completed/failed results.
-- [x] Add a mobile business-action lock and unlock dialog; the owner code is sent only to the unlock procedure and is never returned, persisted in the database, logged, or shown to Captain Q.
-- [x] Validate 106 focused regressions across 20 files, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Captain Q access path.
-- [x] Configure one private `BUSINESS_ACTION_PIN` Railway variable and verify live: Q chat remains available while locked, Shopify procedures return 401 while locked, a valid code unlocks business controls for 30 minutes, and the code never reaches Captain Q.
+- [x] Add a mobile business-action lock and unlock dialog; the owner code is sent only to the unlock procedure and is never returned, persisted in the database, logged, or shown to Toríu.
+- [x] Validate 106 focused regressions across 20 files, TypeScript, production build, the existing 390×844 proposal UI, and the restored ordinary Toríu access path.
+- [x] Configure one private `BUSINESS_ACTION_PIN` Railway variable and verify live: Q chat remains available while locked, Shopify procedures return 401 while locked, a valid code unlocks business controls for 30 minutes, and the code never reaches Toríu.
 - [x] Add a Railway-safe private Supabase Storage fallback, fresh signed URL rehydration, per-image failure isolation, base64 redaction, and physical object cleanup on conversation deletion.
 - [x] Deploy commit `e4fe3a1` and verify a new image renders from a fresh private Supabase signed URL after a true page reload; Shopify remains disconnected and every product creation still requires the separate **Create DRAFT** confirmation.
 

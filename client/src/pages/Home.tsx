@@ -23,6 +23,7 @@ import { useSettingsStore } from "@/stores/settingsStore";
 import { trpc } from "@/lib/trpc";
 import { duration, ease } from "@/lib/motion";
 import { useAuth } from "@/_core/hooks/useAuth";
+import { getMostRecentConversation } from "@/lib/conversations";
 
 export default function Home() {
   const { user, loading } = useAuth();
@@ -48,9 +49,7 @@ export default function Home() {
     if (initialConversationRestoreAttempted.current || conversations === undefined) return;
     initialConversationRestoreAttempted.current = true;
 
-    const activeId = Number(activeConversationId);
-    const activeStillExists = Number.isInteger(activeId) && conversations.some((conversation: any) => Number(conversation.id) === activeId);
-    const selectedId = activeStillExists ? activeId : Number(conversations[0]?.id);
+    const selectedId = Number(getMostRecentConversation(conversations)?.id);
     if (!Number.isInteger(selectedId) || selectedId <= 0) return;
 
     const selectedIdString = String(selectedId);
@@ -204,7 +203,7 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Center Panel — Cognitive Zone (chat with Captain Q) */}
+        {/* Center Panel — Cognitive Zone (chat with Toríu) */}
         <motion.div
           className="flex flex-col relative surface-base flex-1 lg:border-r lg:border-border"
           layout
@@ -292,7 +291,7 @@ function HeartbeatBar() {
       <motion.div
         className="absolute inset-y-0 w-24"
         style={{
-          background: "linear-gradient(90deg, transparent, rgba(124,58,237,0.4), transparent)",
+          background: "linear-gradient(90deg, transparent, rgba(232,122,37,0.48), transparent)",
         }}
         animate={{ x: ["-100px", "calc(100vw + 100px)"] }}
         transition={{ duration: 4, repeat: Infinity, ease: "linear" }}

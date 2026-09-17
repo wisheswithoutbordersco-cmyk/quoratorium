@@ -156,7 +156,7 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
   const getStatusColor = (status: string) => {
     switch (status) {
       case "completed": return "#10B981";
-      case "active": return "#7C3AED";
+      case "active": return "#d86618";
       case "failed": return "#EF4444";
       default: return "#8A8A9A";
     }

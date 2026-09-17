@@ -11,7 +11,7 @@ const tinyPng = `data:image/png;base64,${Buffer.from("tiny-image").toString("bas
 
 describe("image analysis guidance", () => {
   it("requires harmless people counting and description without enabling identification", () => {
-    const prompt = addImageAnalysisGuidance("You are Captain Q.", 1);
+    const prompt = addImageAnalysisGuidance("You are Toríu.", 1);
 
     expect(prompt).toContain("allowed to count visible people or characters");
     expect(prompt).toContain("identify recognizable fictional characters");
@@ -22,7 +22,7 @@ describe("image analysis guidance", () => {
   });
 
   it("does not alter text-only system prompts", () => {
-    expect(addImageAnalysisGuidance("You are Captain Q.", 0)).toBe("You are Captain Q.");
+    expect(addImageAnalysisGuidance("You are Toríu.", 0)).toBe("You are Toríu.");
   });
 });
 

@@ -1,4 +1,4 @@
--- Social media post queue for Captain Q
+-- Social media post queue for Toríu
 CREATE TABLE IF NOT EXISTS public.social_queue (
   id uuid DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id text NOT NULL,

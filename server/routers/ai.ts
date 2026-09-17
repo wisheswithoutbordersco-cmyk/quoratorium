@@ -79,8 +79,8 @@ export const aiRouter = router({
       );
       const response = assistantResult.response?.trim() || "I couldn't produce a useful response. Please try that again.";
       const workerUsed = assistantResult.toolsUsed.length > 0
-        ? `Captain Q · ${assistantResult.toolsUsed.join(", ")}`
-        : "Captain Q";
+        ? `Toríu · ${assistantResult.toolsUsed.join(", ")}`
+        : "Toríu";
 
       // Save assistant response
       // Conversation persistence handled by frontend ConversationPanel
@@ -124,7 +124,7 @@ export const aiRouter = router({
         user_id: userId,
         project_id: input.projectId,
         event_type: "phase_start",
-        agent_name: "Captain Q",
+        agent_name: "Toríu",
         summary: `Planning: ${input.task.slice(0, 100)}`,
       });
 
@@ -141,7 +141,7 @@ export const aiRouter = router({
         user_id: userId,
         project_id: input.projectId,
         event_type: "plan_created",
-        agent_name: "Captain Q",
+        agent_name: "Toríu",
         summary: plan.summary,
         payload: plan as any,
       });
@@ -209,7 +209,7 @@ export const aiRouter = router({
         user_id: userId,
         project_id: input.projectId,
         event_type: "pipeline_complete",
-        agent_name: "Captain Q",
+        agent_name: "Toríu",
         summary: `Build pipeline completed — ${files.length} files generated`,
       });
 

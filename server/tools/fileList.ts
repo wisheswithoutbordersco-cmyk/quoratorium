@@ -1,6 +1,6 @@
 /**
  * Tool: list_files
- * Lists all files in the user's current (or specified) sandbox so Captain Q
+ * Lists all files in the user's current (or specified) sandbox so Toríu
  * can see what already exists — even after a server restart.
  */
 import { registerTool, type ToolContext, type ToolResult } from "./index";

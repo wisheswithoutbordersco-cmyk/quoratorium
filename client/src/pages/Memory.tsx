@@ -32,7 +32,7 @@ function getImportanceLabel(importance: number) {
 function getSourceBadge(source: string) {
   switch (source) {
     case "correction": return { label: "Auto-correction", class: "bg-red-500/10 text-red-400" };
-    case "auto_extracted": return { label: "Auto-learned", class: "bg-purple-500/10 text-purple-400" };
+    case "auto_extracted": return { label: "Auto-learned", class: "bg-orange-500/10 text-purple-400" };
     case "summary": return { label: "Summary", class: "bg-cyan-500/10 text-cyan-400" };
     default: return { label: "Manual", class: "bg-primary/10 text-primary" };
   }
@@ -157,7 +157,7 @@ export default function Memory() {
                 Agent Memory
               </h1>
               <p className="text-[11px] text-muted-foreground/50 mt-1">
-                Captain Q remembers your preferences, corrections, and context across sessions
+                Toríu remembers your preferences, corrections, and context across sessions
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -168,7 +168,7 @@ export default function Memory() {
                 whileTap={{ scale: 0.97 }}
               >
                 <GraduationCap size={13} />
-                Teach Captain
+                Teach Toríu
               </motion.button>
               <motion.button
                 onClick={openCreate}
@@ -339,7 +339,7 @@ export default function Memory() {
               <p className="text-xs text-muted-foreground/40 mt-1">
                 {search || activeFilter !== "all"
                   ? "Try adjusting your search or filter"
-                  : "Teach Captain Q about your preferences and corrections"}
+                  : "Teach Toríu about your preferences and corrections"}
               </p>
             </div>
           )}
@@ -373,14 +373,14 @@ export default function Memory() {
                 {modalMode === "edit" && <Pencil size={16} className="text-primary" />}
                 {modalMode === "create" && <Plus size={16} className="text-primary" />}
                 {modalMode === "teach"
-                  ? "Teach Captain Q"
+                  ? "Teach Toríu"
                   : modalMode === "edit"
                   ? "Edit Memory"
                   : "Add Memory"}
               </h2>
               <p className="text-[10px] text-muted-foreground/50 mb-4">
                 {modalMode === "teach"
-                  ? "Tell Captain something it should always remember — corrections have highest priority"
+                  ? "Tell Toríu something it should always remember — corrections have highest priority"
                   : "Store context that persists across all sessions"}
               </p>
 
@@ -389,7 +389,7 @@ export default function Memory() {
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder={modalMode === "teach" ? "What should Captain remember?" : "Title"}
+                  placeholder={modalMode === "teach" ? "What should Toríu remember?" : "Title"}
                   className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50"
                   autoFocus
                 />

@@ -112,7 +112,7 @@ export function MemoryDrawer() {
               <Brain className="w-8 h-8 text-white/10 mx-auto mb-3" />
               <p className="text-xs text-white/30">No protected memories yet</p>
               <p className="text-[10px] text-white/20 mt-1">
-                Captain Q will auto-save important information here
+                Toríu will auto-save important information here
               </p>
             </div>
           ) : (

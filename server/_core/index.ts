@@ -48,14 +48,14 @@ try {
     try {
       const cqModule = require(p);
       cqRouter = cqModule.router;
-      console.log('[Server] Captain Q router loaded from:', p);
+      console.log('[Server] Toríu router loaded from:', p);
       loaded = true;
       break;
     } catch { /* try next path */ }
   }
-  if (!loaded) console.warn('[Server] Captain Q not found at any path');
+  if (!loaded) console.warn('[Server] Toríu not found at any path');
 } catch (e: any) {
-  console.warn('[Server] Captain Q failed to load:', e.message);
+  console.warn('[Server] Toríu failed to load:', e.message);
 }
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -100,10 +100,10 @@ async function startServer() {
   app.use(pwaIconRouter);
 
   // Reliable image route: preconfigured GPT Image primary with one durable
-  // fal.ai GPT Image 2 fallback. Register before the legacy Captain Q router.
+  // fal.ai GPT Image 2 fallback. Register before the legacy Toríu router.
   app.use(imageGenerationRouter);
 
-  // Captain Q endpoints (TTS, image gen, social queue) — must be before Clerk middleware
+  // Toríu endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth
   if (cqRouter) app.use(cqRouter);
   app.post('/api/agent/chat', handleAgentChat);

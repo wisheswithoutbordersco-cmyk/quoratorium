@@ -491,7 +491,7 @@ export async function evacuateDangerZone(userId: string): Promise<{ evacuated: n
 
 /**
  * Build a context string from protected memories relevant to the current conversation
- * Called at the start of each response to refresh Captain Q's knowledge
+ * Called at the start of each response to refresh Toríu's knowledge
  */
 export async function recallProtectedMemories(
   userId: string,

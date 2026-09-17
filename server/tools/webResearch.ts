@@ -154,7 +154,7 @@ async function fetchOpenRouterPerplexity(query: string): Promise<string> {
       "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY}`,
       "Content-Type": "application/json",
       "HTTP-Referer": "https://quoratorium.com",
-      "X-Title": "Captain Q Research",
+      "X-Title": "Toríu Research",
     },
     body: JSON.stringify({
       model: "perplexity/sonar-pro",

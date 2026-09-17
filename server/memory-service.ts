@@ -1,5 +1,5 @@
 /**
- * CAPTAIN Q — Memory Service
+ * TORÍU — Memory Service
  *
  * Handles:
  *   1. Generating embeddings for messages (via OpenAI text-embedding-3-small)
@@ -245,7 +245,7 @@ export async function saveSessionSummary(params: {
   }
 }
 
-// ─── Build Context for Captain Q ───────────────────────
+// ─── Build Context for Toríu ───────────────────────
 // This is the main function called before Q responds
 export async function buildMemoryContext(userId: number, currentMessage: string): Promise<string> {
   let context = '';

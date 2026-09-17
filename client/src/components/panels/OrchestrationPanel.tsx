@@ -32,7 +32,7 @@ import {
 } from "lucide-react";
 import { useOrchestrationStore, useProjectStore, type OrchestrationEvent, type Agent } from "@/stores";
 import { useOrchestrationEngine } from "@/hooks/useOrchestrationEngine";
-import { QIdentity } from "@/components/QIdentity";
+import { ToriuAvatar } from "@/components/ToriuAvatar";
 import { duration, ease } from "@/lib/motion";
 
 export function OrchestrationPanel() {
@@ -110,7 +110,7 @@ function SystemPulse({ load }: { load: number }) {
       <svg className="w-full h-full -rotate-90" viewBox="0 0 24 24">
         <circle cx="12" cy="12" r="10" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="2" />
         <motion.circle
-          cx="12" cy="12" r="10" fill="none" stroke="#7C3AED" strokeWidth="2"
+          cx="12" cy="12" r="10" fill="none" stroke="#d86618" strokeWidth="2"
           strokeLinecap="round"
           strokeDasharray={2 * Math.PI * 10}
           animate={{ strokeDashoffset: 2 * Math.PI * 10 * (1 - load / 100) }}
@@ -210,7 +210,7 @@ function PhaseTracker({ phases }: { phases: { id: number; name: string; status: 
             style={{
               backgroundColor:
                 phase.status === "completed" ? "#10B981" :
-                phase.status === "active" ? "#7C3AED" :
+                phase.status === "active" ? "#d86618" :
                 phase.status === "failed" ? "#EF4444" : "rgba(255,255,255,0.08)",
             }}
             animate={phase.status === "active" ? { opacity: [0.6, 1, 0.6] } : {}}
@@ -272,7 +272,7 @@ function EventCard({ event, index }: { event: EventCardData; index: number }) {
           <div className="flex items-center gap-1.5 mb-0.5">
             {getTypeIcon(event.type)}
             <span className="text-[9px] font-medium tracking-[0.1em] uppercase text-muted-foreground/50">
-              {event.type}
+              {event.type === "captain" ? "Toríu" : event.type}
             </span>
             {event.handoffTo && (
               <span className="text-[8px] text-primary/60 flex items-center gap-0.5">
@@ -372,10 +372,10 @@ function WorkerGrid({ workers }: { workers: any[] }) {
 }
 
 function WorkerCard({ worker }: { worker: any }) {
-  // Color-coded per worker type: Builder=blue, Validator=green, Research=purple, Captain=gold
+  // Color-coded per worker type with Toríu as the warm orchestration center.
   const workerColor = getWorkerColor(worker.name);
   const isActive = worker.status === "active";
-  const statusColor = isActive ? workerColor : worker.status === "error" ? "#EF4444" : worker.status === "idle" ? "#7C3AED" : "#F59E0B";
+  const statusColor = isActive ? workerColor : worker.status === "error" ? "#EF4444" : worker.status === "idle" ? "#d86618" : "#F59E0B";
 
   return (
     <motion.div
@@ -449,9 +449,9 @@ function getWorkerColor(name: string): string {
   const n = name.toLowerCase();
   if (n.includes("builder")) return "#3B82F6"; // Blue
   if (n.includes("validator")) return "#10B981"; // Green
-  if (n.includes("research")) return "#8B5CF6"; // Purple
+  if (n.includes("research")) return "#f59a44"; // Purple
   if (n.includes("captain")) return "#F59E0B"; // Gold
-  return "#7C3AED"; // Default indigo
+  return "#d86618"; // Default indigo
 }
 
 // ─── Passive View ───────────────────────────────────────────────────────────
@@ -462,7 +462,7 @@ function PassiveView({ phases, uptime }: { phases: { status: string }[]; uptime:
 
   return (
     <div className="flex-1 flex flex-col items-center justify-center px-8 py-12">
-      <QIdentity size={64} state="idle" />
+      <ToriuAvatar size={68} active />
       <h2 className="font-display text-lg text-foreground/90 mt-6 mb-2">Working Autonomously</h2>
       <p className="text-[11px] text-muted-foreground/50 text-center mb-8 max-w-xs">
         Builders are executing tasks. Switch to Live mode for full visibility.
@@ -473,7 +473,7 @@ function PassiveView({ phases, uptime }: { phases: { status: string }[]; uptime:
         <svg className="w-full h-full -rotate-90" viewBox="0 0 112 112">
           <circle cx="56" cy="56" r="48" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="4" />
           <motion.circle
-            cx="56" cy="56" r="48" fill="none" stroke="#7C3AED" strokeWidth="4"
+            cx="56" cy="56" r="48" fill="none" stroke="#d86618" strokeWidth="4"
             strokeLinecap="round"
             strokeDasharray={2 * Math.PI * 48}
             animate={{ strokeDashoffset: 2 * Math.PI * 48 * (1 - progress / 100) }}

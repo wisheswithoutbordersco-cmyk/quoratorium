@@ -1,510 +1,383 @@
-/**
- * Quoratorium Landing Page
- * Full hyper-black monochrome aesthetic with sharp edges and glass tiles
- */
 import { motion } from "framer-motion";
 import { Link } from "wouter";
-import { ArrowRight, Zap, CheckCircle2, Github, Twitter, Mail } from "lucide-react";
-import { useEffect, useState } from "react";
+import {
+  ArrowRight,
+  ArrowUpRight,
+  Bot,
+  Check,
+  CheckCircle2,
+  Code2,
+  Flower2,
+  Gem,
+  HeartHandshake,
+  Layers3,
+  Play,
+  Rocket,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  SunMedium,
+} from "lucide-react";
 import { HyperBlackQSmall } from "@/components/HyperBlackQ";
 
-// Ambient purple glow background
-function MatrixBackground() {
-  const [chars, setChars] = useState<Array<{ id: string; x: number; y: number; char: string; opacity: number }>>([]);
+const TORIU_HERO = "https://files.manuscdn.com/user_upload_by_module/session_file/310519663555998255/TWeyhcgdWxqFDZxk.png";
 
-  useEffect(() => {
-    const matrix = "01アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン";
-    const newChars = Array.from({ length: 80 }, (_, i) => ({
-      id: `${i}`,
-      x: Math.random() * 100,
-      y: Math.random() * 100,
-      char: matrix[Math.floor(Math.random() * matrix.length)],
-      opacity: Math.random() * 0.12 + 0.02,
-    }));
-    setChars(newChars);
+const orchestrationAgents = [
+  {
+    icon: Code2,
+    name: "Builder",
+    model: "Creates the solution",
+    copy: "Turns your intent into production-ready code, files, and working interfaces.",
+  },
+  {
+    icon: Search,
+    name: "Researcher",
+    model: "Finds the right context",
+    copy: "Investigates requirements, patterns, and sources before decisions are made.",
+  },
+  {
+    icon: CheckCircle2,
+    name: "Validator",
+    model: "Protects the outcome",
+    copy: "Reviews quality, security, and completeness before work reaches you.",
+  },
+  {
+    icon: Rocket,
+    name: "Deployer",
+    model: "Ships with confidence",
+    copy: "Packages and moves approved work from the workspace into the world.",
+  },
+];
 
-    const interval = setInterval(() => {
-      setChars((prev) =>
-        prev.map((c) => ({
-          ...c,
-          y: (c.y + Math.random() * 2 - 1) % 100,
-          char: matrix[Math.floor(Math.random() * matrix.length)],
-          opacity: Math.random() * 0.12 + 0.02,
-        }))
-      );
-    }, 200);
+const values = [
+  {
+    icon: SunMedium,
+    eyebrow: "Orange",
+    title: "Energy with purpose",
+    copy: "Warm, capable momentum that turns an idea into meaningful action.",
+  },
+  {
+    icon: Gem,
+    eyebrow: "Pearl",
+    title: "Clarity and wellbeing",
+    copy: "Calm guidance, considered choices, and a workspace that never feels chaotic.",
+  },
+  {
+    icon: ShieldCheck,
+    eyebrow: "Bull",
+    title: "Stability you can trust",
+    copy: "Dependable execution, careful validation, and strong safeguards at every step.",
+  },
+  {
+    icon: Flower2,
+    eyebrow: "Carnation",
+    title: "Care in every interaction",
+    copy: "A helpful presence that listens, remembers context, and stays by your side.",
+  },
+];
 
-    return () => clearInterval(interval);
-  }, []);
+const plans = [
+  {
+    name: "Free",
+    price: "$0",
+    copy: "A simple way to meet Toríu and explore the workspace.",
+    features: ["5 messages per day", "Core orchestration", "Community support"],
+    cta: "Get started",
+  },
+  {
+    name: "Pro",
+    price: "$29",
+    copy: "For independent builders who want to move faster.",
+    features: ["Unlimited conversations", "All specialist agents", "Project memory", "Custom deployments"],
+    cta: "Start free trial",
+    featured: true,
+  },
+  {
+    name: "Business",
+    price: "$99",
+    copy: "For growing teams coordinating real work.",
+    features: ["Everything in Pro", "Team collaboration", "Advanced analytics", "Priority support"],
+    cta: "Contact sales",
+  },
+];
 
+function BrandMark({ compact = false }: { compact?: boolean }) {
   return (
-    <div className="fixed inset-0 overflow-hidden pointer-events-none bg-black">
-      <div
-        className="absolute left-1/2 top-0 -translate-x-1/2 w-[900px] h-[900px] rounded-full blur-[160px]"
-        style={{ background: "radial-gradient(circle, rgba(124,58,237,0.10) 0%, transparent 70%)" }}
-      />
-      {chars.map((c) => (
-        <div
-          key={c.id}
-          className="absolute font-mono text-[10px] text-[#7c3aed]/30"
-          style={{
-            left: `${c.x}%`,
-            top: `${c.y}%`,
-            opacity: c.opacity,
-            textShadow: "0 0 8px rgba(124, 58, 237, 0.2)",
-          }}
-        >
-          {c.char}
-        </div>
-      ))}
+    <div className="flex items-center gap-3">
+      <div className="brand-mark-shell">
+        <HyperBlackQSmall className="h-7 w-7" />
+      </div>
+      {!compact && (
+        <span className="font-display text-sm font-bold tracking-[0.18em] text-[#fff8f2] sm:text-base">
+          QUORATORIUM
+        </span>
+      )}
     </div>
   );
 }
 
-// Glass tile component with sharp edges
-function GlassTile({ children, className = "" }: { children: React.ReactNode; className?: string }) {
-  return (
-    <div
-      className={`relative backdrop-blur-xl bg-white/[0.02] border border-white/[0.05] rounded-none overflow-hidden group hover:border-[#7c3aed]/30 transition-all duration-300 ${className}`}
-      style={{
-        boxShadow: "0 8px 32px rgba(0, 0, 0, 0.7), inset 0 1px 1px rgba(255, 255, 255, 0.02)",
-      }}
-    >
-      {/* Subtle glow on hover */}
-      <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity duration-300 pointer-events-none">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#7c3aed]/[0.06] via-transparent to-transparent" />
-      </div>
-      {children}
-    </div>
-  );
+function EmberCard({ children, className = "" }: { children: React.ReactNode; className?: string }) {
+  return <div className={`ember-card ${className}`}>{children}</div>;
 }
 
 export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-[#000000] text-white overflow-hidden">
-      <MatrixBackground />
+    <div className="min-h-screen overflow-hidden bg-[#050302] text-[#fff8f2]">
+      <div className="fixed inset-0 pointer-events-none opacity-80" aria-hidden="true">
+        <div className="absolute left-[-20%] top-[-18rem] h-[42rem] w-[42rem] rounded-full bg-[#8f3408]/15 blur-[150px]" />
+        <div className="absolute right-[-18rem] top-[28rem] h-[42rem] w-[42rem] rounded-full bg-[#d86618]/10 blur-[170px]" />
+        <div className="ember-grid absolute inset-0" />
+      </div>
 
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 backdrop-blur-xl bg-black/70 border-b border-white/[0.05]">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <HyperBlackQSmall className="w-8 h-8" />
-            <span className="font-display text-sm tracking-widest text-white/90 uppercase hidden sm:inline">
-              Quoratorium
-            </span>
+      <nav className="fixed inset-x-0 top-0 z-50 border-b border-[#f28c38]/10 bg-[#050302]/80 backdrop-blur-2xl">
+        <div className="mx-auto flex h-[72px] max-w-7xl items-center justify-between px-5 sm:px-8">
+          <Link href="/" aria-label="Quoratorium home">
+            <BrandMark />
+          </Link>
+          <div className="hidden items-center gap-8 md:flex">
+            <a href="#orchestration" className="nav-link">Orchestration</a>
+            <a href="#values" className="nav-link">Values</a>
+            <a href="#pricing" className="nav-link">Pricing</a>
           </div>
-          <Link
-            href="/workspace"
-            className="px-4 py-2 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/40 text-white text-xs font-medium hover:border-[#8b5cf6]/70 transition-colors"
-            style={{ boxShadow: "0 0 16px rgba(124, 58, 237, 0.12)" }}
-          >
-            Enter Workspace
+          <Link href="/workspace" className="ember-button ember-button-small">
+            Enter workspace
+            <ArrowUpRight size={14} />
           </Link>
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="relative pt-32 pb-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-5xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.8 }}
-            className="text-center"
-          >
-            {/* Hero — Q logo */}
+      <main className="relative">
+        <section className="relative min-h-[760px] border-b border-[#f28c38]/10 pt-[72px] lg:min-h-[820px]">
+          <div className="mx-auto grid max-w-7xl items-center px-5 py-16 sm:px-8 lg:grid-cols-[0.9fr_1.1fr] lg:py-20">
             <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.9 }}
-              className="relative flex items-center justify-center mb-10"
+              initial={{ opacity: 0, y: 22 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.65, ease: [0.23, 1, 0.32, 1] }}
+              className="relative z-10 max-w-2xl"
             >
-              <div
-                className="absolute w-[420px] h-[420px] rounded-full blur-[120px] pointer-events-none"
-                style={{ background: "radial-gradient(circle, rgba(124,58,237,0.18) 0%, transparent 70%)" }}
-              />
+              <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#e77a25]/25 bg-[#e77a25]/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ffb065]">
+                <Sparkles size={13} />
+                Trusted multi-model orchestration
+              </div>
+              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.26em] text-[#d77a2c]">Meet Toríu</p>
+              <h1 className="font-display max-w-[820px] text-5xl font-bold leading-[0.94] tracking-[-0.055em] text-[#fff9f4] sm:text-6xl lg:text-[5.6rem]">
+                Your ideas,
+                <span className="block ember-text">orchestrated.</span>
+              </h1>
+              <p className="mt-7 max-w-xl text-base leading-8 text-[#cdbeb3] sm:text-lg">
+                Toríu is your trustworthy orchestration agent inside Quoratorium—coordinating specialized AI models to research, build, validate, and ship the work that matters.
+              </p>
+              <div className="mt-9 flex flex-col gap-3 sm:flex-row">
+                <Link href="/workspace" className="ember-button">
+                  Start building with Toríu
+                  <ArrowRight size={17} />
+                </Link>
+                <a href="#how" className="ember-button-secondary">
+                  <Play size={15} fill="currentColor" />
+                  See how it works
+                </a>
+              </div>
+              <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-xs text-[#9f8f84]">
+                {["One conversation", "Multiple specialists", "You stay in control"].map((item) => (
+                  <span key={item} className="flex items-center gap-2">
+                    <Check size={13} className="text-[#ee852c]" /> {item}
+                  </span>
+                ))}
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, x: 24 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.12, duration: 0.8, ease: [0.23, 1, 0.32, 1] }}
+              className="relative -mx-5 mt-12 min-h-[510px] overflow-hidden sm:mx-0 lg:mt-0 lg:min-h-[680px]"
+            >
+              <div className="absolute inset-0 rounded-[2rem] border border-[#ff983e]/15 bg-[#0b0502] shadow-[0_35px_120px_rgba(139,49,4,0.28)] lg:rounded-[2.6rem]" />
               <img
-                src="/q-logo.jpg"
-                alt="Quoratorium"
-                className="relative w-[240px] sm:w-[300px] h-auto select-none"
+                src={TORIU_HERO}
+                alt="Toríu, Quoratorium's friendly orchestration agent"
+                className="absolute inset-0 h-full w-full object-cover object-[58%_center]"
                 draggable={false}
               />
+              <div className="absolute inset-0 bg-gradient-to-t from-[#050302] via-transparent to-transparent opacity-35" />
+              <div className="absolute bottom-5 left-5 right-5 flex items-center justify-between rounded-2xl border border-[#ff9a44]/20 bg-[#090503]/78 p-4 backdrop-blur-xl sm:bottom-7 sm:left-7 sm:right-auto sm:w-[320px]">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-[#ff9b45]/35 bg-[#d86116]/15 text-sm font-bold text-[#ff9b45]">T</div>
+                  <div>
+                    <p className="text-sm font-semibold text-[#fff8f2]">Toríu is ready</p>
+                    <p className="mt-0.5 text-[11px] text-[#aa9689]">Listening, planning, orchestrating</p>
+                  </div>
+                </div>
+                <span className="h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_12px_rgba(52,211,153,.8)]" />
+              </div>
             </motion.div>
-
-            <h1 className="font-display text-5xl sm:text-6xl lg:text-7xl tracking-tight mb-6 leading-tight">
-              <span className="text-white">The AI That</span>
-              <br />
-              <span className="text-white">Builds For You</span>
-            </h1>
-            <p className="text-lg sm:text-xl text-white/60 mb-8 max-w-2xl mx-auto leading-relaxed">
-              Captain Q orchestrates a neural network of specialized AI agents — Builder, Validator, Researcher — to generate, validate, and deploy real applications in seconds.
-            </p>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.3, duration: 0.6 }}
-              className="flex flex-col sm:flex-row gap-4 justify-center mb-16"
-            >
-              <Link
-                href="/workspace"
-                className="px-8 py-4 rounded-none bg-[#7c3aed] text-white font-medium text-sm hover:bg-[#8b5cf6] transition-all duration-300 flex items-center justify-center gap-2 group"
-                style={{ boxShadow: "0 0 28px rgba(124, 58, 237, 0.28)" }}
-              >
-                Try It Free
-                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-              <button
-                className="px-8 py-4 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/40 text-white font-medium text-sm hover:border-[#8b5cf6]/70 transition-all duration-300"
-                style={{ boxShadow: "0 0 18px rgba(124, 58, 237, 0.12)" }}
-              >
-                Watch Demo
-              </button>
-            </motion.div>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* What It Does Section */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            className="mb-16"
-          >
-            <h2 className="font-display text-4xl sm:text-5xl tracking-tight mb-4 text-white/90">
-              Multi-AI Orchestration
-            </h2>
-            <p className="text-lg text-white/60 max-w-2xl">
-              Instead of switching between tools, Captain Q coordinates a team of specialized AI agents working in parallel to deliver production-ready code.
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {[
-              {
-                icon: "Q",
-                title: "Captain Q",
-                description: "Orchestrates all agents, breaks down complex tasks into steps, and ensures quality at every stage.",
-              },
-              {
-                icon: "⚡",
-                title: "Builder Agent",
-                description: "Generates production-ready code in React, Node.js, Python, and more using advanced AI models.",
-              },
-              {
-                icon: "✓",
-                title: "Validator Agent",
-                description: "Reviews generated code for correctness, security, and best practices using Claude.",
-              },
-            ].map((item, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.6 }}
-              >
-                <GlassTile className="h-full p-6">
-                  <div className="w-12 h-12 rounded-none bg-white/[0.08] border border-white/[0.1] p-2.5 mb-4 flex items-center justify-center text-white/80 font-display text-lg">
-                    {item.icon}
-                  </div>
-                  <h3 className="font-display text-lg mb-2 text-white/90">{item.title}</h3>
-                  <p className="text-sm text-white/60 leading-relaxed">{item.description}</p>
-                </GlassTile>
-              </motion.div>
-            ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* How It Works Section */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            className="mb-16"
-          >
-            <h2 className="font-display text-4xl sm:text-5xl tracking-tight mb-4 text-white/90">
-              How It Works
-            </h2>
-            <p className="text-lg text-white/60 max-w-2xl">
-              From idea to deployed application in three simple steps.
-            </p>
-          </motion.div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <section className="border-b border-[#f28c38]/10 bg-[#080402]">
+          <div className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-[#f28c38]/10 px-5 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
-              {
-                step: "1",
-                title: "Describe",
-                description: "Tell Captain Q what you want to build. Be as specific or vague as you like.",
-              },
-              {
-                step: "2",
-                title: "Build",
-                description: "Captain Q coordinates agents to generate, validate, and refine your code in real-time.",
-              },
-              {
-                step: "3",
-                title: "Deploy",
-                description: "One-click deployment to Vercel, Netlify, or Railway. Your app is live instantly.",
-              },
-            ].map((item, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -20 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                transition={{ delay: i * 0.15, duration: 0.6 }}
-                className="relative"
-              >
-                <GlassTile className="p-8">
-                  <div className="w-12 h-12 rounded-none bg-white/[0.08] border border-white/[0.1] flex items-center justify-center mb-4">
-                    <span className="font-display text-xl text-white/80">{item.step}</span>
+              [ShieldCheck, "Protection", "Your work and data are handled with care."],
+              [Layers3, "Identity", "Your intent stays central from start to finish."],
+              [HeartHandshake, "Friendliness", "Clear guidance without needless complexity."],
+            ].map(([Icon, title, copy]) => {
+              const ValueIcon = Icon as typeof ShieldCheck;
+              return (
+                <div key={String(title)} className="flex items-start gap-4 py-7 md:px-7 first:pl-0 last:pr-0">
+                  <ValueIcon size={20} className="mt-0.5 shrink-0 text-[#e77a25]" />
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#f5a35d]">{String(title)}</p>
+                    <p className="mt-1 text-sm leading-6 text-[#9f8f84]">{String(copy)}</p>
                   </div>
-                  <h3 className="font-display text-xl mb-3 text-white/90">{item.title}</h3>
-                  <p className="text-sm text-white/60 leading-relaxed">{item.description}</p>
-                </GlassTile>
-                {i < 2 && (
-                  <div className="hidden md:block absolute -right-4 top-1/2 -translate-y-1/2 text-white/[0.15]">
-                    <ArrowRight size={24} />
-                  </div>
-                )}
-              </motion.div>
-            ))}
+                </div>
+              );
+            })}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* Live Demo Section */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-6xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            className="mb-8"
-          >
-            <h2 className="font-display text-4xl sm:text-5xl tracking-tight mb-4 text-white/90">
-              See It In Action
-            </h2>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, scale: 0.95 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.8 }}
-          >
-            <GlassTile className="p-1 overflow-hidden">
-              <div className="relative aspect-video bg-gradient-to-br from-white/[0.02] via-black to-black flex items-center justify-center">
-                <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIE0gMCA2MCBMIDYwIDYwIiBmaWxsPSJub25lIiBzdHJva2U9InJnYmEoMjU1LCAyNTUsIDI1NSwgMC4wMykiIHN0cm9rZS13aWR0aD0iMSIvPjwvcGF0dGVybj48L2RlZnM+PHJlY3Qgd2lkdGg9IjYwIiBoZWlnaHQ9IjYwIiBmaWxsPSJ1cmwoI2dyaWQpIi8+PC9zdmc+')] opacity-30" />
-                <div className="relative text-center">
-                  <div className="w-16 h-16 rounded-none bg-[#0a0a0a] border border-[#7c3aed]/30 flex items-center justify-center mx-auto mb-4">
-                    <Zap size={32} className="text-[#8b5cf6]/70 animate-pulse" />
+        <section id="orchestration" className="relative py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
+              <div className="lg:sticky lg:top-28 lg:self-start">
+                <p className="section-kicker">One guide. Many specialists.</p>
+                <h2 className="section-title">Toríu keeps the whole team moving as one.</h2>
+                <p className="section-copy">
+                  You speak with one trusted agent. Behind the scenes, Toríu chooses the right specialist, preserves context, and checks the work before it comes back to you.
+                </p>
+                <div className="mt-8 rounded-2xl border border-[#f28c38]/15 bg-[#d86116]/[0.06] p-5">
+                  <div className="flex items-center gap-3">
+                    <Bot size={19} className="text-[#ff9b45]" />
+                    <span className="text-sm font-semibold text-[#fff4ea]">Toríu coordinates the handoffs</span>
                   </div>
-                  <p className="text-white/60 text-sm">Live workspace preview coming soon</p>
+                  <p className="mt-2 text-sm leading-6 text-[#a9978a]">Less tool switching. Less lost context. More finished work.</p>
                 </div>
               </div>
-            </GlassTile>
-          </motion.div>
-        </div>
-      </section>
 
-      {/* Pricing Section */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-7xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
-            transition={{ duration: 0.6 }}
-            className="mb-16 text-center"
-          >
-            <h2 className="font-display text-4xl sm:text-5xl tracking-tight mb-4 text-white/90">
-              Simple Pricing
-            </h2>
-            <p className="text-lg text-white/60 max-w-2xl mx-auto">
-              Start free. Scale as you grow.
-            </p>
-          </motion.div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {orchestrationAgents.map((agent, index) => (
+                  <motion.div
+                    key={agent.name}
+                    initial={{ opacity: 0, y: 18 }}
+                    whileInView={{ opacity: 1, y: 0 }}
+                    viewport={{ once: true, margin: "-80px" }}
+                    transition={{ delay: index * 0.07, duration: 0.45 }}
+                  >
+                    <EmberCard className="h-full p-6 sm:p-7">
+                      <div className="mb-10 flex items-center justify-between">
+                        <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-[#ef852d]/20 bg-[#ef852d]/10 text-[#f49543]">
+                          <agent.icon size={19} />
+                        </div>
+                        <span className="font-mono text-[10px] uppercase tracking-[0.15em] text-[#7f6d61]">Agent 0{index + 1}</span>
+                      </div>
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-[#d97524]">{agent.model}</p>
+                      <h3 className="mt-2 font-display text-2xl font-semibold text-[#fff8f2]">{agent.name}</h3>
+                      <p className="mt-3 text-sm leading-7 text-[#a9978a]">{agent.copy}</p>
+                    </EmberCard>
+                  </motion.div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-            {[
-              {
-                name: "Free",
-                price: "$0",
-                description: "Perfect for trying it out",
-                features: ["5 messages/day", "Basic agents", "Community support"],
-                cta: "Get Started",
-              },
-              {
-                name: "Pro",
-                price: "$29",
-                description: "For serious builders",
-                features: ["Unlimited messages", "All agents", "Priority support", "Custom deployments"],
-                cta: "Start Free Trial",
-              },
-              {
-                name: "Business",
-                price: "$99",
-                description: "For growing teams",
-                features: ["Everything in Pro", "Team collaboration", "Advanced analytics", "Dedicated support"],
-                cta: "Contact Sales",
-              },
-              {
-                name: "Enterprise",
-                price: "$499",
-                description: "For organizations",
-                features: ["Everything in Business", "Custom agents", "On-premise option", "SLA & white-label"],
-                cta: "Contact Sales",
-              },
-            ].map((plan, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1, duration: 0.6 }}
-              >
-                <GlassTile className="p-8 h-full flex flex-col">
-                  <h3 className="font-display text-2xl mb-2 text-white/90">{plan.name}</h3>
-                  <p className="text-sm text-white/60 mb-4">{plan.description}</p>
-                  <div className="mb-6">
-                    <span className="font-display text-4xl text-white/90">{plan.price}</span>
-                    {plan.price !== "Custom" && <span className="text-white/60 text-sm">/month</span>}
+        <section id="how" className="border-y border-[#f28c38]/10 bg-[#080402] py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="max-w-2xl">
+              <p className="section-kicker">A calmer way to build</p>
+              <h2 className="section-title">From first thought to finished work.</h2>
+            </div>
+            <div className="mt-14 grid gap-px overflow-hidden rounded-3xl border border-[#f28c38]/12 bg-[#f28c38]/12 lg:grid-cols-3">
+              {[
+                ["01", "Tell Toríu", "Describe the outcome in your own words. Add files, examples, or constraints whenever you need."],
+                ["02", "Watch the work", "Toríu forms a plan, coordinates the right agents, and keeps every step visible in one conversation."],
+                ["03", "Review and ship", "Inspect the result, ask for refinements, and deploy only when the work feels right."],
+              ].map(([step, title, copy]) => (
+                <div key={step} className="bg-[#090503] p-7 sm:p-9">
+                  <span className="font-mono text-xs text-[#d76a1b]">{step}</span>
+                  <h3 className="mt-10 font-display text-2xl font-semibold text-[#fff8f2]">{title}</h3>
+                  <p className="mt-3 text-sm leading-7 text-[#9f8f84]">{copy}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section id="values" className="py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="grid gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-20">
+              <div>
+                <p className="section-kicker">The meaning behind Toríu</p>
+                <h2 className="section-title">Guided by values. Driven by purpose.</h2>
+                <p className="section-copy">Toríu is designed to feel capable without feeling cold—an agent with the steadiness to protect your work and the warmth to help you move forward.</p>
+              </div>
+              <div className="grid gap-4 sm:grid-cols-2">
+                {values.map((value) => (
+                  <EmberCard key={value.eyebrow} className="p-6">
+                    <value.icon size={20} className="text-[#ef852d]" />
+                    <p className="mt-8 text-[10px] font-bold uppercase tracking-[0.18em] text-[#d66b1d]">{value.eyebrow}</p>
+                    <h3 className="mt-2 text-lg font-semibold text-[#fff8f2]">{value.title}</h3>
+                    <p className="mt-2 text-sm leading-6 text-[#9f8f84]">{value.copy}</p>
+                  </EmberCard>
+                ))}
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section id="pricing" className="border-y border-[#f28c38]/10 bg-[#080402] py-24 sm:py-32">
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="mx-auto max-w-2xl text-center">
+              <p className="section-kicker">Simple pricing</p>
+              <h2 className="section-title">Start with one conversation.</h2>
+              <p className="section-copy mx-auto">Choose the pace that fits your work. Every plan keeps Toríu at the center.</p>
+            </div>
+            <div className="mt-14 grid gap-5 lg:grid-cols-3">
+              {plans.map((plan) => (
+                <EmberCard key={plan.name} className={`flex h-full flex-col p-7 sm:p-8 ${plan.featured ? "ember-card-featured" : ""}`}>
+                  {plan.featured && <span className="mb-5 w-fit rounded-full bg-[#d76617] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white">Most popular</span>}
+                  <h3 className="font-display text-2xl font-semibold">{plan.name}</h3>
+                  <p className="mt-2 min-h-12 text-sm leading-6 text-[#9f8f84]">{plan.copy}</p>
+                  <div className="mt-7 flex items-end gap-1">
+                    <span className="font-display text-5xl font-bold tracking-[-0.05em]">{plan.price}</span>
+                    <span className="pb-1 text-sm text-[#7f6d61]">/ month</span>
                   </div>
-                  <ul className="space-y-3 mb-8 flex-1">
-                    {plan.features.map((feature, j) => (
-                      <li key={j} className="flex items-start gap-3">
-                        <CheckCircle2 size={16} className="text-white/40 mt-0.5 flex-shrink-0" />
-                        <span className="text-sm text-white/70">{feature}</span>
+                  <ul className="mt-8 flex-1 space-y-3">
+                    {plan.features.map((feature) => (
+                      <li key={feature} className="flex items-center gap-3 text-sm text-[#c8b7aa]">
+                        <Check size={14} className="text-[#ed852d]" />
+                        {feature}
                       </li>
                     ))}
                   </ul>
-                  <button
-                    className={`w-full py-3 rounded-none font-medium text-sm transition-all duration-300 ${
-                      i === 1
-                        ? "bg-[#7c3aed] text-white hover:bg-[#8b5cf6]"
-                        : "bg-[#0a0a0a] border border-[#7c3aed]/30 text-white hover:border-[#8b5cf6]/60"
-                    }`}
-                  >
+                  <Link href="/workspace" className={plan.featured ? "ember-button mt-9" : "ember-button-secondary mt-9"}>
                     {plan.cta}
-                  </button>
-                </GlassTile>
-              </motion.div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 border-t border-white/[0.06]">
-        <div className="max-w-4xl mx-auto">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6 }}
-          >
-            <GlassTile className="p-12 text-center">
-              <h2 className="font-display text-4xl sm:text-5xl tracking-tight mb-6 text-white/90">
-                Ready to build with AI?
-              </h2>
-              <p className="text-lg text-white/60 mb-8 max-w-2xl mx-auto">
-                Join builders, researchers, and entrepreneurs using Quoratorium to ship faster.
-              </p>
-              <Link
-                href="/workspace"
-                className="inline-flex px-8 py-4 rounded-none bg-[#7c3aed] text-white font-medium text-sm hover:bg-[#8b5cf6] transition-all duration-300 gap-2 group"
-                style={{ boxShadow: "0 0 28px rgba(124, 58, 237, 0.28)" }}
-              >
-                Start Building Now
-                <ArrowRight size={16} className="group-hover:translate-x-1 transition-transform" />
-              </Link>
-            </GlassTile>
-          </motion.div>
-        </div>
-      </section>
-
-      {/* Footer */}
-      <footer className="relative border-t border-white/[0.06] py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-6xl mx-auto">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 mb-8">
-            <div>
-              <h4 className="font-display text-sm tracking-wider text-white/90 mb-4 uppercase">Product</h4>
-              <ul className="space-y-2">
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Features
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Pricing
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Docs
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-display text-sm tracking-wider text-white/90 mb-4 uppercase">Company</h4>
-              <ul className="space-y-2">
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    About
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Blog
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Careers
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-display text-sm tracking-wider text-white/90 mb-4 uppercase">Legal</h4>
-              <ul className="space-y-2">
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Privacy
-                  </a>
-                </li>
-                <li>
-                  <a href="#" className="text-sm text-white/60 hover:text-white/90 transition-colors">
-                    Terms
-                  </a>
-                </li>
-              </ul>
-            </div>
-            <div>
-              <h4 className="font-display text-sm tracking-wider text-white/90 mb-4 uppercase">Social</h4>
-              <div className="flex gap-4">
-                <a href="#" className="text-white/60 hover:text-white/90 transition-colors">
-                  <Github size={18} />
-                </a>
-                <a href="#" className="text-white/60 hover:text-white/90 transition-colors">
-                  <Twitter size={18} />
-                </a>
-                <a href="#" className="text-white/60 hover:text-white/90 transition-colors">
-                  <Mail size={18} />
-                </a>
-              </div>
+                    <ArrowRight size={15} />
+                  </Link>
+                </EmberCard>
+              ))}
             </div>
           </div>
+        </section>
 
-          <div className="border-t border-white/[0.06] pt-8 flex flex-col sm:flex-row items-center justify-between text-sm text-white/60">
-            <p>&copy; 2026 Quoratorium. All rights reserved.</p>
-            <p>Built with Captain Q and the neural orchestration engine.</p>
+        <section className="relative overflow-hidden py-24 sm:py-32">
+          <div className="absolute inset-x-0 bottom-0 mx-auto h-[28rem] max-w-5xl rounded-full bg-[#bb480d]/12 blur-[140px]" />
+          <div className="relative mx-auto max-w-4xl px-5 text-center sm:px-8">
+            <div className="mx-auto mb-8 flex h-16 w-16 items-center justify-center rounded-2xl border border-[#f28c38]/25 bg-[#d86116]/10 text-2xl font-bold text-[#ff9a44] shadow-[0_0_45px_rgba(216,97,22,.16)]">T</div>
+            <h2 className="font-display text-4xl font-bold tracking-[-0.04em] sm:text-6xl">Ready to build with Toríu?</h2>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#aa998c]">Bring the idea. Toríu will assemble the team, keep the context, and help you carry it across the finish line.</p>
+            <Link href="/workspace" className="ember-button mt-9">
+              Enter Quoratorium
+              <ArrowRight size={17} />
+            </Link>
           </div>
+        </section>
+      </main>
+
+      <footer className="relative border-t border-[#f28c38]/10 bg-[#040201]">
+        <div className="mx-auto flex max-w-7xl flex-col gap-7 px-5 py-10 sm:px-8 md:flex-row md:items-center md:justify-between">
+          <BrandMark />
+          <p className="text-sm text-[#7f6d61]">Toríu is here to orchestrate possibilities—and empower your journey.</p>
+          <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#5e4e44]">© 2026 Quoratorium</p>
         </div>
       </footer>
     </div>

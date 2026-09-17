@@ -53,7 +53,7 @@ export default function Deployments() {
       case "building":
         return { label: "Building", color: "text-blue-400", bg: "bg-blue-500/10", icon: Loader2 };
       case "deploying":
-        return { label: "Deploying", color: "text-purple-400", bg: "bg-purple-500/10", icon: Rocket };
+        return { label: "Deploying", color: "text-purple-400", bg: "bg-orange-500/10", icon: Rocket };
       case "failed":
         return { label: "Failed", color: "text-red-400", bg: "bg-red-500/10", icon: XCircle };
       default:
@@ -166,7 +166,7 @@ export default function Deployments() {
                           {/* Deploy button — opens multi-platform modal */}
                           <motion.button
                             onClick={() => setDeployModalProject({ id: project.id, name: project.name })}
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 hover:bg-purple-500/20 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 hover:bg-orange-500/20 transition-colors"
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.97 }}
                           >

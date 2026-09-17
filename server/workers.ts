@@ -98,7 +98,7 @@ Format responses clearly with headers, bullet points, and citations where applic
 // ─── Worker Functions ───────────────────────────────────────────────────────
 
 /**
- * Captain Q — Orchestrator (uses OpenAI GPT-4o, falls back to Forge)
+ * Toríu — Orchestrator (uses OpenAI GPT-4o, falls back to Forge)
  */
 export async function callCaptain(messages: Message[], userId: number = 1, projectId?: number): Promise<string> {
   const openai = getOpenAIClient();
@@ -342,7 +342,7 @@ export async function callResearch(query: string, userId: number = 1, projectId?
 }
 
 /**
- * Captain's structured planning — uses OpenAI with JSON mode
+ * Toríu's structured planning — uses OpenAI with JSON mode
  */
 export async function callCaptainPlan(task: string, projectDescription: string): Promise<{
   phases: Array<{ name: string; description: string; worker: string }>;

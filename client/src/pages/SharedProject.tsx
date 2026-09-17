@@ -141,7 +141,7 @@ export default function SharedProject() {
     return (
       <div className="min-h-screen bg-[#000000] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
-          <div className="w-10 h-10 border-2 border-purple-500/30 border-t-purple-500 rounded-full animate-spin" />
+          <div className="w-10 h-10 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin" />
           <p className="text-sm text-white/40">Loading shared project...</p>
         </div>
       </div>
@@ -170,7 +170,7 @@ export default function SharedProject() {
       <header className="border-b border-white/5 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500 to-blue-600 flex items-center justify-center">
               <span className="text-xs font-bold text-white">Q</span>
             </div>
             <div>
@@ -186,7 +186,7 @@ export default function SharedProject() {
                 onClick={() => setShowPreview(!showPreview)}
                 className={"px-3 py-1.5 rounded-lg text-xs font-medium transition-all " +
                   (showPreview
-                    ? "bg-purple-500/20 text-purple-300 border border-purple-500/30"
+                    ? "bg-orange-500/20 text-orange-300 border border-orange-500/30"
                     : "bg-white/5 text-white/60 border border-white/10 hover:bg-white/10")}
               >
                 <Eye className="w-3.5 h-3.5 inline mr-1.5" />
@@ -223,7 +223,7 @@ export default function SharedProject() {
                 onClick={() => { setActiveFile(idx); setShowPreview(false); }}
                 className={"w-full text-left px-3 py-2 rounded-lg text-xs transition-all mb-0.5 " +
                   (idx === activeFile
-                    ? "bg-purple-500/10 text-purple-300 border border-purple-500/20"
+                    ? "bg-orange-500/10 text-orange-300 border border-orange-500/20"
                     : "text-white/60 hover:bg-white/5 hover:text-white/80 border border-transparent")}
               >
                 <div className="flex items-center gap-2">
@@ -295,7 +295,7 @@ export default function SharedProject() {
       <footer className="border-t border-white/5 px-6 py-4">
         <div className="max-w-7xl mx-auto flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <div className="w-5 h-5 rounded bg-gradient-to-br from-purple-500 to-blue-600 flex items-center justify-center">
+            <div className="w-5 h-5 rounded bg-gradient-to-br from-orange-500 to-blue-600 flex items-center justify-center">
               <span className="text-[8px] font-bold text-white">Q</span>
             </div>
             <span className="text-xs text-white/30">Built with Quoratorium</span>

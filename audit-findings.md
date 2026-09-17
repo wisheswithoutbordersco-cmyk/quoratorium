@@ -36,9 +36,9 @@ BUT the **real build pipeline** (plan → generate → persist files → validat
 
 ## What Needs Fixing
 
-### Critical (to make Captain Q actually BUILD things):
+### Critical (to make Toríu actually BUILD things):
 
-1. **Wire the build pipeline into the SSE chat flow** — When Captain Q detects a build intent, it should:
+1. **Wire the build pipeline into the SSE chat flow** — When Toríu detects a build intent, it should:
    - Generate code (already works via streaming)
    - Parse files from the response (extractFilesFromMarkdown exists in ai.ts)
    - Execute/deploy via Sprites (already works)

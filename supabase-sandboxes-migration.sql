@@ -1,4 +1,4 @@
--- Sandboxes table for Captain Q deploy tool
+-- Sandboxes table for Toríu deploy tool
 CREATE TABLE IF NOT EXISTS sandboxes (
   id TEXT PRIMARY KEY,
   user_id TEXT NOT NULL,

@@ -4,7 +4,7 @@
  */
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Zap, Shield, Brain, Sparkles } from "lucide-react";
-import { QIdentity } from "@/components/QIdentity";
+import { ToriuAvatar } from "@/components/ToriuAvatar";
 
 interface SignUpWallProps {
   open: boolean;
@@ -34,7 +34,7 @@ export function SignUpWall({ open, onClose, messagesUsed }: SignUpWallProps) {
 
           {/* Modal */}
           <motion.div
-            className="relative w-full max-w-md rounded-2xl border border-primary/20 bg-gradient-to-b from-[#0a1a0a] to-[#050d05] shadow-2xl shadow-primary/5 overflow-hidden"
+            className="relative w-full max-w-md rounded-2xl border border-primary/20 bg-gradient-to-b from-[#160b05] to-[#070402] shadow-2xl shadow-primary/5 overflow-hidden"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
@@ -53,10 +53,10 @@ export function SignUpWall({ open, onClose, messagesUsed }: SignUpWallProps) {
 
             {/* Content */}
             <div className="relative px-8 pt-10 pb-8 text-center">
-              {/* Q Identity */}
+              {/* Toríu identity */}
               <div className="flex justify-center mb-5">
                 <div className="relative">
-                  <QIdentity size={48} />
+                  <ToriuAvatar size={52} />
                   <motion.div
                     className="absolute -inset-3 rounded-full border border-primary/20"
                     animate={{ scale: [1, 1.15, 1], opacity: [0.3, 0.6, 0.3] }}
@@ -67,7 +67,7 @@ export function SignUpWall({ open, onClose, messagesUsed }: SignUpWallProps) {
 
               {/* Headline */}
               <h2 className="text-xl font-semibold text-white mb-2 tracking-tight">
-                You've unlocked Captain Q's potential
+                You've unlocked Toríu's potential
               </h2>
               <p className="text-sm text-white/50 mb-6 leading-relaxed">
                 You've used {messagesUsed} free messages. Create a free account to continue

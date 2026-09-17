@@ -1,4 +1,4 @@
--- Captain Q Memory System
+-- Toríu Memory System
 -- Creates tables for semantic memory using pgvector
 -- Run this in Supabase SQL Editor or push as a migration
 

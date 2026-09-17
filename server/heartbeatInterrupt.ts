@@ -1,7 +1,7 @@
 /**
  * Patent 3: Anti-Loop Heartbeat Interrupt
  * 
- * Monitors Captain Q's generation in real-time:
+ * Monitors Toríu's generation in real-time:
  * - Heartbeat check every ~500 tokens
  * - Loop detection via similarity scoring
  * - Corrective actions: re-inject prompt, reset, or graceful stop
