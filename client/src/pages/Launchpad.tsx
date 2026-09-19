@@ -52,10 +52,10 @@ const apps = [
     name: "Recyclatorium",
     letter: "R",
     description: "Asset Lab — Analyze, recombine, transform, and package creative assets",
-    url: "https://quoratorium.com/sandbox/sb-a5daa2c1/",
+    url: "/recyclatorium",
     color: "#1a1a2e",
     ownerOnly: true,
-    status: "Working sandbox",
+    status: "Integrated product builder",
   },
 ];
 
