@@ -29,6 +29,7 @@ import { globalMemoryRouter } from "./routers/globalMemory";
 import { billingRouter } from "./routers/billing";
 import { sessionHealthRouter } from "./routers/sessionHealth";
 import { businessActionsRouter } from "./routers/businessActions";
+import { recyclatoriumRouter } from "./routers/recyclatorium";
 
 export const appRouter = router({
   system: systemRouter,
@@ -111,6 +112,7 @@ export const appRouter = router({
   billing: billingRouter,
   sessionHealth: sessionHealthRouter,
   businessActions: businessActionsRouter,
+  recyclatorium: recyclatoriumRouter,
 });
 
 export type AppRouter = typeof appRouter;

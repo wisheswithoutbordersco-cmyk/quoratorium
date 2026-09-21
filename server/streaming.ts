@@ -518,6 +518,7 @@ export function registerStreamingRoutes(app: Express) {
               memoryContext + knowledgeContext,
               semanticMemoryContext,
               userId,
+              userId,
               persistedConversationId,
               parsedAttachments.imageAttachments,
               durableAttachmentIds
@@ -914,6 +915,7 @@ async function handleStandardChat(
   memoryContext: string = "",
   semanticMemoryContext: string = "",
   userId?: number | null,
+  authenticatedUserId?: number | null,
   conversationId?: number | null,
   imageAttachments: ChatAttachment[] = [],
   durableAttachmentIds: string[] = []
@@ -950,6 +952,9 @@ async function handleStandardChat(
     const { runToolLoop } = await import("./tools/index");
     const toolContext: import("./tools/index").ToolContext = {
       userId: String(userId || "owner"),
+      authenticatedUserId: authenticatedUserId
+        ? String(authenticatedUserId)
+        : null,
       projectId,
       conversationId,
       durableAttachmentIds,

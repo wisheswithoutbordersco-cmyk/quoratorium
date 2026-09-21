@@ -21,6 +21,8 @@ import {
   getCaptainReasoning,
 } from "../assistantConfig";
 import type { Response } from "express";
+import { getActionCatalogEntry, type GitHubActionId } from "@shared/actionCatalog";
+import { recordActionAudit } from "../actionAudit";
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -28,11 +30,14 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>; // JSON Schema
+  actionId?: GitHubActionId;
   execute: (args: Record<string, any>, context: ToolContext) => Promise<ToolResult>;
 }
 
 export interface ToolContext {
   userId: string;
+  /** Verified Clerk-backed user ID; required by external account tools. */
+  authenticatedUserId?: string | null;
   projectId?: number | null;
   conversationId?: number | null;
   durableAttachmentIds?: string[];
@@ -109,6 +114,7 @@ export async function runToolLoop(
       await import("./proposeShopifyDraft");
       await import("./scriptorium");
       await import("./extractatorium");
+      await import("./github");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }
@@ -279,7 +285,32 @@ export async function runToolLoop(
         onToolStart?.(toolName, args);
 
         try {
-          toolResult = await toolDef.execute(args, context);
+          if (toolDef.actionId && !getActionCatalogEntry(toolDef.actionId).enabled) {
+            const action = getActionCatalogEntry(toolDef.actionId);
+            const auditUserId = Number(context.userId);
+            if (Number.isSafeInteger(auditUserId) && auditUserId > 0 && action.audit) {
+              await recordActionAudit({
+                actionId: toolDef.actionId,
+                userId: auditUserId,
+                outcome: "blocked",
+                riskLevel: action.riskLevel,
+                confirmationRule: action.confirmationRule,
+                details: { reason: "disabled_tool_action" },
+              });
+            }
+            toolResult = {
+              success: false,
+              output: `${action.label} is disabled by Toríu's Action Catalog.`,
+              data: {
+                actionId: action.id,
+                riskLevel: action.riskLevel,
+                confirmationRule: action.confirmationRule,
+                blocked: true,
+              },
+            };
+          } else {
+            toolResult = await toolDef.execute(args, context);
+          }
           if (!toolsUsed.includes(toolName)) toolsUsed.push(toolName);
           if (toolResult.artifacts) {
             allArtifacts.push(...toolResult.artifacts);

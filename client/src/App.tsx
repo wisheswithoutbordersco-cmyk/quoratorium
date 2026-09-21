@@ -21,6 +21,7 @@ import Vault from "./pages/Vault";
 import Settings from "./pages/Settings";
 import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
+import Recyclatorium from "./pages/Recyclatorium";
 
 function Router() {
   return (
@@ -34,6 +35,7 @@ function Router() {
       <Route path="/workspace/projects" component={Projects} />
       <Route path="/workspace/vault" component={Vault} />
       <Route path="/workspace/launchpad" component={Launchpad} />
+      <Route path="/recyclatorium" component={Recyclatorium} />
       <Route path="/workspace/settings" component={Settings} />
 
       {/* Legacy routes */}

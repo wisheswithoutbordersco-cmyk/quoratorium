@@ -1,10 +1,9 @@
-import { Sandbox } from 'e2b'
 import OpenAI from 'openai'
 import { z } from 'zod'
 import { CAPTAIN_Q_SYSTEM_PROMPT } from './captainQPrompt'
+import { executeCode } from './codeExecutor'
 
 // ─── Config ─────────────────────────────────────────────
-const E2B_API_KEY = process.env.E2B_API_KEY!
 const OPENROUTER_KEY = process.env.OPENROUTER_API_KEY!
 const ORCHESTRATOR_MODEL = process.env.ORCHESTRATOR_MODEL || 'openai/gpt-4o'
 
@@ -63,19 +62,15 @@ const TOOLS: OpenAI.ChatCompletionTool[] = [
 // ─── Tool Implementations ───────────────────────────────
 
 async function runPython(code: string, timeout = 30) {
-  const sandbox = await Sandbox.create({ apiKey: E2B_API_KEY })
-  try {
-    const result = await sandbox.commands.run(`python3 -c ${JSON.stringify(code)}`, {
-      timeoutMs: timeout * 1000,
-    })
-
-    return {
-      success: result.exitCode === 0,
-      output: result.stdout || '(no output)',
-      errors: result.stderr || result.error || undefined,
-    }
-  } finally {
-    await sandbox.kill() // always kill the sandbox
+  const result = await executeCode(code, 'python', {
+    timeoutMs: Math.max(1, Math.min(timeout, 30)) * 1000,
+  })
+  return {
+    success: result.success,
+    output: result.stdout || '(no output)',
+    errors: result.stderr || undefined,
+    engine: result.engine,
+    networkAccess: 'disabled',
   }
 }
 
