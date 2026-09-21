@@ -1,73 +1,117 @@
 /**
- * Run SQL migration against Supabase PostgreSQL
- * Usage: node server/migrations/run_migration.mjs
+ * Run an ordered SQL migration against Supabase PostgreSQL.
+ *
+ * Usage:
+ *   node server/migrations/run_migration.mjs
+ *   node server/migrations/run_migration.mjs ../../supabase-action-audit-migration.sql
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
-import { dirname, join } from "path";
+import { dirname, isAbsolute, join, resolve } from "path";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
-if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
-  console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables");
-  process.exit(1);
+export function stripSqlLineComments(sql) {
+  return sql
+    .split("\n")
+    .map(line => {
+      let inSingle = false;
+      let inDouble = false;
+      for (let index = 0; index < line.length - 1; index += 1) {
+        const char = line[index];
+        const next = line[index + 1];
+        if (char === "'" && !inDouble && line[index - 1] !== "\\")
+          inSingle = !inSingle;
+        if (char === '"' && !inSingle && line[index - 1] !== "\\")
+          inDouble = !inDouble;
+        if (!inSingle && !inDouble && char === "-" && next === "-")
+          return line.slice(0, index);
+      }
+      return line;
+    })
+    .join("\n");
 }
 
-const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
-  auth: { autoRefreshToken: false, persistSession: false },
-});
+export function splitSqlStatements(sql) {
+  const source = stripSqlLineComments(sql);
+  const statements = [];
+  let current = "";
+  let inSingle = false;
+  let inDouble = false;
+  let dollarTag = null;
 
-async function runMigration() {
-  const sqlPath = join(__dirname, "create_all_tables.sql");
-  const sql = readFileSync(sqlPath, "utf-8");
+  for (let index = 0; index < source.length; index += 1) {
+    const char = source[index];
+    const previous = source[index - 1];
 
-  // Split by semicolons but handle multi-line statements
-  const statements = sql
-    .split(/;\s*\n/)
-    .map(s => s.trim())
-    .filter(s => s.length > 0 && !s.startsWith("--"));
-
-  console.log(`Running ${statements.length} SQL statements...`);
-
-  let success = 0;
-  let errors = 0;
-
-  for (let i = 0; i < statements.length; i++) {
-    const stmt = statements[i];
-    const preview = stmt.substring(0, 80).replace(/\n/g, " ");
-
-    try {
-      const { error } = await supabase.rpc("exec_sql", { sql_text: stmt + ";" });
-      if (error) {
-        // Try direct query via REST API as fallback
-        const resp = await fetch(`${SUPABASE_URL}/rest/v1/rpc/exec_sql`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "apikey": SUPABASE_SERVICE_ROLE_KEY,
-            "Authorization": `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-          },
-          body: JSON.stringify({ sql_text: stmt + ";" }),
-        });
-        if (!resp.ok) {
-          throw new Error(`HTTP ${resp.status}: ${await resp.text()}`);
-        }
+    if (!inSingle && !inDouble && char === "$") {
+      const match = source.slice(index).match(/^\$[A-Za-z0-9_]*\$/);
+      if (match) {
+        const tag = match[0];
+        current += tag;
+        index += tag.length - 1;
+        dollarTag = dollarTag === tag ? null : dollarTag || tag;
+        continue;
       }
-      success++;
-      console.log(`  ✓ [${i + 1}/${statements.length}] ${preview}...`);
-    } catch (err) {
-      errors++;
-      console.error(`  ✗ [${i + 1}/${statements.length}] ${preview}...`);
-      console.error(`    Error: ${err.message}`);
+    }
+    if (!dollarTag) {
+      if (char === "'" && !inDouble && previous !== "\\") inSingle = !inSingle;
+      if (char === '"' && !inSingle && previous !== "\\") inDouble = !inDouble;
+    }
+    if (char === ";" && !inSingle && !inDouble && !dollarTag) {
+      if (current.trim()) statements.push(current.trim());
+      current = "";
+    } else {
+      current += char;
     }
   }
-
-  console.log(`\nMigration complete: ${success} succeeded, ${errors} failed`);
+  if (current.trim()) statements.push(current.trim());
+  return statements;
 }
 
-runMigration().catch(console.error);
+function migrationPath() {
+  const requested = process.argv[2];
+  if (!requested) return join(__dirname, "create_all_tables.sql");
+  return isAbsolute(requested) ? requested : resolve(process.cwd(), requested);
+}
+
+export async function runMigration() {
+  if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY environment variables"
+    );
+  }
+  const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+    auth: { autoRefreshToken: false, persistSession: false },
+  });
+  const sqlPath = migrationPath();
+  const statements = splitSqlStatements(readFileSync(sqlPath, "utf-8"));
+  console.log(`Running ${statements.length} SQL statements from ${sqlPath}...`);
+
+  for (let index = 0; index < statements.length; index += 1) {
+    const statement = statements[index];
+    const preview = statement.substring(0, 80).replace(/\n/g, " ");
+    const { error } = await supabase.rpc("exec_sql", {
+      sql_text: `${statement};`,
+    });
+    if (error) {
+      throw new Error(
+        `Migration failed at statement ${index + 1} (${preview}): ${error.message}`
+      );
+    }
+    console.log(`  ✓ [${index + 1}/${statements.length}] ${preview}...`);
+  }
+  console.log("Migration complete.");
+}
+
+const isEntryPoint = process.argv[1] && resolve(process.argv[1]) === __filename;
+if (isEntryPoint) {
+  runMigration().catch(error => {
+    console.error(error instanceof Error ? error.message : error);
+    process.exit(1);
+  });
+}

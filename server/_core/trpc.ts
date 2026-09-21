@@ -31,6 +31,23 @@ const requireUser = t.middleware(async opts => {
 
 export const protectedProcedure = t.procedure.use(requireUser);
 
+const requireAuthenticatedUser = t.middleware(async ({ ctx, next }) => {
+  if (!ctx.authenticatedUser) {
+    throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
+  }
+
+  return next({
+    ctx: {
+      ...ctx,
+      user: ctx.authenticatedUser,
+      authenticatedUser: ctx.authenticatedUser,
+    },
+  });
+});
+
+/** External account data must always be tied to a verified Clerk session. */
+export const authenticatedProcedure = t.procedure.use(requireAuthenticatedUser);
+
 export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;

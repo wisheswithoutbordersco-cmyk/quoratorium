@@ -74,7 +74,13 @@ export const aiRouter = router({
 
       const assistantResult = await runToolLoop(
         messages,
-        { userId: String(userId), projectId: input.projectId || null },
+        {
+          userId: String(userId),
+          authenticatedUserId: ctx.authenticatedUser
+            ? String(ctx.authenticatedUser.id)
+            : null,
+          projectId: input.projectId || null,
+        },
         CAPTAIN_OPENROUTER_MODEL,
       );
       const response = assistantResult.response?.trim() || "I couldn't produce a useful response. Please try that again.";

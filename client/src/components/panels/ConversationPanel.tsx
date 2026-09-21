@@ -380,6 +380,11 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 execute_code: "⚡ Running code",
                 web_research: "🔍 Researching",
                 deploy_project: "🚀 Deploying",
+                github_list_repositories: "Reading connected repositories",
+                github_inspect_repository: "Mapping repository",
+                github_list_tree: "Locating code",
+                github_read_file: "Reading source file",
+                github_search_code: "Searching repository code",
               };
               const label = toolLabels[event.tool] || `🔧 ${event.tool}`;
               accumulated += `\n${label}...\n`;
@@ -859,15 +864,15 @@ function MessageBubble({
           {!isUser && !isStreaming && message.content && (
             <VoiceButton text={message.content} autoPlay={autoPlayVoice} onAutoPlayStarted={onVoiceStarted} />
           )}
-          {/* Push to GitHub button - shown after code generation */}
+          {/* Phase-one GitHub policy notice shown after code generation. */}
           {hasCode && !isStreaming && (
             <div className="mt-3 pt-2 border-t border-white/5">
               <button
                 onClick={() => setShowPushDialog(!showPushDialog)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-emerald-500/10 border border-white/10 hover:border-emerald-500/20 text-[11px] text-white/60 hover:text-emerald-300 transition-all"
               >
                 <Github className="w-3.5 h-3.5" />
-                Push to GitHub
+                GitHub write locked
                 <span className="text-[10px] text-white/30 ml-1">({codeFiles.length} file{codeFiles.length !== 1 ? "s" : ""})</span>
               </button>
             </div>

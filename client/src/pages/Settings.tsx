@@ -380,8 +380,9 @@ export default function Settings() {
                   {activeSection === "github" && (
                     <div className="py-3">
                       <p className="text-sm text-muted-foreground mb-4">
-                        Manage your GitHub connection here. Repository push and branch
-                        selection are available directly from the workspace.
+                        GitHub is in read-only mode. Toríu can inspect connected repositories,
+                        map files, search code, and explain the codebase. Repository creation,
+                        branch creation, commits, pull requests, and merges are locked.
                       </p>
                     </div>
                   )}

@@ -28,6 +28,7 @@ import { handleAgentChat, handleRunCode } from "../agent-tools";
 import { handleSmartChat, handleListModels } from '../model-router';
 import { pwaIconRouter } from '../pwaIconRoute';
 import { imageGenerationRouter } from '../imageGenerationRoute';
+import { clerkMiddleware } from "@clerk/express";
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -95,6 +96,18 @@ async function startServer() {
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+  // Populate req.auth for strict account-bound procedures. When Clerk is not
+  // configured, GitHub procedures remain unavailable rather than falling back.
+  const clerkPublishableKey =
+    process.env.CLERK_PUBLISHABLE_KEY ||
+    process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  if (process.env.CLERK_SECRET_KEY && clerkPublishableKey) {
+    app.use(clerkMiddleware({
+      secretKey: process.env.CLERK_SECRET_KEY,
+      publishableKey: clerkPublishableKey,
+    }));
+  }
 
   // PWA icon route — public, no auth required
   app.use(pwaIconRouter);

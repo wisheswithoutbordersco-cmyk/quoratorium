@@ -33,7 +33,7 @@ import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabas
 import { getRAGContext } from "./knowledgeBaseService";
 import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
 import { OWNER_EMAILS } from "./_core/env";
-import { getOwnerUser } from "./_core/context";
+import { getOwnerUser, resolveAuthenticatedUser } from "./_core/context";
 import { persistConversationAttachments } from "./chatAssets";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
 import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
@@ -127,6 +127,8 @@ export function registerStreamingRoutes(app: Express) {
     // Keep ordinary Toríu conversation on Anthony's existing owner workspace.
     // External business procedures use a separate short-lived action session.
     let userId: number | null = null;
+    const authenticatedUser = await resolveAuthenticatedUser(req);
+    const authenticatedToolUserId = authenticatedUser?.id || null;
     let isGuest = true;
     try {
       const owner = await getOwnerUser();
@@ -520,6 +522,7 @@ export function registerStreamingRoutes(app: Express) {
               memoryContext + knowledgeContext,
               semanticMemoryContext,
               userId,
+              authenticatedToolUserId,
               persistedConversationId,
               parsedAttachments.imageAttachments,
               durableAttachmentIds
@@ -811,20 +814,18 @@ async function handleCodeExecution(
     langHint === "typescript" || langHint === "ts" ? "typescript" :
     langHint === "bash" || langHint === "sh" || langHint === "shell" ? "bash" : "javascript";
 
-  const engineLabel = process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox";
+  const engineLabel = "Isolated Offline Sandbox";
   let assistantResponse = `⚡ Executing ${language} code via **${engineLabel}**...\n\n`;
   res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
   const result = await executeCode(code, language);
 
-  const engineInfo = result.engine === "sprites"
-    ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}`
-    : " | Engine: Local";
+  const engineInfo = " | Engine: E2B (internet disabled)";
 
   if (result.success) {
     const output = result.stdout || "(no output)";
     const completion = `✅ **Execution successful** (${result.duration}ms${engineInfo})\n\n\`\`\`\n${output}\n\`\`\``;
-    res.write(`data: ${JSON.stringify({ type: "execution", language, success: true, stdout: result.stdout, stderr: result.stderr, duration: result.duration, engine: result.engine, spriteName: result.spriteName })}\n\n`);
+    res.write(`data: ${JSON.stringify({ type: "execution", language, success: true, stdout: result.stdout, stderr: result.stderr, duration: result.duration, engine: result.engine, networkAccess: "disabled" })}\n\n`);
     res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
     assistantResponse += completion;
   } else {
@@ -910,6 +911,7 @@ async function handleStandardChat(
   memoryContext: string = "",
   semanticMemoryContext: string = "",
   userId?: number | null,
+  authenticatedUserId?: number | null,
   conversationId?: number | null,
   imageAttachments: ChatAttachment[] = [],
   durableAttachmentIds: string[] = []
@@ -946,6 +948,9 @@ async function handleStandardChat(
     const { runToolLoop } = await import("./tools/index");
     const toolContext: import("./tools/index").ToolContext = {
       userId: String(userId || "owner"),
+      authenticatedUserId: authenticatedUserId
+        ? String(authenticatedUserId)
+        : null,
       projectId,
       conversationId,
       durableAttachmentIds,

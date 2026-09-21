@@ -217,12 +217,45 @@ CREATE TABLE IF NOT EXISTS github_connections (
   user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token_encrypted TEXT NOT NULL,
   username TEXT,
+  allowed_repositories JSONB NOT NULL DEFAULT '[]'::jsonb,
   default_repo TEXT,
   default_branch TEXT,
   connected_at TIMESTAMPTZ DEFAULT NOW(),
   updated_at TIMESTAMPTZ DEFAULT NOW()
 );
-CREATE INDEX IF NOT EXISTS idx_github_connections_user_id ON github_connections(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_github_connections_user_id ON github_connections(user_id);
+
+-- ─── Action Catalog Audit Log ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS action_audit_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  intent_id UUID REFERENCES action_audit_log(id) ON DELETE RESTRICT,
+  user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE RESTRICT,
+  app TEXT NOT NULL CHECK (app IN ('github')),
+  action_id TEXT NOT NULL,
+  target TEXT,
+  outcome TEXT NOT NULL CHECK (outcome IN ('allowed', 'blocked', 'succeeded', 'failed')),
+  risk_level TEXT NOT NULL CHECK (risk_level IN ('none', 'low', 'medium', 'high', 'critical')),
+  confirmation_rule TEXT NOT NULL CHECK (confirmation_rule IN ('none', 'review', 'explicit', 'never')),
+  details JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_action_audit_log_user_created ON action_audit_log(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_action_audit_log_action_created ON action_audit_log(action_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_action_audit_log_intent ON action_audit_log(intent_id) WHERE intent_id IS NOT NULL;
+ALTER TABLE action_audit_log ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON TABLE action_audit_log FROM anon, authenticated;
+CREATE OR REPLACE FUNCTION prevent_action_audit_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+  RAISE EXCEPTION 'action_audit_log is append-only';
+END;
+$$;
+DROP TRIGGER IF EXISTS action_audit_log_no_update_delete ON action_audit_log;
+CREATE TRIGGER action_audit_log_no_update_delete
+BEFORE UPDATE OR DELETE ON action_audit_log
+FOR EACH ROW EXECUTE FUNCTION prevent_action_audit_mutation();
 
 -- ─── Platform Connections (Vercel, Netlify, Railway) ────────────────────────
 CREATE TABLE IF NOT EXISTS platform_connections (

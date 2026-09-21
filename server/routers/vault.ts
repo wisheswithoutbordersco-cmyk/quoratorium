@@ -7,11 +7,13 @@ import { createVaultEntry, getUserVault, deleteVaultEntry } from "../db";
 import { storagePut } from "../storage";
 
 const INTERNAL_ENTRY_TYPES = new Set([
+  "action_audit",
   "business_action",
   "business_connection",
   "conversation_asset",
 ]);
 const INTERNAL_RECORD_KINDS = new Set([
+  "action_audit",
   "business_action",
   "business_connection",
   "conversation_asset",

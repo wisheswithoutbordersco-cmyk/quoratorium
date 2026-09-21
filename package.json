@@ -10,7 +10,8 @@
     "check": "tsc --noEmit",
     "format": "prettier --write .",
     "test": "vitest run",
-    "db:push": "echo 'Migrations are now managed via Supabase SQL Editor'"
+    "db:push": "echo 'Migrations are now managed via Supabase SQL Editor'",
+    "db:migrate:github-readonly": "node server/migrations/run_migration.mjs supabase-action-audit-migration.sql"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.98.0",
