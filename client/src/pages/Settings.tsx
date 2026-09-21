@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { TopNav } from "@/components/TopNav";
 import { useSettingsStore } from "@/stores/settingsStore";
+import { Link } from "wouter";
 
 type SettingsMap = Record<string, string>;
 
@@ -384,6 +385,9 @@ export default function Settings() {
                         map files, search code, and explain the codebase. Repository creation,
                         branch creation, commits, pull requests, and merges are locked.
                       </p>
+                      <Link href="/workspace/git">
+                        <Button>Open GitHub read-only access</Button>
+                      </Link>
                     </div>
                   )}
 

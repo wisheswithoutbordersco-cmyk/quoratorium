@@ -22,6 +22,7 @@ import Settings from "./pages/Settings";
 import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
+import Git from "./pages/Git";
 
 function Router() {
   return (
@@ -37,12 +38,14 @@ function Router() {
       <Route path="/workspace/launchpad" component={Launchpad} />
       <Route path="/recyclatorium" component={Recyclatorium} />
       <Route path="/workspace/settings" component={Settings} />
+      <Route path="/workspace/git" component={Git} />
 
       {/* Legacy routes */}
       <Route path="/projects" component={Projects} />
       <Route path="/vault" component={Vault} />
       <Route path="/launchpad" component={Launchpad} />
       <Route path="/settings" component={Settings} />
+      <Route path="/git" component={Git} />
 
       <Route component={NotFound} />
     </Switch>
