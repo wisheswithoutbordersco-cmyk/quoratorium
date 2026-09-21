@@ -183,7 +183,7 @@ export function LivePreview({ code, language, isStreaming, onClose, onDeploy }: 
           <iframe
             ref={iframeRef}
             srcDoc={srcdoc}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts"
             className="w-full h-full border-0"
             title="Live Preview"
             style={{ minHeight: isFullscreen ? "calc(100vh - 48px)" : "300px" }}

@@ -2,7 +2,7 @@
  * Code Execution Engine
  * 
  * Primary: Sprites.dev (persistent Linux sandboxes via Fly.io)
- * Fallback: Local child_process execution (when Sprites unavailable)
+ * Development fallback only: local child_process execution
  */
 import { spawn } from "child_process";
 import { writeFile, unlink, mkdtemp } from "fs/promises";
@@ -23,13 +23,14 @@ export interface ExecutionResult {
   duration: number;
   language: string;
   timedOut?: boolean;
-  engine: "sprites" | "local";
+  engine: "sprites" | "local" | "disabled";
   spriteName?: string;
   spriteStatus?: string;
 }
 
 /**
- * Execute code — tries Sprites.dev first, falls back to local execution
+ * Execute code — requires Sprites.dev in production and permits local execution
+ * only in non-production development/test environments.
  */
 export async function executeCode(
   code: string,
@@ -75,11 +76,38 @@ export async function executeCode(
       recordMetric("code_execution_duration_ms", result.duration, "histogram", { language, engine: "sprites" });
       return result;
     } catch (err) {
-      console.warn("[CodeExecutor] Sprites.dev failed, falling back to local:", err);
+      console.warn("[CodeExecutor] Sprites.dev execution failed:", err);
+      if (process.env.NODE_ENV === "production") {
+        endTrace(span, "failed");
+        recordMetric("code_execution_unavailable", 1, "counter", { language, engine: "sprites" });
+        return {
+          success: false,
+          stdout: "",
+          stderr: "Isolated code execution is temporarily unavailable. Local host execution is disabled in production.",
+          exitCode: 1,
+          duration: Date.now() - startTime,
+          language,
+          engine: "disabled",
+        };
+      }
     }
   }
 
-  // Fallback to local execution
+  if (process.env.NODE_ENV === "production") {
+    endTrace(span, "failed");
+    recordMetric("code_execution_unavailable", 1, "counter", { language, engine: "disabled" });
+    return {
+      success: false,
+      stdout: "",
+      stderr: "Isolated code execution is not configured. Local host execution is disabled in production.",
+      exitCode: 1,
+      duration: Date.now() - startTime,
+      language,
+      engine: "disabled",
+    };
+  }
+
+  // Development/test fallback only.
   const result = await executeLocally(code, language, timeoutMs, startTime);
   endTrace(span, result.success ? "completed" : "failed");
   recordMetric("code_execution_duration_ms", result.duration, "histogram", { language, engine: "local" });
@@ -251,12 +279,15 @@ function truncateOutput(output: string): string {
  * Get the status of the workspace sprite
  */
 export async function getExecutionEngineStatus(): Promise<{
-  engine: "sprites" | "local";
+  engine: "sprites" | "local" | "disabled";
   spriteStatus?: string;
   spriteName?: string;
   available: boolean;
 }> {
   if (!process.env.SPRITES_TOKEN) {
+    if (process.env.NODE_ENV === "production") {
+      return { engine: "disabled", available: false };
+    }
     return { engine: "local", available: true };
   }
 

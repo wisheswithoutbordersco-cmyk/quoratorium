@@ -2,36 +2,17 @@
  * Platform Deploy Service (Supabase)
  * Handles deployment to Vercel, Netlify, and Railway via their APIs.
  */
-import crypto from "crypto";
+import { createHash } from "node:crypto";
 import { getSupabaseAdmin } from "./supabase";
 import { sendBuildCompleteEmail } from "./services/email";
+import { mayUseOwnerIntegrationCredentials } from "./serviceAuthorization";
+import {
+  decryptIntegrationCredential,
+  encryptIntegrationCredential,
+} from "./integrationCredentialCrypto";
 
 function getDb() {
   return getSupabaseAdmin();
-}
-
-// ─── Encryption ─────────────────────────────────────────────────────────────
-
-function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET || "fallback-secret-key-for-dev-only";
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
-}
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, encrypted] = encryptedText.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -82,7 +63,7 @@ export async function connectPlatform(
       .eq("platform", platform)
       .limit(1);
 
-    const tokenEncrypted = encrypt(token);
+    const tokenEncrypted = encryptIntegrationCredential(token);
     if (existing && existing.length > 0) {
       await db.from("platform_connections")
         .update({ token_encrypted: tokenEncrypted, username: userInfo.username, team_id: userInfo.teamId || null })
@@ -110,7 +91,13 @@ export async function disconnectPlatform(userId: number, platform: Platform): Pr
 
 export async function getPlatformStatuses(userId: number): Promise<PlatformStatus[]> {
   const db = getDb();
-  if (!db) return ["vercel", "netlify", "railway"].map(p => ({ platform: p as Platform, connected: !!getSystemToken(p as Platform) }));
+  const mayUseSystemToken = await mayUseOwnerIntegrationCredentials(userId);
+  if (!db) {
+    return ["vercel", "netlify", "railway"].map(p => ({
+      platform: p as Platform,
+      connected: mayUseSystemToken && !!getSystemToken(p as Platform),
+    }));
+  }
 
   const { data: connections } = await db
     .from("platform_connections")
@@ -120,7 +107,7 @@ export async function getPlatformStatuses(userId: number): Promise<PlatformStatu
   const platforms: Platform[] = ["vercel", "netlify", "railway"];
   return platforms.map(p => {
     const conn = (connections || []).find((c: any) => c.platform === p);
-    const hasSystemToken = !!getSystemToken(p);
+    const hasSystemToken = mayUseSystemToken && !!getSystemToken(p);
     return {
       platform: p,
       connected: !!conn || hasSystemToken,
@@ -141,7 +128,7 @@ async function getPlatformToken(userId: number, platform: Platform): Promise<str
     .limit(1)
     .single();
   if (!data) return null;
-  return decrypt(data.token_encrypted);
+  return decryptIntegrationCredential(data.token_encrypted);
 }
 
 // ─── Token Validation ───────────────────────────────────────────────────────
@@ -201,7 +188,9 @@ function getSystemToken(platform: Platform): string | null {
 
 export async function deployToExternalPlatform(req: DeployRequest): Promise<DeployResult> {
   let token = await getPlatformToken(req.userId, req.platform);
-  if (!token) token = getSystemToken(req.platform);
+  if (!token && await mayUseOwnerIntegrationCredentials(req.userId)) {
+    token = getSystemToken(req.platform);
+  }
   if (!token) {
     return { success: false, error: `${req.platform} is not connected. Add your token in Settings.` };
   }
@@ -318,7 +307,7 @@ async function deployToNetlify(token: string, req: DeployRequest): Promise<Deplo
   const fileContents: Record<string, string> = {};
   for (const file of req.files) {
     const path = "/" + file.filepath.replace(/^\/+/, "");
-    const hash = crypto.createHash("sha1").update(file.content).digest("hex");
+    const hash = createHash("sha1").update(file.content).digest("hex");
     fileDigests[path] = hash;
     fileContents[hash] = file.content;
   }

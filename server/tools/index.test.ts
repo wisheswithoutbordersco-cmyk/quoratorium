@@ -45,7 +45,7 @@ describe("runToolLoop", () => {
     expect(payload.messages[0].content).toContain("Tools are optional capabilities");
     const toolNames = payload.tools.map((tool: any) => tool.function.name);
     expect(toolNames).toContain("generate_image");
-    expect(toolNames).not.toContain("scriptorium_generate");
+    expect(toolNames).toContain("scriptorium_generate");
   });
 
   it("retries a compatible OpenRouter model when the preferred model is rejected", async () => {

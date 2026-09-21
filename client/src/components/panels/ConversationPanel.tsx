@@ -410,14 +410,11 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
               accumulated += `${icon} Done\n`;
               updateMessage(assistantId, { content: accumulated, images: accumulatedImages });
             } else if (event.type === "sandbox_url") {
-              // A live sandbox URL was produced — open it in preview
+              // Deployed previews are authenticated top-level pages that wrap
+              // user HTML in an opaque-origin iframe. Keep navigation explicit
+              // rather than nesting a credentialed URL inside another srcdoc.
               accumulated += `\n\n🌐 **Live Preview:** [${event.name || "View Project"}](${event.url})\n`;
               updateMessage(assistantId, { content: accumulated });
-              // Open the sandbox URL in the workspace preview panel
-              useUIStore.getState().openPreview(
-                `<iframe src="${event.url}" style="width:100%;height:100%;border:none;"></iframe>`,
-                event.name || "Live Preview"
-              );
             } else if (event.type === "error") {
               // Check for credit exhaustion
               if (event.credit_exhausted) {

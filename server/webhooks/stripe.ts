@@ -26,6 +26,10 @@ stripeWebhookRouter.post(
         // Need raw body for verification — express.raw() should be used for this route
         const rawBody = (req as any).rawBody || JSON.stringify(req.body);
         event = stripe.webhooks.constructEvent(rawBody, sig, ENV.stripeWebhookSecret);
+      } else if (process.env.NODE_ENV === "production") {
+        console.error("[Stripe Webhook] STRIPE_WEBHOOK_SECRET is not configured");
+        res.status(503).json({ error: "Stripe webhook verification is not configured" });
+        return;
       } else {
         // Development mode: trust the payload
         event = req.body as Stripe.Event;

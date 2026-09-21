@@ -181,7 +181,7 @@ export function WorkspacePreviewPanel() {
             key={refreshKey}
             ref={iframeRef}
             srcDoc={srcdoc}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts"
             className="w-full h-full border-0"
             title="Live Preview"
           />
@@ -281,7 +281,7 @@ export function WorkspacePreviewPanel() {
             key={refreshKey}
             ref={iframeRef}
             srcDoc={srcdoc}
-            sandbox="allow-scripts allow-same-origin"
+            sandbox="allow-scripts"
             className="w-full h-full border-0"
             title="Live Preview"
             style={{ minHeight: "100%" }}
@@ -344,7 +344,7 @@ export function MobilePreviewOverlay() {
       <div className="flex-1 overflow-hidden">
         <iframe
           srcDoc={srcdoc}
-          sandbox="allow-scripts allow-same-origin"
+          sandbox="allow-scripts"
           className="w-full h-full border-0"
           title="Live Preview"
         />

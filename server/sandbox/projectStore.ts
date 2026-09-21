@@ -55,7 +55,7 @@ export async function addFileToSandbox(
     sandbox = sandboxes.get(sandboxId)!;
   } else {
     // Create new sandbox
-    sandboxId = `sb-${randomUUID().slice(0, 8)}`;
+    sandboxId = `sb-${randomUUID()}`;
     sandbox = {
       id: sandboxId,
       userId,
@@ -102,6 +102,11 @@ export function getSandboxFiles(sandboxId: string): SandboxFile[] {
   const sandbox = sandboxes.get(sandboxId);
   if (!sandbox) return [];
   return Array.from(sandbox.files.values());
+}
+
+export function isSandboxOwnedBy(sandboxId: string, userId: string): boolean {
+  const sandbox = sandboxes.get(sandboxId);
+  return Boolean(sandbox && sandbox.userId === userId);
 }
 
 /**
@@ -161,6 +166,10 @@ export async function deploySandbox(
     return { success: false, error: `Sandbox ${targetId} not found.` };
   }
 
+  if (sandbox.userId !== userId) {
+    return { success: false, error: "Sandbox not found for this user." };
+  }
+
   if (sandbox.files.size === 0) {
     return { success: false, error: "Sandbox has no files to deploy." };
   }
@@ -191,7 +200,7 @@ export function getSandboxUrl(sandboxId: string): string {
  */
 export function serveSandboxFile(sandboxId: string, path: string): { content: string; contentType: string } | null {
   const sandbox = sandboxes.get(sandboxId);
-  if (!sandbox) return null;
+  if (!sandbox || !sandbox.deployedAt) return null;
 
   // Normalize path
   let filename = path.replace(/^\/+/, "") || "index.html";

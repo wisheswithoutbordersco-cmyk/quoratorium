@@ -7,8 +7,8 @@ import {
 } from "node:crypto";
 import type { Request, Response } from "express";
 
-const COOKIE_NAME = "q_action_session";
-const SESSION_TTL_MS = 30 * 60 * 1000;
+const COOKIE_NAME = "q_owner_access";
+const SESSION_TTL_MS = 12 * 60 * 60 * 1000;
 const ATTEMPT_WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS_PER_WINDOW = 5;
 
@@ -17,7 +17,7 @@ interface AttemptState {
   resetAt: number;
 }
 
-interface SessionPayload {
+export interface OwnerAccessSession {
   ownerId: number;
   expiresAt: number;
   nonce: string;
@@ -26,11 +26,12 @@ interface SessionPayload {
 const attempts = new Map<string, AttemptState>();
 
 function configuredCode(): string {
-  return (process.env.BUSINESS_ACTION_PIN || "").trim();
+  return (process.env.OWNER_ACCESS_CODE || process.env.BUSINESS_ACTION_PIN || "").trim();
 }
 
 function signingSecret(): string {
   return (
+    process.env.OWNER_ACCESS_SESSION_SECRET ||
     process.env.BUSINESS_ACTION_SESSION_SECRET ||
     process.env.BUSINESS_CREDENTIAL_KEY ||
     process.env.CLERK_SECRET_KEY ||
@@ -40,7 +41,7 @@ function signingSecret(): string {
 
 function codeDigest(value: string): Buffer {
   const salt = createHash("sha256")
-    .update(`quoratorium-business-action:${signingSecret()}`)
+    .update(`quoratorium-owner-access:${signingSecret()}`)
     .digest();
   return scryptSync(value, salt, 32);
 }
@@ -52,9 +53,8 @@ function signature(payload: string): string {
 }
 
 function parseCookies(req: Request): Record<string, string> {
-  const cookieHeader = req.headers.cookie || "";
   const parsed: Record<string, string> = {};
-  for (const part of cookieHeader.split(";")) {
+  for (const part of (req.headers.cookie || "").split(";")) {
     const separator = part.indexOf("=");
     if (separator < 0) continue;
     const key = part.slice(0, separator).trim();
@@ -68,18 +68,14 @@ function requestIp(req: Request): string {
   return req.ip || req.socket.remoteAddress || "unknown";
 }
 
-function clearExpiredAttempts(now: number) {
-  for (const [key, state] of Array.from(attempts.entries())) {
-    if (state.resetAt <= now) attempts.delete(key);
-  }
-}
-
 function consumeAttempt(req: Request): { allowed: boolean; retryAfterSeconds: number } {
   const now = Date.now();
-  clearExpiredAttempts(now);
+  attempts.forEach((state, key) => {
+    if (state.resetAt <= now) attempts.delete(key);
+  });
+
   const key = requestIp(req);
   const current = attempts.get(key);
-
   if (!current || current.resetAt <= now) {
     attempts.set(key, { count: 1, resetAt: now + ATTEMPT_WINDOW_MS });
     return { allowed: true, retryAfterSeconds: 0 };
@@ -96,16 +92,12 @@ function consumeAttempt(req: Request): { allowed: boolean; retryAfterSeconds: nu
   return { allowed: true, retryAfterSeconds: 0 };
 }
 
-function resetAttempts(req: Request) {
-  attempts.delete(requestIp(req));
-}
-
-function encodeSession(payload: SessionPayload): string {
+function encodeSession(payload: OwnerAccessSession): string {
   const encoded = Buffer.from(JSON.stringify(payload), "utf8").toString("base64url");
   return `${encoded}.${signature(encoded)}`;
 }
 
-function decodeSession(token: string): SessionPayload | null {
+function decodeSession(token: string): OwnerAccessSession | null {
   const [encoded, receivedSignature] = token.split(".");
   if (!encoded || !receivedSignature) return null;
 
@@ -117,9 +109,7 @@ function decodeSession(token: string): SessionPayload | null {
   }
 
   try {
-    const payload = JSON.parse(
-      Buffer.from(encoded, "base64url").toString("utf8"),
-    ) as SessionPayload;
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString("utf8")) as OwnerAccessSession;
     if (
       !Number.isInteger(payload.ownerId) ||
       payload.ownerId <= 0 ||
@@ -135,35 +125,33 @@ function decodeSession(token: string): SessionPayload | null {
   }
 }
 
-export function isBusinessActionPinConfigured(): boolean {
+export function isOwnerAccessConfigured(): boolean {
   const minimumSecretLength = process.env.NODE_ENV === "production" ? 32 : 8;
   return configuredCode().length >= 8 && signingSecret().length >= minimumSecretLength;
 }
 
-export function verifyBusinessActionPin(
+export function verifyOwnerAccessCode(
   req: Request,
   suppliedCode: string,
 ): { ok: boolean; retryAfterSeconds?: number } {
-  if (!isBusinessActionPinConfigured()) return { ok: false };
+  if (!isOwnerAccessConfigured()) return { ok: false };
 
   const attempt = consumeAttempt(req);
   if (!attempt.allowed) {
     return { ok: false, retryAfterSeconds: attempt.retryAfterSeconds };
   }
 
-  const supplied = codeDigest(suppliedCode.trim());
-  const expected = codeDigest(configuredCode());
-  const ok = timingSafeEqual(supplied, expected);
-  if (ok) resetAttempts(req);
+  const ok = timingSafeEqual(codeDigest(suppliedCode.trim()), codeDigest(configuredCode()));
+  if (ok) attempts.delete(requestIp(req));
   return { ok };
 }
 
-export function startBusinessActionSession(
+export function startOwnerAccessSession(
   res: Response,
   ownerId: number,
 ): { expiresAt: string } {
-  if (!isBusinessActionPinConfigured()) {
-    throw new Error("Business action session signing is not configured");
+  if (!isOwnerAccessConfigured()) {
+    throw new Error("Owner access session signing is not configured");
   }
   const expiresAt = Date.now() + SESSION_TTL_MS;
   const token = encodeSession({
@@ -183,7 +171,7 @@ export function startBusinessActionSession(
   return { expiresAt: new Date(expiresAt).toISOString() };
 }
 
-export function clearBusinessActionSession(res: Response) {
+export function clearOwnerAccessSession(res: Response): void {
   res.clearCookie(COOKIE_NAME, {
     httpOnly: true,
     secure: process.env.NODE_ENV === "production",
@@ -192,21 +180,12 @@ export function clearBusinessActionSession(res: Response) {
   });
 }
 
-export function getBusinessActionSession(
-  req: Request,
-  ownerId: number,
-): SessionPayload | null {
-  if (!isBusinessActionPinConfigured()) return null;
+export function getOwnerAccessSession(req: Request): OwnerAccessSession | null {
+  if (!isOwnerAccessConfigured()) return null;
   const token = parseCookies(req)[COOKIE_NAME];
-  if (!token) return null;
-  const payload = decodeSession(token);
-  if (!payload || payload.ownerId !== ownerId) return null;
-  return payload;
+  return token ? decodeSession(token) : null;
 }
 
-export const BUSINESS_ACTION_SESSION_TTL_MINUTES =
-  SESSION_TTL_MS / 60_000;
-
-export function resetBusinessActionAuthForTests() {
+export function resetOwnerAccessAuthForTests(): void {
   attempts.clear();
 }

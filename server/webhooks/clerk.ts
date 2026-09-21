@@ -51,7 +51,11 @@ router.post("/", async (req: Request, res: Response) => {
 
   try {
     const wh = new Webhook(WEBHOOK_SECRET);
-    wh.verify(JSON.stringify(req.body), {
+    const rawBody = (req as any).rawBody;
+    if (!Buffer.isBuffer(rawBody)) {
+      throw new Error("Raw webhook body is unavailable");
+    }
+    wh.verify(rawBody.toString("utf8"), {
       "svix-id": svixId,
       "svix-timestamp": svixTimestamp,
       "svix-signature": svixSignature,

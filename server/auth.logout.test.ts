@@ -19,6 +19,9 @@ function createAuthContext(): { ctx: TrpcContext } {
 
   const ctx: TrpcContext = {
     user,
+    authenticatedUser: user,
+    isOwner: false,
+    isVerifiedOwner: false,
     req: {
       protocol: "https",
       headers: {},
@@ -32,7 +35,7 @@ function createAuthContext(): { ctx: TrpcContext } {
 }
 
 describe("auth.logout", () => {
-  it("returns success (Clerk handles actual session invalidation client-side)", async () => {
+  it("returns success after clearing server-managed workspace cookies", async () => {
     const { ctx } = createAuthContext();
     const caller = appRouter.createCaller(ctx);
 
@@ -55,6 +58,9 @@ describe("auth.logout", () => {
   it("auth.me returns null for unauthenticated requests", async () => {
     const ctx: TrpcContext = {
       user: null,
+      authenticatedUser: null,
+      isOwner: false,
+      isVerifiedOwner: false,
       req: { protocol: "https", headers: {} } as TrpcContext["req"],
       res: {} as TrpcContext["res"],
     };

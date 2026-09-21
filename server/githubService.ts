@@ -2,34 +2,15 @@
  * GitHub Integration Service (Supabase)
  * Handles: token encryption, repo operations, push/pull, commits, branches
  */
-import crypto from "crypto";
 import { getSupabaseAdmin } from "./supabase";
+import { mayUseOwnerIntegrationCredentials } from "./serviceAuthorization";
+import {
+  decryptIntegrationCredential,
+  encryptIntegrationCredential,
+} from "./integrationCredentialCrypto";
 
 function getDb() {
   return getSupabaseAdmin();
-}
-
-// Use JWT_SECRET as encryption key (first 32 bytes)
-function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET || "fallback-secret-key-for-dev-only";
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
-}
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, encrypted] = encryptedText.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
 }
 
 // ─── GitHub API Helpers ───────────────────────────────────────────────────────
@@ -70,12 +51,12 @@ export async function connectGitHub(userId: number, token: string): Promise<{ us
 
   if (existing && existing.length > 0) {
     await db.from("github_connections")
-      .update({ token_encrypted: encrypt(token), username })
+      .update({ token_encrypted: encryptIntegrationCredential(token), username })
       .eq("user_id", userId);
   } else {
     await db.from("github_connections").insert({
       user_id: userId,
-      token_encrypted: encrypt(token),
+      token_encrypted: encryptIntegrationCredential(token),
       username,
     });
   }
@@ -104,10 +85,12 @@ export async function getGitHubConnection(userId: number) {
 
 async function getUserToken(userId: number): Promise<string> {
   const conn = await getGitHubConnection(userId);
-  if (conn) return decrypt(conn.token_encrypted);
-  
-  // Fallback: use system GitHub token from environment (owner's PAT)
-  const systemToken = process.env.GITHUB_TOKEN;
+  if (conn) return decryptIntegrationCredential(conn.token_encrypted);
+
+  // The system token belongs exclusively to the verified owner workspace.
+  const systemToken = await mayUseOwnerIntegrationCredentials(userId)
+    ? process.env.GITHUB_TOKEN
+    : null;
   if (systemToken) return systemToken;
   
   throw new Error("GitHub not connected. Please add your token in Settings.");
@@ -116,7 +99,8 @@ async function getUserToken(userId: number): Promise<string> {
 /**
  * Get the system GitHub username (for listing repos when using system token)
  */
-export async function getSystemGitHubUsername(): Promise<string | null> {
+export async function getSystemGitHubUsername(userId: number): Promise<string | null> {
+  if (!(await mayUseOwnerIntegrationCredentials(userId))) return null;
   const systemToken = process.env.GITHUB_TOKEN;
   if (!systemToken) return null;
   try {

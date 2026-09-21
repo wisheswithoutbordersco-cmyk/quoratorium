@@ -18,7 +18,7 @@ export const gitRouter = router({
       };
     }
     // Fallback: check system GitHub token
-    const systemUsername = await github.getSystemGitHubUsername();
+    const systemUsername = await github.getSystemGitHubUsername(ctx.user.id);
     if (systemUsername) {
       return {
         connected: true,

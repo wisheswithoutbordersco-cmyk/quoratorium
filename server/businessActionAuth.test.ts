@@ -50,12 +50,17 @@ describe("business action owner session", () => {
     expect(verifyBusinessActionPin(request(), "correct-horse-47").ok).toBe(true);
   });
 
-  it("rate limits repeated failed guesses by the original client IP", () => {
-    const req = request({ ip: "198.51.100.8" });
+  it("rate limits repeated guesses even when a caller rotates spoofable headers", () => {
     for (let attempt = 0; attempt < 5; attempt += 1) {
-      expect(verifyBusinessActionPin(req, `wrong-code-${attempt}`).ok).toBe(false);
+      expect(verifyBusinessActionPin(
+        request({ ip: `198.51.100.${attempt + 1}` }),
+        `wrong-code-${attempt}`,
+      ).ok).toBe(false);
     }
-    const blocked = verifyBusinessActionPin(req, "correct-horse-47");
+    const blocked = verifyBusinessActionPin(
+      request({ ip: "198.51.100.250" }),
+      "correct-horse-47",
+    );
     expect(blocked.ok).toBe(false);
     expect(blocked.retryAfterSeconds).toBeGreaterThan(0);
   });

@@ -266,7 +266,7 @@ export default function SharedProject() {
                   <iframe
                     srcDoc={currentFile?.content || ""}
                     className="w-full h-full min-h-[500px] border-0"
-                    sandbox="allow-scripts allow-same-origin"
+                    sandbox="allow-scripts"
                     title="Live Preview"
                   />
                 </div>

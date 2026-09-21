@@ -126,8 +126,7 @@ describe("AI router integration", () => {
     }));
 
     const { appRouter } = await import("./routers");
-    const caller = appRouter.createCaller({
-      user: {
+    const user = {
         id: 1,
         openId: "test",
         email: "test@test.com",
@@ -137,7 +136,12 @@ describe("AI router integration", () => {
         createdAt: new Date(),
         updatedAt: new Date(),
         lastSignedIn: new Date(),
-      },
+      };
+    const caller = appRouter.createCaller({
+      user,
+      authenticatedUser: user,
+      isOwner: false,
+      isVerifiedOwner: false,
       req: { protocol: "https", headers: {} } as any,
       res: { clearCookie: vi.fn() } as any,
     });

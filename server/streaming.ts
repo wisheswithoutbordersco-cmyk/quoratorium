@@ -33,7 +33,7 @@ import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabas
 import { getRAGContext } from "./knowledgeBaseService";
 import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
 import { OWNER_EMAILS } from "./_core/env";
-import { getOwnerUser } from "./_core/context";
+import { resolveAuthenticatedUser } from "./_core/context";
 import { persistConversationAttachments } from "./chatAssets";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
 import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
@@ -76,7 +76,7 @@ function getSystemPrompt(_intent: ExtendedIntent): string {
 function getWorkerName(intent: ExtendedIntent): string {
   switch (intent) {
     case "browser": return "Toríu · Browser";
-    case "execute": return `Toríu · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
+    case "execute": return `Toríu · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : process.env.NODE_ENV === "production" ? "Unavailable" : "Local development runner"})`;
     default: return "Toríu";
   }
 }
@@ -124,24 +124,22 @@ export function registerStreamingRoutes(app: Express) {
       return;
     }
 
-    // Keep ordinary Toríu conversation on Anthony's existing owner workspace.
-    // External business procedures use a separate short-lived action session.
     let userId: number | null = null;
     let isGuest = true;
     try {
-      const owner = await getOwnerUser();
-      if (owner?.id) {
-        userId = owner.id;
+      const workspaceUser = await resolveAuthenticatedUser(req);
+      if (workspaceUser?.id) {
+        userId = workspaceUser.id;
         isGuest = false;
       }
     } catch (error: any) {
-      console.error("[Conversation] Owner workspace resolution failed", {
+      console.error("[Conversation] Verified workspace resolution failed", {
         error: error?.stack || error?.message || error,
       });
     }
 
     if (!userId) {
-      res.status(503).json({ error: "Owner workspace is temporarily unavailable." });
+      res.status(401).json({ error: "A verified workspace session is required." });
       return;
     }
 
@@ -811,7 +809,11 @@ async function handleCodeExecution(
     langHint === "typescript" || langHint === "ts" ? "typescript" :
     langHint === "bash" || langHint === "sh" || langHint === "shell" ? "bash" : "javascript";
 
-  const engineLabel = process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox";
+  const engineLabel = process.env.SPRITES_TOKEN
+    ? "Sprites.dev"
+    : process.env.NODE_ENV === "production"
+      ? "Unavailable isolated runtime"
+      : "Local Development Runner";
   let assistantResponse = `⚡ Executing ${language} code via **${engineLabel}**...\n\n`;
   res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
 
@@ -819,7 +821,9 @@ async function handleCodeExecution(
 
   const engineInfo = result.engine === "sprites"
     ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}`
-    : " | Engine: Local";
+    : result.engine === "disabled"
+      ? " | Engine: Disabled"
+      : " | Engine: Local development runner";
 
   if (result.success) {
     const output = result.stdout || "(no output)";
