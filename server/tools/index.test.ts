@@ -57,6 +57,9 @@ describe("runToolLoop", () => {
     const toolNames = payload.tools.map((tool: any) => tool.function.name);
     expect(toolNames).toContain("generate_image");
     expect(toolNames).toContain("scriptorium_generate");
+    expect(toolNames).toContain("github_list_repositories");
+    expect(toolNames).toContain("github_read_repository_file");
+    expect(toolNames).not.toContain("github_merge_pull_request");
   });
 
   it("retries a compatible OpenRouter model when the preferred model is rejected", async () => {

@@ -1,78 +1,62 @@
 import { useEffect, useMemo, useState } from "react";
-import JSZip from "jszip";
 import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ArrowLeft, Download, FileText, Loader2 } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  ChevronRight,
+  FileCode2,
+  FileSearch,
+  FolderTree,
+  GitBranch,
+  GitPullRequest,
+  Loader2,
+  LockKeyhole,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+} from "lucide-react";
 import { toast } from "sonner";
 
-type GitFile = { path: string; content: string };
+type TreeEntry = {
+  path: string;
+  type: "file" | "directory";
+  size: number | null;
+  sha: string;
+};
 
-function isValidBranchName(value: string) {
-  const name = value.trim();
-  if (!name || name.length > 255 || name === "HEAD") return false;
-  if (
-    name.startsWith("-") ||
-    name.startsWith("/") ||
-    name.endsWith("/") ||
-    name.endsWith(".")
-  )
-    return false;
-  if (
-    name.includes("..") ||
-    name.includes("@{") ||
-    /[~^:?*\\[\\]\\\\\s\x00-\x1f\x7f]/.test(name)
-  )
-    return false;
-  return name
-    .split("/")
-    .every(
-      part => part && part !== "." && part !== ".." && !part.endsWith(".lock")
-    );
-}
-
-function fileSize(content: string) {
-  return new Blob([content]).size.toLocaleString();
-}
-
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = url;
-  anchor.download = filename;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  window.setTimeout(() => URL.revokeObjectURL(url), 0);
+function fileSize(size: number | null) {
+  if (size === null) return "";
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / (1024 * 1024)).toFixed(1)} MB`;
 }
 
 export default function Git() {
   const { user } = useAuth();
-
   const [tokenInput, setTokenInput] = useState("");
-  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
-  const [newRepoName, setNewRepoName] = useState("");
-  const [newBranchName, setNewBranchName] = useState("");
-  const [sourceBranch, setSourceBranch] = useState("");
-  const [selectedBranch, setSelectedBranch] = useState("");
-  const [selectedProjectId, setSelectedProjectId] = useState("");
-  const [selectedFileIds, setSelectedFileIds] = useState<Set<number>>(
-    new Set()
-  );
-  const [commitMessage, setCommitMessage] = useState("");
-  const [pulledFiles, setPulledFiles] = useState<GitFile[] | null>(null);
-  const [isDownloadingZip, setIsDownloadingZip] = useState(false);
   const [showConnectForm, setShowConnectForm] = useState(false);
+  const [selectedRepo, setSelectedRepo] = useState<string | null>(null);
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [pathFilter, setPathFilter] = useState("");
+  const [selectedPath, setSelectedPath] = useState<string | null>(null);
+  const [searchInput, setSearchInput] = useState("");
+  const [submittedSearch, setSubmittedSearch] = useState("");
+  const utils = trpc.useUtils();
 
   const statusQuery = trpc.git.status.useQuery(undefined, { enabled: !!user });
-  const isConnected = statusQuery.data?.connected;
-  const reposQuery = trpc.git.listRepos.useQuery(undefined, {
-    enabled: !!user && !!statusQuery.data?.connected,
+  const connected = Boolean(statusQuery.data?.connected);
+  const repositoriesQuery = trpc.git.listRepos.useQuery(undefined, {
+    enabled: !!user && connected,
   });
-  const commitsQuery = trpc.git.commits.useQuery(
+  const capabilitiesQuery = trpc.git.capabilities.useQuery(undefined, {
+    enabled: !!user,
+  });
+  const overviewQuery = trpc.git.overview.useQuery(
     { repo: selectedRepo || "" },
     { enabled: !!selectedRepo }
   );
@@ -80,312 +64,215 @@ export default function Git() {
     { repo: selectedRepo || "" },
     { enabled: !!selectedRepo }
   );
-  const projectsQuery = trpc.projects.list.useQuery(undefined, {
-    enabled: !!isConnected,
-  });
-  const projectFilesQuery = trpc.projects.getFiles.useQuery(
-    { projectId: Number(selectedProjectId) || 0 },
-    { enabled: !!selectedProjectId }
+  const treeQuery = trpc.git.tree.useQuery(
+    { repo: selectedRepo || "", reference: selectedBranch || undefined },
+    { enabled: !!selectedRepo && !!selectedBranch }
   );
-  const pullQuery = trpc.git.pull.useQuery(
-    { repo: selectedRepo || "", branch: selectedBranch || undefined },
-    { enabled: false, retry: false }
+  const fileQuery = trpc.git.readFile.useQuery(
+    {
+      repo: selectedRepo || "",
+      path: selectedPath || "",
+      reference: selectedBranch || undefined,
+    },
+    { enabled: !!selectedRepo && !!selectedPath }
+  );
+  const codeSearchQuery = trpc.git.searchCode.useQuery(
+    { repo: selectedRepo || "", query: submittedSearch },
+    { enabled: !!selectedRepo && submittedSearch.length >= 2, retry: false }
   );
 
-  const selectedRepository = reposQuery.data?.find(
-    repo => repo.fullName === selectedRepo
+  const connectMutation = trpc.git.connect.useMutation({
+    onSuccess: async data => {
+      toast.success(`Connected as ${data.username}`);
+      setTokenInput("");
+      setShowConnectForm(false);
+      await Promise.all([
+        utils.git.status.invalidate(),
+        utils.git.listRepos.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+  const disconnectMutation = trpc.git.disconnect.useMutation({
+    onSuccess: async () => {
+      toast.success("GitHub connection removed");
+      setSelectedRepo(null);
+      await Promise.all([
+        utils.git.status.invalidate(),
+        utils.git.listRepos.invalidate(),
+      ]);
+    },
+    onError: error => toast.error(error.message),
+  });
+
+  const selectedRepository = repositoriesQuery.data?.find(
+    repository => repository.fullName === selectedRepo
   );
-  const defaultBranch =
-    selectedRepository?.defaultBranch || branchesQuery.data?.[0]?.name || "";
   const branchNames = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          [
-            defaultBranch,
-            ...(branchesQuery.data?.map(branch => branch.name) || []),
-          ].filter(Boolean)
-        )
-      ),
-    [branchesQuery.data, defaultBranch]
+    () => branchesQuery.data?.map(branch => branch.name) || [],
+    [branchesQuery.data]
   );
-  const pushableFiles = useMemo(
-    () =>
-      (projectFilesQuery.data || []).filter(
-        file => typeof file.content === "string" && !!file.filepath
-      ),
-    [projectFilesQuery.data]
-  );
-  const selectedFiles = useMemo(
-    () => pushableFiles.filter(file => selectedFileIds.has(file.id)),
-    [pushableFiles, selectedFileIds]
+  const visibleEntries = useMemo(() => {
+    const filter = pathFilter.trim().toLowerCase();
+    return (treeQuery.data?.entries || []).filter(
+      entry => !filter || entry.path.toLowerCase().includes(filter)
+    );
+  }, [pathFilter, treeQuery.data?.entries]);
+  const readCapability = capabilitiesQuery.data?.find(
+    capability => capability.id === "github.repository.read"
   );
 
   useEffect(() => {
     if (
       !selectedRepo &&
       statusQuery.data?.defaultRepo &&
-      reposQuery.data?.some(
-        repo => repo.fullName === statusQuery.data?.defaultRepo
+      repositoriesQuery.data?.some(
+        repository => repository.fullName === statusQuery.data?.defaultRepo
       )
     ) {
       setSelectedRepo(statusQuery.data.defaultRepo);
     }
-  }, [reposQuery.data, selectedRepo, statusQuery.data?.defaultRepo]);
+  }, [repositoriesQuery.data, selectedRepo, statusQuery.data?.defaultRepo]);
 
   useEffect(() => {
     if (!selectedRepo) return;
-    const repoDefault = selectedRepository?.defaultBranch || "";
-    setSelectedBranch(repoDefault);
-    setSourceBranch(repoDefault);
-    setNewBranchName("");
-    setPulledFiles(null);
+    setSelectedPath(null);
+    setSubmittedSearch("");
+    setSearchInput("");
+    setPathFilter("");
   }, [selectedRepo]);
 
   useEffect(() => {
-    if (!selectedRepo || !defaultBranch) return;
-    setSelectedBranch(current => current || defaultBranch);
-    setSourceBranch(current => current || defaultBranch);
-  }, [defaultBranch, selectedRepo]);
-
-  useEffect(() => {
-    setSelectedFileIds(new Set());
-    setCommitMessage("");
-  }, [selectedProjectId]);
-
-  useEffect(() => {
-    if (projectFilesQuery.data) {
-      setSelectedFileIds(new Set(pushableFiles.map(file => file.id)));
+    const defaultBranch =
+      overviewQuery.data?.defaultBranch || branchNames[0] || "";
+    if (selectedRepo && defaultBranch && !selectedBranch) {
+      setSelectedBranch(defaultBranch);
     }
-  }, [projectFilesQuery.data, pushableFiles]);
+  }, [
+    branchNames,
+    overviewQuery.data?.defaultBranch,
+    selectedBranch,
+    selectedRepo,
+  ]);
 
-  const connectMutation = trpc.git.connect.useMutation({
-    onSuccess: data => {
-      toast.success(`Connected as ${data.username}`);
-      setTokenInput("");
-      setShowConnectForm(false);
-      statusQuery.refetch();
-      reposQuery.refetch();
-    },
-    onError: err => toast.error(err.message),
-  });
-
-  const disconnectMutation = trpc.git.disconnect.useMutation({
-    onSuccess: () => {
-      toast.success("GitHub disconnected");
-      statusQuery.refetch();
-    },
-  });
-
-  const createRepoMutation = trpc.git.createRepo.useMutation({
-    onSuccess: data => {
-      toast.success(`${data.fullName} created successfully`);
-      setNewRepoName("");
-      reposQuery.refetch();
-    },
-    onError: err => toast.error(err.message),
-  });
-
-  const createBranchMutation = trpc.git.createBranch.useMutation({
-    onSuccess: data => {
-      toast.success(`Branch '${data.name}' created`);
-      setNewBranchName("");
-      branchesQuery.refetch();
-    },
-    onError: err => toast.error(err.message),
-  });
-
-  const pushMutation = trpc.git.push.useMutation({
-    onSuccess: result => {
-      toast.success(
-        `Pushed ${selectedFiles.length} file${selectedFiles.length === 1 ? "" : "s"}`,
-        {
-          description: `Commit ${result.commitSha} on ${selectedBranch}`,
-        }
-      );
-    },
-    onError: err => toast.error("Push failed", { description: err.message }),
-  });
-
-  const branchNameIsValid = isValidBranchName(newBranchName);
-  const unavailableProjectFiles =
-    (projectFilesQuery.data?.length || 0) - pushableFiles.length;
-
-  const handleCreateBranch = () => {
-    if (!selectedRepo || !branchNameIsValid || !sourceBranch) return;
-    createBranchMutation.mutate({
-      repo: selectedRepo,
-      branchName: newBranchName.trim(),
-      fromBranch: sourceBranch,
-    });
+  const selectRepository = (repo: string) => {
+    setSelectedRepo(repo);
+    setSelectedBranch("");
   };
 
-  const handlePush = () => {
-    if (
-      !selectedRepo ||
-      !selectedBranch ||
-      !commitMessage.trim() ||
-      selectedFiles.length === 0
-    )
-      return;
-    pushMutation.mutate({
-      repo: selectedRepo,
-      branch: selectedBranch,
-      commitMessage: commitMessage.trim(),
-      files: selectedFiles.map(file => ({
-        path: file.filepath,
-        content: file.content as string,
-      })),
-    });
+  const refreshExplorer = async () => {
+    await Promise.all([
+      repositoriesQuery.refetch(),
+      selectedRepo ? overviewQuery.refetch() : Promise.resolve(),
+      selectedRepo ? branchesQuery.refetch() : Promise.resolve(),
+      selectedRepo && selectedBranch ? treeQuery.refetch() : Promise.resolve(),
+    ]);
+    toast.success("GitHub explorer refreshed");
   };
 
-  const handlePull = async () => {
-    if (!selectedRepo || !selectedBranch) return;
-    const result = await pullQuery.refetch();
-    if (result.error) {
-      toast.error("Pull failed", { description: result.error.message });
+  const runSearch = () => {
+    const query = searchInput.trim();
+    if (query.length < 2) {
+      toast.error("Enter at least two characters to search code.");
       return;
     }
-    const files = result.data || [];
-    setPulledFiles(files);
-    toast.success(
-      `Fetched ${files.length} file${files.length === 1 ? "" : "s"} for preview`
-    );
-  };
-
-  const downloadPulledJson = () => {
-    if (!pulledFiles || !selectedRepo) return;
-    const body = JSON.stringify(
-      {
-        repository: selectedRepo,
-        branch: selectedBranch,
-        fetchedAt: new Date().toISOString(),
-        files: pulledFiles,
-      },
-      null,
-      2
-    );
-    downloadBlob(
-      new Blob([body], { type: "application/json" }),
-      `${selectedRepo.replace("/", "-")}-${selectedBranch}.json`
-    );
-  };
-
-  const downloadPulledZip = async () => {
-    if (!pulledFiles || !selectedRepo) return;
-    setIsDownloadingZip(true);
-    try {
-      const zip = new JSZip();
-      pulledFiles.forEach(file => zip.file(file.path, file.content));
-      const archive = await zip.generateAsync({ type: "blob" });
-      downloadBlob(
-        archive,
-        `${selectedRepo.replace("/", "-")}-${selectedBranch}.zip`
-      );
-      toast.success("Downloaded pulled files as ZIP");
-    } catch (error) {
-      toast.error("Could not create ZIP", {
-        description: error instanceof Error ? error.message : "Unknown error",
-      });
-    } finally {
-      setIsDownloadingZip(false);
-    }
+    setSubmittedSearch(query);
   };
 
   return (
-    <div className="min-h-screen bg-background text-foreground p-4 md:p-8">
-      <div className="max-w-6xl mx-auto space-y-6">
-        {/* Back Button */}
-        <div className="flex items-center gap-2 mb-4">
+    <div className="min-h-screen bg-background p-4 text-foreground md:p-8">
+      <div className="mx-auto max-w-7xl space-y-6">
+        <div className="flex items-center gap-2">
           <Link href="/workspace">
-            <Button
-              variant="ghost"
-              size="sm"
-              className="text-muted-foreground hover:text-foreground hover:bg-muted/50"
-            >
-              <ArrowLeft className="w-4 h-4 mr-2" />
+            <Button variant="ghost" size="sm" className="text-muted-foreground">
+              <ArrowLeft className="mr-2 h-4 w-4" />
               Back to Workspace
             </Button>
           </Link>
         </div>
-        {/* Header */}
-        <div className="flex items-center justify-between">
+
+        <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <h1 className="text-2xl font-bold">Git Workspace</h1>
-            <p className="text-muted-foreground text-sm mt-1">
-              Review project files before pushing and preview fetched files
-              before downloading them
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              Toríu GitHub Connection
+            </p>
+            <h1 className="text-3xl font-bold tracking-tight">
+              Repository Explorer
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+              Toríu can now see your codebase, explain what it does, and find
+              where things live. This phase is read-only.
             </p>
           </div>
-          {isConnected && (
-            <div className="flex items-center gap-3">
-              <span className="text-sm text-muted-foreground">
-                Connected as{" "}
-                <span className="text-emerald-400 font-medium">
-                  {statusQuery.data?.username}
-                </span>
-              </span>
+          {connected && (
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" onClick={() => void refreshExplorer()}>
+                <RefreshCw className="mr-2 h-4 w-4" />
+                Refresh
+              </Button>
               <Button
                 variant="outline"
-                size="sm"
                 onClick={() => disconnectMutation.mutate()}
                 disabled={disconnectMutation.isPending}
-                className="text-red-400 border-red-400/30 hover:bg-red-400/10"
+                className="border-destructive/40 text-destructive hover:bg-destructive/10"
               >
-                {disconnectMutation.isPending
-                  ? "Disconnecting..."
-                  : "Disconnect"}
+                {disconnectMutation.isPending ? "Disconnecting…" : "Disconnect"}
               </Button>
             </div>
           )}
         </div>
 
-        {/* Connection Card */}
-        {!isConnected && (
-          <Card className="border-border/50 bg-card/50 backdrop-blur">
+        <Card className="border-primary/20 bg-primary/[0.035]">
+          <CardContent className="flex flex-col gap-4 p-5 md:flex-row md:items-center md:justify-between">
+            <div className="flex gap-3">
+              <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0 text-emerald-400" />
+              <div>
+                <p className="font-medium">Read-only GitHub access is active</p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Repository listing, structure, code search, file reading, and
+                  commit history are audited. Toríu cannot create repositories,
+                  push files, merge code, or change GitHub settings from this
+                  explorer.
+                </p>
+              </div>
+            </div>
+            {readCapability && (
+              <div className="shrink-0 rounded-full border border-emerald-500/30 bg-emerald-500/10 px-3 py-1.5 text-xs font-medium text-emerald-300">
+                {readCapability.permission} · {readCapability.risk} risk · no
+                confirmation
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {!connected && (
+          <Card className="border-border/50 bg-card/50">
             <CardHeader>
-              <CardTitle className="text-lg">Connect GitHub</CardTitle>
+              <CardTitle>Connect GitHub</CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="space-y-4">
               {!showConnectForm ? (
-                <div className="text-center py-8">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-zinc-800 flex items-center justify-center">
-                    <svg
-                      className="w-8 h-8 text-white"
-                      viewBox="0 0 24 24"
-                      fill="currentColor"
-                    >
-                      <path d="M12 0C5.37 0 0 5.37 0 12c0 5.31 3.435 9.795 8.205 11.385.6.105.825-.255.825-.57 0-.285-.015-1.23-.015-2.235-3.015.555-3.795-.735-4.035-1.41-.135-.345-.72-1.41-1.23-1.695-.42-.225-1.02-.78-.015-.795.945-.015 1.62.87 1.845 1.23 1.08 1.815 2.805 1.305 3.495.99.105-.78.42-1.305.765-1.605-2.67-.3-5.46-1.335-5.46-5.925 0-1.305.465-2.385 1.23-3.225-.12-.3-.54-1.53.12-3.18 0 0 1.005-.315 3.3 1.23.96-.27 1.98-.405 3-.405s2.04.135 3 .405c2.295-1.56 3.3-1.23 3.3-1.23.66 1.65.24 2.88.12 3.18.765.84 1.23 1.905 1.23 3.225 0 4.605-2.805 5.625-5.475 5.925.435.375.81 1.095.81 2.22 0 1.605-.015 2.895-.015 3.3 0 .315.225.69.825.57A12.02 12.02 0 0024 12c0-6.63-5.37-12-12-12z" />
-                    </svg>
-                  </div>
-                  <p className="text-muted-foreground mb-4">
-                    Connect your GitHub account to push and pull code
+                <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <p className="max-w-2xl text-sm text-muted-foreground">
+                    Connect the account Toríu should read. The token is
+                    encrypted server-side and used only by the GitHub service.
                   </p>
                   <Button onClick={() => setShowConnectForm(true)}>
-                    Connect with Personal Access Token
+                    Connect GitHub
                   </Button>
                 </div>
               ) : (
-                <div className="space-y-4">
+                <div className="max-w-xl space-y-3">
                   <p className="text-sm text-muted-foreground">
-                    Create a Personal Access Token at{" "}
-                    <a
-                      href="https://github.com/settings/tokens"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="text-blue-400 underline"
-                    >
-                      github.com/settings/tokens
-                    </a>{" "}
-                    with <code className="bg-zinc-800 px-1 rounded">repo</code>{" "}
-                    scope.
+                    Paste a GitHub personal access token that can read the
+                    repositories you want Toríu to inspect.
                   </p>
                   <Input
                     type="password"
-                    placeholder="ghp_xxxxxxxxxxxxxxxxxxxx"
                     value={tokenInput}
-                    onChange={e => setTokenInput(e.target.value)}
-                    className="font-mono"
+                    onChange={event => setTokenInput(event.target.value)}
+                    placeholder="GitHub personal access token"
+                    autoComplete="off"
                   />
                   <div className="flex gap-2">
                     <Button
@@ -394,7 +281,7 @@ export default function Git() {
                       }
                       disabled={!tokenInput || connectMutation.isPending}
                     >
-                      {connectMutation.isPending ? "Connecting..." : "Connect"}
+                      {connectMutation.isPending ? "Connecting…" : "Connect"}
                     </Button>
                     <Button
                       variant="outline"
@@ -409,524 +296,319 @@ export default function Git() {
           </Card>
         )}
 
-        {/* Main Content (when connected) */}
-        {isConnected && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Repos List */}
-            <Card className="border-border/50 bg-card/50 backdrop-blur lg:col-span-1">
+        {connected && (
+          <div className="grid gap-6 xl:grid-cols-[minmax(250px,0.7fr)_minmax(0,1.5fr)]">
+            <Card className="border-border/50 bg-card/50">
               <CardHeader className="flex flex-row items-center justify-between pb-3">
                 <CardTitle className="text-base">Repositories</CardTitle>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => reposQuery.refetch()}
-                >
-                  Refresh
-                </Button>
+                <span className="text-xs text-muted-foreground">
+                  {repositoriesQuery.data?.length || 0} visible
+                </span>
               </CardHeader>
-              <CardContent className="space-y-2 max-h-[500px] overflow-y-auto">
-                {/* Create Repo */}
-                <div className="flex gap-2 mb-3">
-                  <Input
-                    placeholder="New repo name"
-                    value={newRepoName}
-                    onChange={e => setNewRepoName(e.target.value)}
-                    className="text-sm"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      createRepoMutation.mutate({ name: newRepoName.trim() })
-                    }
-                    disabled={
-                      !newRepoName.trim() || createRepoMutation.isPending
-                    }
-                  >
-                    {createRepoMutation.isPending ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      "+"
-                    )}
-                  </Button>
-                </div>
-
-                {reposQuery.data?.map((repo: any) => (
+              <CardContent className="max-h-[680px] space-y-2 overflow-y-auto">
+                {repositoriesQuery.data?.map(repository => (
                   <button
-                    key={repo.id}
-                    onClick={() => setSelectedRepo(repo.fullName)}
-                    className={`w-full text-left p-3 rounded-lg border transition-all ${
-                      selectedRepo === repo.fullName
-                        ? "border-blue-500/50 bg-blue-500/10"
-                        : "border-border/30 hover:border-border/60 hover:bg-accent/30"
+                    key={repository.id}
+                    type="button"
+                    onClick={() => selectRepository(repository.fullName)}
+                    className={`w-full rounded-lg border p-3 text-left transition-colors ${
+                      selectedRepo === repository.fullName
+                        ? "border-primary/50 bg-primary/10"
+                        : "border-border/40 hover:border-border hover:bg-muted/40"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-medium truncate">
-                        {repo.name}
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="truncate text-sm font-medium">
+                        {repository.name}
                       </span>
-                      {repo.private && (
-                        <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-400">
-                          Private
-                        </span>
+                      {repository.private && (
+                        <LockKeyhole className="h-3.5 w-3.5 text-amber-300" />
                       )}
                     </div>
-                    <div className="flex items-center gap-3 mt-1">
-                      {repo.language && (
-                        <span className="text-xs text-muted-foreground">
-                          {repo.language}
-                        </span>
-                      )}
-                      <span className="text-xs text-muted-foreground">
-                        {new Date(repo.updatedAt).toLocaleDateString()}
-                      </span>
-                    </div>
+                    <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                      {repository.description || "No repository description"}
+                    </p>
+                    <p className="mt-2 font-mono text-[10px] text-muted-foreground/80">
+                      {repository.defaultBranch || "default branch unknown"}
+                    </p>
                   </button>
                 ))}
-
-                {reposQuery.isLoading && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    Loading repos...
+                {repositoriesQuery.isLoading && (
+                  <p className="py-8 text-center text-sm text-muted-foreground">
+                    Loading repositories…
                   </p>
                 )}
-                {reposQuery.isError && (
+                {repositoriesQuery.isError && (
                   <p
                     role="alert"
-                    className="text-sm text-red-400 text-center py-4"
+                    className="py-8 text-center text-sm text-destructive"
                   >
-                    Could not load repositories: {reposQuery.error.message}
-                  </p>
-                )}
-                {reposQuery.data?.length === 0 && (
-                  <p className="text-sm text-muted-foreground text-center py-4">
-                    No repositories yet
+                    Could not load repositories:{" "}
+                    {repositoriesQuery.error.message}
                   </p>
                 )}
               </CardContent>
             </Card>
 
-            {/* Repo Details */}
-            <Card className="border-border/50 bg-card/50 backdrop-blur lg:col-span-2">
-              <CardContent className="p-6">
-                {!selectedRepo ? (
-                  <div className="text-center py-16 text-muted-foreground">
-                    <p className="text-lg">Select a repository</p>
-                    <p className="text-sm mt-1">
-                      Choose a repo from the list to view commits and branches
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-6">
-                    {/* Repo Header */}
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold">{selectedRepo}</h2>
-                      <a
-                        href={`https://github.com/${selectedRepo}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-sm text-blue-400 hover:underline"
-                      >
-                        Open on GitHub →
-                      </a>
-                    </div>
-
-                    {/* Branches */}
-                    <div>
-                      <div className="flex flex-col gap-3 mb-3">
-                        <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide">
-                          Branches
-                        </h3>
-                        <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
-                          <Input
-                            placeholder="New branch name"
-                            value={newBranchName}
-                            onChange={e => setNewBranchName(e.target.value)}
-                            aria-invalid={
-                              newBranchName.length > 0 && !branchNameIsValid
-                            }
-                            className="text-sm"
-                          />
-                          <select
-                            aria-label="Source branch"
-                            value={sourceBranch}
-                            onChange={e => setSourceBranch(e.target.value)}
-                            className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                            disabled={
-                              branchesQuery.isLoading ||
-                              branchNames.length === 0
-                            }
-                          >
-                            <option value="">Source branch</option>
-                            {branchNames.map(branch => (
-                              <option key={branch} value={branch}>
-                                {branch}
-                                {branch === selectedRepository?.defaultBranch
-                                  ? " (default)"
-                                  : ""}
-                              </option>
-                            ))}
-                          </select>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={handleCreateBranch}
-                            disabled={
-                              !branchNameIsValid ||
-                              !sourceBranch ||
-                              createBranchMutation.isPending
-                            }
-                          >
-                            {createBranchMutation.isPending
-                              ? "Creating..."
-                              : "Create branch"}
-                          </Button>
-                        </div>
-                        <p
-                          className={`text-xs ${newBranchName && !branchNameIsValid ? "text-red-400" : "text-muted-foreground"}`}
-                        >
-                          {newBranchName && !branchNameIsValid
-                            ? "Use a valid Git branch name (no spaces, .., @\u007b, or special ref characters)."
-                            : `New branches start from the selected source${selectedRepository?.defaultBranch ? `; ${selectedRepository.defaultBranch} is this repository's default branch.` : "."}`}
-                        </p>
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {branchesQuery.data?.map((branch: any) => (
-                          <span
-                            key={branch.name}
-                            className="px-3 py-1 rounded-full text-xs bg-zinc-800 border border-border/30"
-                          >
-                            {branch.name}
-                            {branch.protected && " 🔒"}
-                          </span>
-                        ))}
-                      </div>
-                      {branchesQuery.isLoading && (
-                        <p className="text-sm text-muted-foreground mt-2">
-                          Loading branches...
-                        </p>
-                      )}
-                      {branchesQuery.isError && (
-                        <p role="alert" className="text-sm text-red-400 mt-2">
-                          Could not load branches: {branchesQuery.error.message}
-                        </p>
-                      )}
-                    </div>
-
-                    {/* Push */}
-                    <div className="border border-border/50 rounded-lg p-4 space-y-4">
-                      <div>
-                        <h3 className="text-sm font-medium">
-                          Push project files
-                        </h3>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Select stored project files and review them here
-                          before creating a GitHub commit.
-                        </p>
-                      </div>
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <label className="text-sm space-y-1.5">
-                          <span className="text-muted-foreground">
-                            Workspace project
-                          </span>
-                          <select
-                            value={selectedProjectId}
-                            onChange={e => setSelectedProjectId(e.target.value)}
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
-                          >
-                            <option value="">Select a project</option>
-                            {projectsQuery.data?.map(project => (
-                              <option key={project.id} value={project.id}>
-                                {project.name}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="text-sm space-y-1.5">
-                          <span className="text-muted-foreground">
-                            Destination branch
-                          </span>
-                          <select
-                            value={selectedBranch}
-                            onChange={e => setSelectedBranch(e.target.value)}
-                            disabled={
-                              branchNames.length === 0 ||
-                              branchesQuery.isLoading
-                            }
-                            className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm disabled:opacity-50"
-                          >
-                            <option value="">Select a branch</option>
-                            {branchNames.map(branch => (
-                              <option key={branch} value={branch}>
-                                {branch}
-                                {branch === selectedRepository?.defaultBranch
-                                  ? " (default)"
-                                  : ""}
-                              </option>
-                            ))}
-                          </select>
-                        </label>
-                      </div>
-                      {projectsQuery.isLoading && (
-                        <p className="text-xs text-muted-foreground">
-                          Loading workspace projects...
-                        </p>
-                      )}
-                      {projectsQuery.isError && (
-                        <p role="alert" className="text-xs text-red-400">
-                          Could not load projects: {projectsQuery.error.message}
-                        </p>
-                      )}
-                      {selectedProjectId && (
-                        <div className="rounded-md border border-border/50">
-                          <div className="flex items-center justify-between gap-3 border-b border-border/50 px-3 py-2">
-                            <p className="text-xs text-muted-foreground">
-                              {projectFilesQuery.isLoading
-                                ? "Loading stored files..."
-                                : `${selectedFiles.length} of ${pushableFiles.length} file${pushableFiles.length === 1 ? "" : "s"} selected`}
-                            </p>
-                            {pushableFiles.length > 0 && (
-                              <div className="flex gap-2">
-                                <button
-                                  type="button"
-                                  className="text-xs text-blue-400 hover:underline"
-                                  onClick={() =>
-                                    setSelectedFileIds(
-                                      new Set(
-                                        pushableFiles.map(file => file.id)
-                                      )
-                                    )
-                                  }
-                                >
-                                  Select all
-                                </button>
-                                <button
-                                  type="button"
-                                  className="text-xs text-blue-400 hover:underline"
-                                  onClick={() => setSelectedFileIds(new Set())}
-                                >
-                                  Clear
-                                </button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="max-h-40 overflow-y-auto divide-y divide-border/30">
-                            {pushableFiles.map(file => (
-                              <label
-                                key={file.id}
-                                className="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-muted/40"
-                              >
-                                <input
-                                  type="checkbox"
-                                  checked={selectedFileIds.has(file.id)}
-                                  onChange={e =>
-                                    setSelectedFileIds(current => {
-                                      const next = new Set(current);
-                                      if (e.target.checked) next.add(file.id);
-                                      else next.delete(file.id);
-                                      return next;
-                                    })
-                                  }
-                                />
-                                <FileText className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                                <span className="min-w-0 flex-1 truncate font-mono text-xs">
-                                  {file.filepath}
-                                </span>
-                                <span className="text-xs text-muted-foreground">
-                                  {fileSize(file.content as string)} B
-                                </span>
-                              </label>
-                            ))}
-                            {!projectFilesQuery.isLoading &&
-                              pushableFiles.length === 0 && (
-                                <p className="px-3 py-3 text-xs text-muted-foreground">
-                                  This project has no stored file content
-                                  available to push.
-                                </p>
-                              )}
-                          </div>
-                          {unavailableProjectFiles > 0 && (
-                            <p className="border-t border-border/50 px-3 py-2 text-xs text-amber-500">
-                              {unavailableProjectFiles} file
-                              {unavailableProjectFiles === 1 ? "" : "s"}{" "}
-                              excluded because this page cannot retrieve its
-                              stored text content.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                      <label className="block text-sm space-y-1.5">
-                        <span className="text-muted-foreground">
-                          Commit message
-                        </span>
-                        <textarea
-                          value={commitMessage}
-                          onChange={e => setCommitMessage(e.target.value)}
-                          rows={2}
-                          placeholder="Describe the selected project changes"
-                          className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                        />
-                      </label>
-                      <Button
-                        onClick={handlePush}
-                        disabled={
-                          !selectedRepo ||
-                          !selectedBranch ||
-                          !commitMessage.trim() ||
-                          selectedFiles.length === 0 ||
-                          pushMutation.isPending
-                        }
-                      >
-                        {pushMutation.isPending ? (
-                          <>
-                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                            Pushing...
-                          </>
-                        ) : (
-                          "Push selected files"
-                        )}
-                      </Button>
-                    </div>
-
-                    {/* Pull */}
-                    <div className="border border-border/50 rounded-lg p-4 space-y-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="space-y-6">
+              {!selectedRepo ? (
+                <Card className="border-border/50 bg-card/50">
+                  <CardContent className="py-20 text-center text-muted-foreground">
+                    <BookOpen className="mx-auto mb-3 h-8 w-8 opacity-50" />
+                    Select a repository to inspect its codebase.
+                  </CardContent>
+                </Card>
+              ) : (
+                <>
+                  <Card className="border-border/50 bg-card/50">
+                    <CardContent className="space-y-4 p-5">
+                      <div className="flex flex-col justify-between gap-3 sm:flex-row sm:items-start">
                         <div>
-                          <h3 className="text-sm font-medium">
-                            Pull file preview
-                          </h3>
-                          <p className="text-xs text-muted-foreground mt-1">
-                            Fetching does not change a workspace project. Review
-                            the files, then download them locally.
+                          <h2 className="text-xl font-semibold">
+                            {selectedRepo}
+                          </h2>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {overviewQuery.data?.description ||
+                              selectedRepository?.description ||
+                              "No repository description"}
                           </p>
                         </div>
-                        <Button
-                          variant="outline"
-                          onClick={handlePull}
-                          disabled={!selectedBranch || pullQuery.isFetching}
+                        <a
+                          href={`https://github.com/${selectedRepo}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-sm text-primary hover:underline"
                         >
-                          {pullQuery.isFetching ? (
-                            <>
-                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                              Fetching...
-                            </>
-                          ) : (
-                            "Fetch from GitHub"
-                          )}
-                        </Button>
+                          Open on GitHub →
+                        </a>
                       </div>
-                      {pullQuery.isError && !pulledFiles && (
-                        <p role="alert" className="text-xs text-red-400">
-                          Could not fetch files: {pullQuery.error.message}
-                        </p>
-                      )}
-                      {pulledFiles && (
-                        <div className="space-y-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-xs text-muted-foreground">
-                              {pulledFiles.length} file
-                              {pulledFiles.length === 1 ? "" : "s"} fetched from{" "}
-                              <span className="font-mono">
-                                {selectedBranch}
-                              </span>
-                            </p>
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={downloadPulledJson}
-                              >
-                                <Download className="mr-1.5 h-3.5 w-3.5" />
-                                JSON
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={downloadPulledZip}
-                                disabled={isDownloadingZip}
-                              >
-                                {isDownloadingZip ? (
-                                  <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
-                                ) : (
-                                  <Download className="mr-1.5 h-3.5 w-3.5" />
-                                )}{" "}
-                                ZIP
-                              </Button>
-                            </div>
-                          </div>
-                          <div className="max-h-52 overflow-y-auto rounded-md border border-border/50 divide-y divide-border/30">
-                            {pulledFiles.map(file => (
-                              <details key={file.path} className="group">
-                                <summary className="cursor-pointer list-none px-3 py-2 text-sm hover:bg-muted/40">
-                                  <span className="font-mono text-xs">
-                                    {file.path}
-                                  </span>
-                                  <span className="ml-2 text-xs text-muted-foreground">
-                                    {fileSize(file.content)} B
-                                  </span>
-                                </summary>
-                                <pre className="max-h-56 overflow-auto border-t border-border/30 bg-muted/30 p-3 text-xs">
-                                  <code>{file.content}</code>
-                                </pre>
-                              </details>
-                            ))}
-                            {pulledFiles.length === 0 && (
-                              <p className="px-3 py-3 text-xs text-muted-foreground">
-                                This branch did not return any files.
-                              </p>
-                            )}
-                          </div>
+                      <div className="grid gap-3 text-sm sm:grid-cols-3">
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            Default branch
+                          </p>
+                          <p className="mt-1 font-mono">
+                            {overviewQuery.data?.defaultBranch || "Loading…"}
+                          </p>
                         </div>
-                      )}
-                    </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            Primary language
+                          </p>
+                          <p className="mt-1">
+                            {overviewQuery.data?.language || "Not detected"}
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-muted-foreground">
+                            Updated
+                          </p>
+                          <p className="mt-1">
+                            {overviewQuery.data?.updatedAt
+                              ? new Date(
+                                  overviewQuery.data.updatedAt
+                                ).toLocaleDateString()
+                              : "Loading…"}
+                          </p>
+                        </div>
+                      </div>
+                      <label className="block text-sm">
+                        <span className="mb-1.5 block text-xs text-muted-foreground">
+                          Inspect branch
+                        </span>
+                        <select
+                          value={selectedBranch}
+                          onChange={event => {
+                            setSelectedBranch(event.target.value);
+                            setSelectedPath(null);
+                          }}
+                          className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                          disabled={branchesQuery.isLoading}
+                        >
+                          {branchNames.map(branch => (
+                            <option key={branch} value={branch}>
+                              {branch}
+                              {branch === overviewQuery.data?.defaultBranch
+                                ? " (default)"
+                                : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                    </CardContent>
+                  </Card>
 
-                    {/* Commits */}
-                    <div>
-                      <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wide mb-3">
-                        Recent Commits
-                      </h3>
-                      <div className="space-y-2 max-h-[350px] overflow-y-auto">
-                        {commitsQuery.data?.map((commit: any) => (
-                          <div
-                            key={commit.fullSha}
-                            className="flex items-start gap-3 p-3 rounded-lg border border-border/20 hover:border-border/40 transition-colors"
+                  <Card className="border-border/50 bg-card/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FolderTree className="h-4 w-4" />
+                        Codebase structure
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <Input
+                        value={pathFilter}
+                        onChange={event => setPathFilter(event.target.value)}
+                        placeholder="Filter files and folders"
+                      />
+                      <div className="max-h-72 overflow-y-auto rounded-md border border-border/50">
+                        {visibleEntries.map((entry: TreeEntry) => (
+                          <button
+                            key={`${entry.type}-${entry.path}`}
+                            type="button"
+                            onClick={() =>
+                              entry.type === "file" &&
+                              setSelectedPath(entry.path)
+                            }
+                            className={`flex w-full items-center gap-2 border-b border-border/30 px-3 py-2 text-left text-xs last:border-0 ${entry.type === "file" ? "hover:bg-muted/50" : "cursor-default text-muted-foreground"}`}
                           >
-                            <code className="text-xs text-blue-400 font-mono mt-0.5 shrink-0">
-                              {commit.sha}
-                            </code>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm truncate">
-                                {commit.message}
-                              </p>
-                              <p className="text-xs text-muted-foreground mt-0.5">
-                                {commit.author} ·{" "}
-                                {new Date(commit.date).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
+                            {entry.type === "file" ? (
+                              <FileCode2 className="h-3.5 w-3.5 shrink-0 text-primary" />
+                            ) : (
+                              <ChevronRight className="h-3.5 w-3.5 shrink-0" />
+                            )}
+                            <span className="min-w-0 flex-1 truncate font-mono">
+                              {entry.path}
+                            </span>
+                            {entry.size !== null && (
+                              <span className="text-muted-foreground">
+                                {fileSize(entry.size)}
+                              </span>
+                            )}
+                          </button>
                         ))}
-                        {commitsQuery.isLoading && (
-                          <p className="text-sm text-muted-foreground text-center py-4">
-                            Loading commits...
+                        {treeQuery.isLoading && (
+                          <p className="p-5 text-center text-sm text-muted-foreground">
+                            Reading repository structure…
                           </p>
                         )}
-                        {commitsQuery.isError && (
+                        {treeQuery.isError && (
                           <p
                             role="alert"
-                            className="text-sm text-red-400 text-center py-4"
+                            className="p-5 text-center text-sm text-destructive"
                           >
-                            Could not load commits: {commitsQuery.error.message}
+                            Could not load structure: {treeQuery.error.message}
                           </p>
                         )}
-                        {commitsQuery.data?.length === 0 && (
-                          <p className="text-sm text-muted-foreground text-center py-4">
-                            No commits yet
-                          </p>
-                        )}
+                        {!treeQuery.isLoading &&
+                          visibleEntries.length === 0 && (
+                            <p className="p-5 text-center text-sm text-muted-foreground">
+                              No matching files.
+                            </p>
+                          )}
                       </div>
-                    </div>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/50 bg-card/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileSearch className="h-4 w-4" />
+                        Find code
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex gap-2">
+                        <Input
+                          value={searchInput}
+                          onChange={event => setSearchInput(event.target.value)}
+                          onKeyDown={event => {
+                            if (event.key === "Enter") runSearch();
+                          }}
+                          placeholder="Search a component, route, API, or text"
+                        />
+                        <Button variant="outline" onClick={runSearch}>
+                          <Search className="mr-2 h-4 w-4" />
+                          Search
+                        </Button>
+                      </div>
+                      {submittedSearch && (
+                        <div className="max-h-48 overflow-y-auto rounded-md border border-border/50">
+                          {codeSearchQuery.data?.results.map(result => (
+                            <button
+                              key={result.sha}
+                              type="button"
+                              onClick={() => setSelectedPath(result.path)}
+                              className="block w-full border-b border-border/30 px-3 py-2 text-left font-mono text-xs hover:bg-muted/50 last:border-0"
+                            >
+                              {result.path}
+                            </button>
+                          ))}
+                          {codeSearchQuery.isFetching && (
+                            <p className="p-4 text-sm text-muted-foreground">
+                              Searching code…
+                            </p>
+                          )}
+                          {codeSearchQuery.isError && (
+                            <p
+                              role="alert"
+                              className="p-4 text-sm text-destructive"
+                            >
+                              Search failed: {codeSearchQuery.error.message}
+                            </p>
+                          )}
+                          {codeSearchQuery.data?.results.length === 0 && (
+                            <p className="p-4 text-sm text-muted-foreground">
+                              No matching code paths.
+                            </p>
+                          )}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-border/50 bg-card/50">
+                    <CardHeader>
+                      <CardTitle className="flex items-center gap-2 text-base">
+                        <FileCode2 className="h-4 w-4" />
+                        {selectedPath || "File reader"}
+                      </CardTitle>
+                    </CardHeader>
+                    <CardContent>
+                      {!selectedPath && (
+                        <p className="text-sm text-muted-foreground">
+                          Choose a file from the structure or search results to
+                          read it.
+                        </p>
+                      )}
+                      {selectedPath && fileQuery.isLoading && (
+                        <p className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          Reading {selectedPath}…
+                        </p>
+                      )}
+                      {selectedPath && fileQuery.isError && (
+                        <p role="alert" className="text-sm text-destructive">
+                          Could not read this file: {fileQuery.error.message}
+                        </p>
+                      )}
+                      {fileQuery.data && (
+                        <pre className="max-h-[560px] overflow-auto rounded-md border border-border/50 bg-muted/30 p-4 text-xs leading-relaxed">
+                          <code>{fileQuery.data.content}</code>
+                        </pre>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  <Card className="border-amber-500/20 bg-amber-500/[0.035]">
+                    <CardContent className="flex gap-3 p-5">
+                      <GitPullRequest className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
+                      <div>
+                        <p className="font-medium">
+                          Next GitHub step: reviewed pull requests
+                        </p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          When this read-only layer is proven, Toríu will
+                          propose a change first. Only after your approval will
+                          she create a dedicated branch and open a pull request.
+                          She will never merge it.
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </>
+              )}
+            </div>
           </div>
         )}
       </div>

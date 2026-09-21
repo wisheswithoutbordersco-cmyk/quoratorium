@@ -1,6 +1,6 @@
 /**
  * Toríu — Autonomous Tool-Use Framework
- * 
+ *
  * Provides a registry of tools that Toríu can autonomously invoke
  * via OpenAI-style function calling. The orchestrator handles:
  * - Tool registration with typed schemas
@@ -10,7 +10,10 @@
  */
 import OpenAI from "openai";
 import type { Tool, ToolCall, Message } from "../_core/llm";
-import { CAPTAIN_Q_SYSTEM_PROMPT, CAPTAIN_Q_TOOL_GUIDANCE } from "../captainQPrompt";
+import {
+  CAPTAIN_Q_SYSTEM_PROMPT,
+  CAPTAIN_Q_TOOL_GUIDANCE,
+} from "../captainQPrompt";
 import { invokeLLM } from "../_core/llm";
 import {
   CAPTAIN_FORGE_MODEL,
@@ -28,7 +31,10 @@ export interface ToolDefinition {
   name: string;
   description: string;
   parameters: Record<string, unknown>; // JSON Schema
-  execute: (args: Record<string, any>, context: ToolContext) => Promise<ToolResult>;
+  execute: (
+    args: Record<string, any>,
+    context: ToolContext
+  ) => Promise<ToolResult>;
 }
 
 export interface ToolContext {
@@ -63,7 +69,7 @@ export function registerTool(tool: ToolDefinition): void {
 }
 
 export function getRegisteredTools(): Tool[] {
-  return Array.from(toolRegistry.values()).map((t) => ({
+  return Array.from(toolRegistry.values()).map(t => ({
     type: "function" as const,
     function: {
       name: t.name,
@@ -94,8 +100,12 @@ export async function runToolLoop(
   model: string = CAPTAIN_OPENROUTER_MODEL,
   onToken?: (token: string) => void,
   onToolStart?: (toolName: string, args: Record<string, any>) => void,
-  onToolResult?: (toolName: string, result: ToolResult) => void,
-): Promise<{ response: string; toolsUsed: string[]; artifacts: ToolArtifact[] }> {
+  onToolResult?: (toolName: string, result: ToolResult) => void
+): Promise<{
+  response: string;
+  toolsUsed: string[];
+  artifacts: ToolArtifact[];
+}> {
   // Lazy-load tool modules to avoid circular dependency issues with esbuild bundling
   if (toolRegistry.size === 0) {
     try {
@@ -109,6 +119,7 @@ export async function runToolLoop(
       await import("./proposeShopifyDraft");
       await import("./scriptorium");
       await import("./extractatorium");
+      await import("./githubRead");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }
@@ -127,13 +138,16 @@ export async function runToolLoop(
   // of the assistant prompt and pushed the model toward unnecessary actions.
   if (conversationMessages[0]?.role === "system") {
     const existingContent = conversationMessages[0].content;
-    const systemText = typeof existingContent === "string"
-      ? existingContent
-      : Array.isArray(existingContent)
-        ? existingContent.map((part: any) => part.type === "text" ? part.text : "").join("\n")
-        : existingContent.type === "text"
-          ? existingContent.text
-          : "";
+    const systemText =
+      typeof existingContent === "string"
+        ? existingContent
+        : Array.isArray(existingContent)
+          ? existingContent
+              .map((part: any) => (part.type === "text" ? part.text : ""))
+              .join("\n")
+          : existingContent.type === "text"
+            ? existingContent.text
+            : "";
     conversationMessages[0] = {
       ...conversationMessages[0],
       content: `${systemText}\n\n${CAPTAIN_Q_TOOL_GUIDANCE}`,
@@ -157,38 +171,47 @@ export async function runToolLoop(
     // account or deployment. Retry known multimodal tool-capable models before
     // moving to a different provider.
     if (openrouterKey) {
-      const candidates = Array.from(new Set([toolModel, "openai/gpt-5", "openai/gpt-4o"]));
+      const candidates = Array.from(
+        new Set([toolModel, "openai/gpt-5", "openai/gpt-4o"])
+      );
       for (const candidate of candidates) {
         try {
           const reasoning = getCaptainReasoning(candidate);
-          const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${openrouterKey}`,
-              "Content-Type": "application/json",
-              "HTTP-Referer": "https://quoratorium.com",
-              "X-Title": "Toríu Tools",
-            },
-            body: JSON.stringify({
-              model: candidate,
-              messages: conversationMessages,
-              tools: tools.length > 0 ? tools : undefined,
-              tool_choice: tools.length > 0 ? "auto" : undefined,
-              ...(isGpt5Family(candidate)
-                ? { max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }
-                : { max_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }),
-              ...(reasoning ? { reasoning } : {}),
-            }),
-          });
+          const response = await fetch(
+            "https://openrouter.ai/api/v1/chat/completions",
+            {
+              method: "POST",
+              headers: {
+                Authorization: `Bearer ${openrouterKey}`,
+                "Content-Type": "application/json",
+                "HTTP-Referer": "https://quoratorium.com",
+                "X-Title": "Toríu Tools",
+              },
+              body: JSON.stringify({
+                model: candidate,
+                messages: conversationMessages,
+                tools: tools.length > 0 ? tools : undefined,
+                tool_choice: tools.length > 0 ? "auto" : undefined,
+                ...(isGpt5Family(candidate)
+                  ? { max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }
+                  : { max_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }),
+                ...(reasoning ? { reasoning } : {}),
+              }),
+            }
+          );
           if (!response.ok) {
             const detail = (await response.text()).slice(0, 300);
-            providerErrors.push(`OpenRouter ${candidate}: ${response.status} ${detail}`);
+            providerErrors.push(
+              `OpenRouter ${candidate}: ${response.status} ${detail}`
+            );
             continue;
           }
           result = await response.json();
           break;
         } catch (error: any) {
-          providerErrors.push(`OpenRouter ${candidate}: ${error?.message || "request failed"}`);
+          providerErrors.push(
+            `OpenRouter ${candidate}: ${error?.message || "request failed"}`
+          );
         }
       }
     }
@@ -197,20 +220,27 @@ export async function runToolLoop(
     // configured but rejects a new model or has a temporary outage.
     if (!result && process.env.OPENAI_API_KEY) {
       const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      for (const candidate of Array.from(new Set([CAPTAIN_OPENAI_MODEL, "gpt-4o"]))) {
+      for (const candidate of Array.from(
+        new Set([CAPTAIN_OPENAI_MODEL, "gpt-4o"])
+      )) {
         try {
           result = await openai.chat.completions.create({
             model: candidate,
             messages: conversationMessages as any,
-            tools: tools.length > 0 ? tools as any : undefined,
+            tools: tools.length > 0 ? (tools as any) : undefined,
             tool_choice: tools.length > 0 ? "auto" : undefined,
             ...(isGpt5Family(candidate)
-              ? { max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS, reasoning_effort: "low" }
+              ? {
+                  max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
+                  reasoning_effort: "low",
+                }
               : { max_tokens: CAPTAIN_MAX_OUTPUT_TOKENS }),
           } as any);
           break;
         } catch (error: any) {
-          providerErrors.push(`OpenAI ${candidate}: ${error?.message || "request failed"}`);
+          providerErrors.push(
+            `OpenAI ${candidate}: ${error?.message || "request failed"}`
+          );
         }
       }
     }
@@ -228,14 +258,22 @@ export async function runToolLoop(
           reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
         });
       } catch (error: any) {
-        providerErrors.push(`Forge ${CAPTAIN_FORGE_MODEL}: ${error?.message || "request failed"}`);
-        throw new Error(`All Toríu providers failed: ${providerErrors.join(" | ")}`);
+        providerErrors.push(
+          `Forge ${CAPTAIN_FORGE_MODEL}: ${error?.message || "request failed"}`
+        );
+        throw new Error(
+          `All Toríu providers failed: ${providerErrors.join(" | ")}`
+        );
       }
     }
 
     const choice = result?.choices?.[0];
     if (!choice) {
-      return { response: "I encountered an issue processing your request.", toolsUsed, artifacts: allArtifacts };
+      return {
+        response: "I encountered an issue processing your request.",
+        toolsUsed,
+        artifacts: allArtifacts,
+      };
     }
 
     const assistantMessage = choice.message;
@@ -243,11 +281,14 @@ export async function runToolLoop(
 
     // If no tool calls, we have the final text response
     if (!toolCalls || toolCalls.length === 0) {
-      const content = typeof assistantMessage.content === "string"
-        ? assistantMessage.content
-        : Array.isArray(assistantMessage.content)
-          ? assistantMessage.content.map((c: any) => c.type === "text" ? c.text : "").join("")
-          : "";
+      const content =
+        typeof assistantMessage.content === "string"
+          ? assistantMessage.content
+          : Array.isArray(assistantMessage.content)
+            ? assistantMessage.content
+                .map((c: any) => (c.type === "text" ? c.text : ""))
+                .join("")
+            : "";
       return { response: content, toolsUsed, artifacts: allArtifacts };
     }
 
@@ -285,7 +326,10 @@ export async function runToolLoop(
             allArtifacts.push(...toolResult.artifacts);
           }
         } catch (err: any) {
-          toolResult = { success: false, output: `Tool execution failed: ${err?.message || "Unknown error"}` };
+          toolResult = {
+            success: false,
+            output: `Tool execution failed: ${err?.message || "Unknown error"}`,
+          };
         }
 
         // Notify about tool result
@@ -303,7 +347,8 @@ export async function runToolLoop(
 
   // If we hit the iteration limit, return what we have
   return {
-    response: "I completed several steps but reached my iteration limit. Here's what I accomplished so far.",
+    response:
+      "I completed several steps but reached my iteration limit. Here's what I accomplished so far.",
     toolsUsed,
     artifacts: allArtifacts,
   };
