@@ -5,10 +5,6 @@ ALTER TABLE public.github_connections
   ADD COLUMN IF NOT EXISTS allowed_repositories JSONB NOT NULL DEFAULT '[]'::jsonb;
 
 DROP INDEX IF EXISTS public.idx_github_connections_user_id;
-DELETE FROM public.github_connections AS older
-USING public.github_connections AS newer
-WHERE older.user_id = newer.user_id
-  AND older.id < newer.id;
 CREATE UNIQUE INDEX IF NOT EXISTS idx_github_connections_user_id
   ON public.github_connections(user_id);
 
