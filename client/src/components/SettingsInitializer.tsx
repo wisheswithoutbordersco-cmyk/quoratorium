@@ -1,17 +1,20 @@
 /**
  * Settings Initializer
- * Loads global settings from the API on app mount.
- * Renders nothing — just triggers the settings load.
+ * Loads global settings only after Clerk verifies an authenticated workspace
+ * session. Renders nothing — just triggers the settings load.
  */
 import { useEffect } from "react";
+import { useAuth } from "@/_core/hooks/useAuth";
 import { useSettingsStore } from "@/stores/settingsStore";
 
 export function SettingsInitializer() {
-  const loadSettings = useSettingsStore((s) => s.loadSettings);
+  const { isAuthenticated, loading } = useAuth();
+  const loadSettings = useSettingsStore(s => s.loadSettings);
 
   useEffect(() => {
+    if (loading || !isAuthenticated) return;
     loadSettings();
-  }, [loadSettings]);
+  }, [isAuthenticated, loadSettings, loading]);
 
   return null;
 }
