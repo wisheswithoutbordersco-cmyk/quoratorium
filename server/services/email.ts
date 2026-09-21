@@ -4,7 +4,16 @@
  */
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resend: Resend | null = null;
+
+function getResend(): Resend {
+  const apiKey = process.env.RESEND_API_KEY;
+  if (!apiKey) {
+    throw new Error("RESEND_API_KEY is not configured");
+  }
+  resend ??= new Resend(apiKey);
+  return resend;
+}
 
 const FROM_ADDRESS = "Quoratorium <noreply@quoratorium.com>";
 
@@ -18,7 +27,7 @@ const BRAND = {
   accentGreen: "#22c55e",
   accentGreenDark: "#16a34a",
   chromeGray: "#c0c0c0",
-  iconUrl: "https://qworkspace-f3vutepv.manus.space/manus-storage/icon-192x192_59428221.png",
+  iconUrl: `${(process.env.APP_URL || "https://quoratorium.com").replace(/\/+$/, "")}/api/pwa-icon`,
 };
 
 // ─── Base Template ─────────────────────────────────────────────────────────────
@@ -241,7 +250,7 @@ function weeklySummaryEmailHtml(stats: WeeklySummaryStats): string {
 
 export async function sendWelcomeEmail(to: string, userName: string): Promise<boolean> {
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: FROM_ADDRESS,
       to,
       subject: "Welcome to Quoratorium — The AI Mothership",
@@ -265,7 +274,7 @@ export async function sendBuildCompleteEmail(
   deployUrl: string
 ): Promise<boolean> {
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: FROM_ADDRESS,
       to,
       subject: `✓ Build Complete — ${projectName}`,
@@ -288,7 +297,7 @@ export async function sendWeeklySummaryEmail(
   stats: WeeklySummaryStats
 ): Promise<boolean> {
   try {
-    const { error } = await resend.emails.send({
+    const { error } = await getResend().emails.send({
       from: FROM_ADDRESS,
       to,
       subject: "Your Weekly Quoratorium Summary",

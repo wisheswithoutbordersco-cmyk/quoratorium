@@ -31,12 +31,18 @@ vi.mock("./actionAudit", () => ({
   recordTerminalActionAudit: vi.fn().mockResolvedValue({ id: "terminal-1" }),
 }));
 
+vi.mock("./serviceAuthorization", () => ({
+  mayUseOwnerIntegrationCredentials: vi.fn().mockResolvedValue(false),
+}));
+
 import { recordActionAudit, recordTerminalActionAudit } from "./actionAudit";
+import { mayUseOwnerIntegrationCredentials } from "./serviceAuthorization";
 import {
   connectGitHub,
   createBranch,
   createRepo,
   getRepository,
+  getSystemGitHubUsername,
   listRepos,
   mergePullRequest,
   pushFiles,
@@ -75,8 +81,13 @@ beforeEach(() => {
   queryError = null;
   connectionQuery.data = [];
   connectionQuery.error = null;
-  process.env.GITHUB_TOKEN_ENCRYPTION_KEY =
+  process.env.NODE_ENV = "test";
+  process.env.INTEGRATION_CREDENTIAL_KEY =
     "test-key-that-is-at-least-thirty-two-characters-long";
+  delete process.env.JWT_SECRET;
+  delete process.env.CLERK_SECRET_KEY;
+  delete process.env.GITHUB_TOKEN;
+  vi.mocked(mayUseOwnerIntegrationCredentials).mockResolvedValue(false);
   vi.stubGlobal("fetch", vi.fn());
 });
 
@@ -134,7 +145,7 @@ describe("GitHub read-only service", () => {
         user_id: 7,
         username: "owner",
         allowed_repositories: ["example/repo"],
-        token_encrypted: expect.stringMatching(/^v1:/),
+        token_encrypted: expect.stringMatching(/^v2:/),
       }),
       { onConflict: "user_id" }
     );
@@ -267,24 +278,16 @@ describe("GitHub read-only service", () => {
     ).rejects.toThrow("Select at least one repository");
   });
 
-  it("requires a dedicated encryption key and rejects persistence errors", async () => {
-    delete process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
-    vi.mocked(fetch)
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ login: "owner" }), { status: 200 })
-      )
-      .mockResolvedValueOnce(
-        new Response(JSON.stringify({ full_name: "example/repo" }), {
-          status: 200,
-        })
-      );
+  it("requires production credential encryption and rejects persistence errors", async () => {
+    process.env.NODE_ENV = "production";
+    delete process.env.INTEGRATION_CREDENTIAL_KEY;
     await expect(
       connectGitHub(7, "github_pat_read_only_test_token", ["example/repo"])
-    ).rejects.toThrow("GITHUB_TOKEN_ENCRYPTION_KEY");
+    ).rejects.toThrow("Integration credential encryption is not configured");
+    expect(fetch).not.toHaveBeenCalled();
 
-    process.env.GITHUB_TOKEN_ENCRYPTION_KEY =
+    process.env.INTEGRATION_CREDENTIAL_KEY =
       "test-key-that-is-at-least-thirty-two-characters-long";
-    vi.mocked(fetch).mockReset();
     vi.mocked(fetch)
       .mockResolvedValueOnce(
         new Response(JSON.stringify({ login: "owner" }), { status: 200 })
@@ -304,7 +307,42 @@ describe("GitHub read-only service", () => {
     process.env.GITHUB_TOKEN = "shared-token-that-must-not-be-used";
     await expect(listRepos(99)).rejects.toThrow("not connected");
     expect(fetch).not.toHaveBeenCalled();
-    delete process.env.GITHUB_TOKEN;
+  });
+
+  it("activates the existing owner-managed token through read-only GitHub requests", async () => {
+    process.env.GITHUB_TOKEN = "managed-owner-token";
+    vi.mocked(mayUseOwnerIntegrationCredentials).mockResolvedValue(true);
+    vi.mocked(fetch)
+      .mockResolvedValueOnce(
+        new Response(JSON.stringify({ login: "owner" }), { status: 200 })
+      )
+      .mockResolvedValueOnce(
+        new Response(
+          JSON.stringify([
+            {
+              id: 1,
+              name: "quoratorium",
+              full_name: "example/quoratorium",
+              private: true,
+              html_url: "https://github.com/example/quoratorium",
+              default_branch: "main",
+              updated_at: "2026-09-21T00:00:00Z",
+              stargazers_count: 0,
+            },
+          ]),
+          { status: 200 }
+        )
+      );
+
+    await expect(getSystemGitHubUsername(7)).resolves.toBe("owner");
+    await expect(listRepos(7, 20)).resolves.toEqual([
+      expect.objectContaining({ fullName: "example/quoratorium" }),
+    ]);
+    expect(
+      vi.mocked(fetch).mock.calls.every(
+        ([, options]) => !options?.method || options.method === "GET"
+      )
+    ).toBe(true);
   });
 
   it("blocks every phase-one write operation before any GitHub request", async () => {

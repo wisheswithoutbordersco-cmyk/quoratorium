@@ -8,6 +8,7 @@
 import { Router, Request, Response } from "express";
 import path from "path";
 import { getSupabaseAdmin } from "./supabase";
+import { requireWorkspaceAccess } from "./workspaceAuth";
 
 export const pwaIconRouter = Router();
 
@@ -60,7 +61,7 @@ pwaIconRouter.get("/api/pwa-icon", async (_req: Request, res: Response) => {
  * Saves a base64 PNG icon to the app_settings table.
  * Body: { "icon": "data:image/png;base64,..." }
  */
-pwaIconRouter.post("/api/settings/pwa-icon", async (req: Request, res: Response) => {
+pwaIconRouter.post("/api/settings/pwa-icon", requireWorkspaceAccess, async (req: Request, res: Response) => {
   try {
     const { icon } = req.body;
     if (!icon || typeof icon !== "string") {

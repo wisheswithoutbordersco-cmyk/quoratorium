@@ -2,7 +2,7 @@
  * Deploy Router — Multi-platform deployment (Vercel, Netlify, Railway, Cloudflare)
  */
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
+import { adminProcedure, router, protectedProcedure } from "../_core/trpc";
 import { getProject, getProjectFiles, addOrchestrationEvent, updateProject } from "../db";
 import { deployToCloudflare, isCloudflareConfigured } from "../deployer";
 import {
@@ -130,7 +130,7 @@ export const deployRouter = router({
   /**
    * Deploy to Cloudflare Pages (legacy)
    */
-  deploy: protectedProcedure
+  deploy: adminProcedure
     .input(z.object({ projectId: z.number() }))
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;

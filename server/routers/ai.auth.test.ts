@@ -38,14 +38,14 @@ type User = NonNullable<TrpcContext["user"]>;
 function user(id: number, loginMethod = "clerk"): User {
   return {
     id,
-    openId: `user-${id}`,
+    clerk_id: `user-${id}`,
     email: `user${id}@example.com`,
     name: `User ${id}`,
-    loginMethod,
+    login_method: loginMethod,
     role: "user",
-    createdAt: new Date(),
-    updatedAt: new Date(),
-    lastSignedIn: new Date(),
+    created_at: new Date(0).toISOString(),
+    updated_at: new Date(0).toISOString(),
+    last_signed_in: new Date(0).toISOString(),
   };
 }
 
@@ -93,15 +93,9 @@ describe("ai.chat external-tool identity", () => {
     const fallbackOwner = { ...user(1, "owner_bypass"), role: "admin" } as User;
     const caller = aiRouter.createCaller(context(fallbackOwner, null));
 
-    await caller.chat({ message: "Inspect my GitHub repositories" });
-
-    expect(runToolLoop).toHaveBeenCalledWith(
-      expect.any(Array),
-      expect.objectContaining({
-        userId: "1",
-        authenticatedUserId: null,
-      }),
-      expect.any(String)
-    );
+    await expect(
+      caller.chat({ message: "Inspect my GitHub repositories" })
+    ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    expect(runToolLoop).not.toHaveBeenCalled();
   });
 });

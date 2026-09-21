@@ -15,6 +15,7 @@ Sentry.init({
 import express from "express";
 import { createServer } from "http";
 import net from "net";
+import { clerkMiddleware } from "@clerk/express";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
 import { registerStorageProxy } from "./storageProxy";
 import { registerStreamingRoutes } from "../streaming";
@@ -28,7 +29,9 @@ import { handleAgentChat, handleRunCode } from "../agent-tools";
 import { handleSmartChat, handleListModels } from '../model-router';
 import { pwaIconRouter } from '../pwaIconRoute';
 import { imageGenerationRouter } from '../imageGenerationRoute';
-import { clerkMiddleware } from "@clerk/express";
+import { ENV } from "./env";
+import { requireWorkspaceAccess } from "../workspaceAuth";
+import { parsePreservedJson, rawJsonBody } from "../rawJsonWebhook";
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -82,42 +85,63 @@ async function startServer() {
   const app = express();
   const server = createServer(app);
 
+  if (ENV.clerkSecretKey && ENV.clerkPublishableKey) {
+    app.use(clerkMiddleware());
+  } else {
+    console.warn("[Auth] Clerk middleware is disabled because Clerk keys are not configured; signed owner access remains available.");
+  }
+
   // Stripe webhook needs raw body for signature verification — must be BEFORE json parser
   app.use("/api/webhooks/stripe",
-    express.raw({ type: "application/json" }),
-    (req: any, _res: any, next: any) => {
-      req.rawBody = req.body;
-      req.body = JSON.parse(req.body.toString());
-      next();
-    },
+    rawJsonBody,
+    parsePreservedJson,
     stripeWebhookRouter
+  );
+
+  // Clerk/Svix signatures cover the exact request bytes.
+  app.use("/api/webhooks/clerk",
+    rawJsonBody,
+    parsePreservedJson,
+    clerkWebhookRouter
   );
 
   // Configure body parser with larger size limit for file uploads
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // Populate req.auth for strict account-bound procedures. When Clerk is not
-  // configured, GitHub procedures remain unavailable rather than falling back.
-  const clerkPublishableKey =
-    process.env.CLERK_PUBLISHABLE_KEY ||
-    process.env.VITE_CLERK_PUBLISHABLE_KEY;
-  if (process.env.CLERK_SECRET_KEY && clerkPublishableKey) {
-    app.use(clerkMiddleware({
-      secretKey: process.env.CLERK_SECRET_KEY,
-      publishableKey: clerkPublishableKey,
-    }));
-  }
-
   // PWA icon route — public, no auth required
   app.use(pwaIconRouter);
+
+  // Costly AI endpoints and owner-data actions must never inherit an implicit
+  // owner identity. They require either a verified Clerk session or the signed
+  // owner-access cookie created by auth.unlock.
+  for (const pathPrefix of [
+    "/api/generate-image",
+    "/api/agent",
+    "/api/tools",
+    "/api/smart-chat",
+    "/api/tts",
+    "/api/studio",
+    "/api/social",
+    "/api/pinterest",
+    "/api/analyze-image",
+    "/api/stream",
+    "/api/sprites",
+    "/api/execute",
+    "/api/sandbox",
+  ]) {
+    app.use(pathPrefix, requireWorkspaceAccess);
+  }
+
+  app.use("/manus-storage", requireWorkspaceAccess);
+  app.use("/sandbox", requireWorkspaceAccess);
 
   // Reliable image route: preconfigured GPT Image primary with one durable
   // fal.ai GPT Image 2 fallback. Register before the legacy Toríu router.
   app.use(imageGenerationRouter);
 
-  // Toríu endpoints (TTS, image gen, social queue) — must be before Clerk middleware
-  // so /api/test and /api/tts are not blocked by auth
+  // Legacy Toríu endpoints. The health check remains public, while the costly
+  // and state-changing prefixes above are protected by workspace middleware.
   if (cqRouter) app.use(cqRouter);
   app.post('/api/agent/chat', handleAgentChat);
   app.post('/api/tools/run-code', handleRunCode);
@@ -140,11 +164,6 @@ async function startServer() {
   registerStorageProxy(app);
   registerStreamingRoutes(app);
   registerSandboxRoutes(app);
-
-  // Clerk webhook endpoint
-  app.use("/api/webhooks/clerk", clerkWebhookRouter);
-
-
 
   // tRPC API
   app.use(

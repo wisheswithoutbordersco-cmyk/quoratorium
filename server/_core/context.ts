@@ -3,6 +3,7 @@ import type { User } from "../db";
 import { clerkClient } from "@clerk/express";
 import * as db from "../db";
 import { ENV, OWNER_EMAILS } from "./env";
+import { getOwnerAccessSession } from "../ownerAccessAuth";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
@@ -64,39 +65,53 @@ function isOwnerIdentity(user: User | null): boolean {
 export async function resolveAuthenticatedUser(
   req: CreateExpressContextOptions["req"],
 ): Promise<User | null> {
+  const verifiedWorkspaceUser = (req as any).workspaceUser as User | undefined;
+  if (verifiedWorkspaceUser) return verifiedWorkspaceUser;
+
   const clerkAuth = (req as any).auth;
   const clerkUserId = clerkAuth?.userId;
-  if (!clerkUserId) return null;
+  if (clerkUserId) {
+    try {
+      let dbUser = await db.getUserByClerkId(clerkUserId);
+      if (!dbUser || !dbUser.email) {
+        const clerkUser = await clerkClient.users.getUser(clerkUserId);
+        const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
+        const name =
+          [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+          clerkUser.username ||
+          email ||
+          "User";
+
+        await db.upsertUser({
+          clerkId: clerkUserId,
+          name,
+          email,
+          loginMethod: "clerk",
+          lastSignedIn: new Date(),
+          role: email && OWNER_EMAILS.includes(email.toLowerCase()) ? "admin" : undefined,
+        });
+        dbUser = await db.getUserByClerkId(clerkUserId);
+      } else {
+        await db.upsertUser({
+          clerkId: clerkUserId,
+          lastSignedIn: new Date(),
+        });
+      }
+      return dbUser ?? null;
+    } catch (error) {
+      console.error("[Auth] Failed to resolve Clerk user:", error);
+      return null;
+    }
+  }
+
+  const ownerAccess = getOwnerAccessSession(req);
+  if (!ownerAccess) return null;
 
   try {
-    let dbUser = await db.getUserByClerkId(clerkUserId);
-    if (!dbUser || !dbUser.email) {
-      const clerkUser = await clerkClient.users.getUser(clerkUserId);
-      const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
-      const name =
-        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-        clerkUser.username ||
-        email ||
-        "User";
-
-      await db.upsertUser({
-        clerkId: clerkUserId,
-        name,
-        email,
-        loginMethod: "clerk",
-        lastSignedIn: new Date(),
-        role: email && OWNER_EMAILS.includes(email.toLowerCase()) ? "admin" : undefined,
-      });
-      dbUser = await db.getUserByClerkId(clerkUserId);
-    } else {
-      await db.upsertUser({
-        clerkId: clerkUserId,
-        lastSignedIn: new Date(),
-      });
-    }
-    return dbUser ?? null;
+    const owner = await db.getUserById(ownerAccess.ownerId);
+    return owner && isOwnerIdentity(owner) ? owner : null;
   } catch (error) {
-    console.error("[Auth] Failed to resolve Clerk user:", error);
+    console.error("[Auth] Failed to resolve signed owner session:", error);
     return null;
   }
 }
@@ -107,24 +122,11 @@ export async function createContext(
   const authenticatedUser = await resolveAuthenticatedUser(opts.req);
   const isVerifiedOwner = isOwnerIdentity(authenticatedUser);
 
-  // Preserve Anthony's existing private-workspace behavior for ordinary Q chat.
-  // External business mutations require a separate short-lived action session.
-  let user = authenticatedUser;
-  let isOwner = isVerifiedOwner;
-  if (!user) {
-    try {
-      user = await getOwnerUser();
-      isOwner = Boolean(user);
-    } catch (error) {
-      console.error("[Auth] Failed to resolve workspace owner:", error);
-    }
-  }
-
   return {
     req: opts.req,
     res: opts.res,
-    user,
-    isOwner,
+    user: authenticatedUser,
+    isOwner: isVerifiedOwner,
     authenticatedUser,
     isVerifiedOwner,
   };

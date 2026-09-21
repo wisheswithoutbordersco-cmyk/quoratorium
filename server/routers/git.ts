@@ -39,6 +39,21 @@ export const gitRouter = router({
       };
     }
 
+    const managedUsername = await github.getSystemGitHubUsername(ctx.user.id);
+    if (managedUsername) {
+      return {
+        connected: true,
+        username: managedUsername,
+        allowedRepositories: [],
+        defaultRepo: null,
+        defaultBranch: "main",
+        connectionType: "managed" as const,
+        mode: "read-only" as const,
+        canWrite: false,
+        canMerge: false,
+      };
+    }
+
     return {
       connected: false,
       username: null,

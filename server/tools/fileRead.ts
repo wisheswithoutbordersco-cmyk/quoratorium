@@ -25,7 +25,7 @@ registerTool({
     additionalProperties: false,
   },
   async execute(args: Record<string, any>, context: ToolContext): Promise<ToolResult> {
-    const { getSandboxFile, getSandboxFiles, loadSandboxFromStore, resolveUserSandboxId } = await import("../sandbox/projectStore");
+    const { getSandboxFile, getSandboxFiles, isSandboxOwnedBy, loadSandboxFromStore, resolveUserSandboxId } = await import("../sandbox/projectStore");
 
     const filename = args.filename;
     if (!filename) {
@@ -38,6 +38,9 @@ registerTool({
     }
 
     await loadSandboxFromStore(sandboxId);
+    if (!isSandboxOwnedBy(sandboxId, context.userId)) {
+      return { success: false, output: "Sandbox not found for this user." };
+    }
 
     const file = getSandboxFile(sandboxId, filename);
     if (!file) {

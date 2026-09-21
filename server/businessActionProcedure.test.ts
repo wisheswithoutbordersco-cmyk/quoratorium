@@ -48,8 +48,8 @@ function context(options: {
     res: {} as TrpcContext["res"],
     user: options.user ?? null,
     isOwner: options.isOwner ?? false,
-    authenticatedUser: null,
-    isVerifiedOwner: false,
+    authenticatedUser: options.user ?? null,
+    isVerifiedOwner: options.isOwner ?? false,
   };
 }
 

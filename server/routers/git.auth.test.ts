@@ -6,14 +6,14 @@ type User = NonNullable<TrpcContext["user"]>;
 
 const fallbackOwner: User = {
   id: 1,
-  openId: "owner-fallback",
+  clerk_id: "owner-fallback",
   email: "owner@example.com",
   name: "Owner",
-  loginMethod: "owner_bypass",
+  login_method: "owner_bypass",
   role: "admin",
-  createdAt: new Date(),
-  updatedAt: new Date(),
-  lastSignedIn: new Date(),
+  created_at: new Date(0).toISOString(),
+  updated_at: new Date(0).toISOString(),
+  last_signed_in: new Date(0).toISOString(),
 };
 
 function fallbackContext(): TrpcContext {

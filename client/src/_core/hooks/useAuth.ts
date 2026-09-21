@@ -1,8 +1,5 @@
-/**
- * useAuth — stub implementation while Clerk DNS propagates.
- * Returns a stable constant object — no hooks, no re-renders.
- * TODO: Restore Clerk integration once clerk.quoratorium.com CNAME resolves.
- */
+import { useCallback } from "react";
+import { trpc } from "@/lib/trpc";
 
 export type AuthUser = {
   id: string;
@@ -13,21 +10,46 @@ export type AuthUser = {
   created_at: number;
 };
 
-// Stable constant references — never recreated, never cause re-renders
-const NOOP_ASYNC = async () => {};
-const NOOP_REFRESH = () => Promise.resolve();
-const GET_TOKEN = async (): Promise<string | null> => null;
-
-const STUB_STATE = {
-  user: null as AuthUser | null,
-  loading: false,
-  error: null as Error | null,
-  isAuthenticated: false,
-  refresh: NOOP_REFRESH,
-  logout: NOOP_ASYNC,
-  getToken: GET_TOKEN,
-} as const;
-
 export function useAuth(_options?: { redirectOnUnauthenticated?: boolean }) {
-  return STUB_STATE;
+  const utils = trpc.useUtils();
+  const session = trpc.auth.session.useQuery(undefined, {
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const logoutMutation = trpc.auth.logout.useMutation();
+
+  const user: AuthUser | null = session.data?.user
+    ? {
+        id: String(session.data.user.id),
+        name: session.data.user.name || "Owner",
+        email: session.data.user.email,
+        avatar: null,
+        role: session.data.user.role === "admin" ? "admin" : "user",
+        created_at: 0,
+      }
+    : null;
+
+  const refresh = useCallback(async () => {
+    await session.refetch();
+  }, [session]);
+
+  const logout = useCallback(async () => {
+    await logoutMutation.mutateAsync();
+    await Promise.all([
+      utils.auth.session.invalidate(),
+      utils.auth.accessStatus.invalidate(),
+      utils.auth.me.invalidate(),
+    ]);
+    window.location.reload();
+  }, [logoutMutation, utils.auth]);
+
+  return {
+    user,
+    loading: session.isLoading || session.isFetching,
+    error: session.error instanceof Error ? session.error : null,
+    isAuthenticated: Boolean(session.data?.authenticated),
+    refresh,
+    logout,
+    getToken: async (): Promise<string | null> => null,
+  };
 }

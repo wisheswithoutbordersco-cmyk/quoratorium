@@ -17,14 +17,15 @@ export const publicProcedure = t.procedure;
 const requireUser = t.middleware(async opts => {
   const { ctx, next } = opts;
 
-  if (!ctx.user) {
+  if (!ctx.authenticatedUser) {
     throw new TRPCError({ code: "UNAUTHORIZED", message: UNAUTHED_ERR_MSG });
   }
 
   return next({
     ctx: {
       ...ctx,
-      user: ctx.user,
+      user: ctx.authenticatedUser,
+      authenticatedUser: ctx.authenticatedUser,
     },
   });
 });
@@ -52,14 +53,15 @@ export const adminProcedure = t.procedure.use(
   t.middleware(async opts => {
     const { ctx, next } = opts;
 
-    if (!ctx.user || ctx.user.role !== 'admin') {
+    if (!ctx.authenticatedUser || ctx.authenticatedUser.role !== 'admin') {
       throw new TRPCError({ code: "FORBIDDEN", message: NOT_ADMIN_ERR_MSG });
     }
 
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user,
+        user: ctx.authenticatedUser,
+        authenticatedUser: ctx.authenticatedUser,
       },
     });
   }),
@@ -67,12 +69,12 @@ export const adminProcedure = t.procedure.use(
 
 /**
  * Required for procedures that can reach an external business system.
- * Normal Toríu chat keeps the existing workspace access behavior, while
- * business procedures require a separate signed, short-lived owner session.
+ * A verified workspace session is mandatory first; business procedures then
+ * require a separate signed, short-lived action session.
  */
 export const businessActionProcedure = t.procedure.use(
   t.middleware(async ({ ctx, next }) => {
-    if (!ctx.user || !ctx.isOwner) {
+    if (!ctx.authenticatedUser || !ctx.isOwner) {
       throw new TRPCError({
         code: "FORBIDDEN",
         message: "This business action is restricted to the owner workspace.",
@@ -85,7 +87,7 @@ export const businessActionProcedure = t.procedure.use(
       });
     }
 
-    const actionSession = getBusinessActionSession(ctx.req, ctx.user.id);
+    const actionSession = getBusinessActionSession(ctx.req, ctx.authenticatedUser.id);
     if (!actionSession) {
       throw new TRPCError({
         code: "UNAUTHORIZED",
@@ -96,7 +98,8 @@ export const businessActionProcedure = t.procedure.use(
     return next({
       ctx: {
         ...ctx,
-        user: ctx.user,
+        user: ctx.authenticatedUser,
+        authenticatedUser: ctx.authenticatedUser,
         businessActionSessionExpiresAt: actionSession.expiresAt,
       },
     });

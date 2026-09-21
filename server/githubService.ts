@@ -7,8 +7,11 @@
  * entry points are blocked in this service even if the credential itself has
  * broader GitHub permissions.
  */
-import crypto from "crypto";
 import { getSupabaseAdmin } from "./supabase";
+import {
+  decryptIntegrationCredential,
+  encryptIntegrationCredential,
+} from "./integrationCredentialCrypto";
 import {
   reconcileIncompleteActionAudits,
   recordActionAudit,
@@ -20,6 +23,7 @@ import {
   GITHUB_ACTION_IDS,
   type GitHubActionId,
 } from "@shared/actionCatalog";
+import { mayUseOwnerIntegrationCredentials } from "./serviceAuthorization";
 
 const MAX_FILE_BYTES = 256 * 1024;
 const MAX_TREE_ENTRIES = 500;
@@ -27,52 +31,6 @@ const REPOSITORY_PATTERN = /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/;
 
 function getDb() {
   return getSupabaseAdmin();
-}
-
-function getEncryptionKey(): Buffer {
-  const secret = process.env.GITHUB_TOKEN_ENCRYPTION_KEY;
-  if (!secret || secret.length < 32) {
-    throw new Error(
-      "GITHUB_TOKEN_ENCRYPTION_KEY must be configured with at least 32 characters before GitHub can be connected."
-    );
-  }
-  if (/^[a-f0-9]{64}$/i.test(secret)) return Buffer.from(secret, "hex");
-  return crypto.createHash("sha256").update(secret, "utf8").digest();
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(12);
-  const cipher = crypto.createCipheriv("aes-256-gcm", getEncryptionKey(), iv);
-  const encrypted = Buffer.concat([
-    cipher.update(text, "utf8"),
-    cipher.final(),
-  ]);
-  const authTag = cipher.getAuthTag();
-  return [
-    "v1",
-    iv.toString("base64url"),
-    authTag.toString("base64url"),
-    encrypted.toString("base64url"),
-  ].join(":");
-}
-
-function decrypt(encryptedText: string): string {
-  const [version, ivValue, tagValue, encryptedValue] = encryptedText.split(":");
-  if (version !== "v1" || !ivValue || !tagValue || !encryptedValue) {
-    throw new Error(
-      "The stored GitHub credential uses an obsolete format. Disconnect and reconnect GitHub."
-    );
-  }
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    getEncryptionKey(),
-    Buffer.from(ivValue, "base64url")
-  );
-  decipher.setAuthTag(Buffer.from(tagValue, "base64url"));
-  return Buffer.concat([
-    decipher.update(Buffer.from(encryptedValue, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
 }
 
 function assertRepository(repo: string): string {
@@ -223,7 +181,8 @@ export async function connectGitHub(
   const normalizedToken = token.trim();
   if (!normalizedToken) throw new Error("GitHub token is required.");
   const allowedRepositories = normalizeRepositoryAllowlist(repositories);
-  getEncryptionKey();
+  // Fail before any external request if production credential encryption is unavailable.
+  const encryptedToken = encryptIntegrationCredential(normalizedToken);
   const { username } = await auditedRead({
     userId,
     actionId: GITHUB_ACTION_IDS.verifyConnection,
@@ -246,7 +205,7 @@ export async function connectGitHub(
   const { error } = await db.from("github_connections").upsert(
     {
       user_id: userId,
-      token_encrypted: encrypt(normalizedToken),
+      token_encrypted: encryptedToken,
       username,
       allowed_repositories: allowedRepositories,
       default_repo: allowedRepositories[0],
@@ -290,37 +249,77 @@ export async function getGitHubConnection(userId: number) {
 async function getGitHubAccess(
   userId: number,
   repository?: string
-): Promise<{ token: string; allowedRepositories: string[] }> {
+): Promise<{
+  token: string;
+  allowedRepositories: string[];
+  connectionType: "personal" | "managed";
+}> {
   const conn = await getGitHubConnection(userId);
-  if (!conn) {
-    throw new Error(
-      "GitHub is not connected. Add a read-only token in Settings."
-    );
+  if (conn) {
+    const allowedRepositories: string[] = Array.isArray(conn.allowed_repositories)
+      ? conn.allowed_repositories
+          .filter((value: unknown): value is string => typeof value === "string")
+          .map(assertRepository)
+      : [];
+    if (allowedRepositories.length === 0) {
+      throw new Error(
+        "No repositories are authorized. Disconnect and reconnect GitHub with an explicit repository list."
+      );
+    }
+    if (
+      repository &&
+      !allowedRepositories.some(
+        allowed => allowed.toLowerCase() === repository.toLowerCase()
+      )
+    ) {
+      throw new Error(
+        `Repository ${repository} is not in this connection's allowlist.`
+      );
+    }
+    return {
+      token: decryptIntegrationCredential(conn.token_encrypted),
+      allowedRepositories,
+      connectionType: "personal",
+    };
   }
-  const allowedRepositories: string[] = Array.isArray(conn.allowed_repositories)
-    ? conn.allowed_repositories
-        .filter((value: unknown): value is string => typeof value === "string")
-        .map(assertRepository)
-    : [];
-  if (allowedRepositories.length === 0) {
-    throw new Error(
-      "No repositories are authorized. Disconnect and reconnect GitHub with an explicit repository list."
-    );
+
+  const managedToken = (await mayUseOwnerIntegrationCredentials(userId))
+    ? process.env.GITHUB_TOKEN?.trim()
+    : "";
+  if (managedToken) {
+    return {
+      token: managedToken,
+      allowedRepositories: [],
+      connectionType: "managed",
+    };
   }
-  if (
-    repository &&
-    !allowedRepositories.some(
-      allowed => allowed.toLowerCase() === repository.toLowerCase()
-    )
-  ) {
-    throw new Error(
-      `Repository ${repository} is not in this connection's allowlist.`
-    );
+
+  throw new Error(
+    "GitHub is not connected. Add a read-only token in Settings."
+  );
+}
+
+/** Resolve the existing owner-managed connection without exposing its token. */
+export async function getSystemGitHubUsername(
+  userId: number
+): Promise<string | null> {
+  if (!(await mayUseOwnerIntegrationCredentials(userId))) return null;
+  const token = process.env.GITHUB_TOKEN?.trim();
+  if (!token) return null;
+  try {
+    return await auditedRead({
+      userId,
+      actionId: GITHUB_ACTION_IDS.verifyConnection,
+      target: "managed-github-account",
+      details: { connectionType: "managed" },
+      operation: async () => {
+        const user = await githubFetch(token, "/user");
+        return typeof user.login === "string" ? user.login : null;
+      },
+    });
+  } catch {
+    return null;
   }
-  return {
-    token: decrypt(conn.token_encrypted),
-    allowedRepositories,
-  };
 }
 
 async function auditedRead<T>(input: {
@@ -427,13 +426,19 @@ export async function listRepos(
     actionId: GITHUB_ACTION_IDS.listRepositories,
     details: { limit },
     operation: async () => {
-      const { token, allowedRepositories } = await getGitHubAccess(userId);
+      const { token, allowedRepositories, connectionType } =
+        await getGitHubAccess(userId);
       const perPage = Math.max(1, Math.min(limit, 100));
-      const repos = await Promise.all(
-        allowedRepositories
-          .slice(0, perPage)
-          .map(repository => githubFetch(token, `/repos/${repository}`))
-      );
+      const repos = connectionType === "managed"
+        ? await githubFetch(
+            token,
+            `/user/repos?sort=updated&per_page=${perPage}&affiliation=owner,collaborator,organization_member`
+          )
+        : await Promise.all(
+            allowedRepositories
+              .slice(0, perPage)
+              .map(repository => githubFetch(token, `/repos/${repository}`))
+          );
       return repos.map((r: any) => ({
         id: r.id,
         name: r.name,

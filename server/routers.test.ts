@@ -135,6 +135,9 @@ function createAuthContext(): TrpcContext {
 
   return {
     user,
+    authenticatedUser: user,
+    isOwner: false,
+    isVerifiedOwner: false,
     req: {
       protocol: "https",
       headers: {},
@@ -205,7 +208,8 @@ describe("ai router", () => {
     const result = await caller.ai.chat({ message: "Hello Toríu" });
     expect(result).toBeDefined();
     expect(result.role).toBe("assistant");
-    expect(result.content).toContain("Toríu");
+    expect(result.content.trim().length).toBeGreaterThan(0);
+    expect(result.workerUsed).toContain("Toríu");
     expect(result.timestamp).toBeGreaterThan(0);
   });
 

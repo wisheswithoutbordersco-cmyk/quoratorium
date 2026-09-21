@@ -106,8 +106,8 @@ function caller(options: { cookie?: string; response?: any } = {}) {
     res: options.response ?? ({ cookie: vi.fn(), clearCookie: vi.fn() } as any),
     user: owner,
     isOwner: true,
-    authenticatedUser: null,
-    isVerifiedOwner: false,
+    authenticatedUser: owner,
+    isVerifiedOwner: true,
   };
   return businessActionsRouter.createCaller(ctx);
 }
