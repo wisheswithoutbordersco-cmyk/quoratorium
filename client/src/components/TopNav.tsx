@@ -9,25 +9,12 @@
 import { useLocation, Link } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  BarChart3,
-  Bot,
-  Brain,
-  CreditCard,
-  DollarSign,
-  FileStack,
   FolderKanban,
   GitBranch,
-  HardDrive,
-  HeartPulse,
   KeyRound,
-  ListTodo,
   LogOut,
-  Package,
   PanelLeft,
   Rocket,
-  ShieldCheck,
-  Share2,
-  UserRound,
   Settings,
   Menu,
   X,
@@ -42,31 +29,10 @@ import { trpc } from "@/lib/trpc";
 
 const navItems = [
   { path: "/workspace/projects", label: "Projects", icon: FolderKanban },
-  { path: "/workspace/templates", label: "Templates", icon: FileStack },
-  { path: "/workspace/knowledge", label: "Knowledge", icon: Brain },
-  { path: "/workspace/memory", label: "Memory", icon: HardDrive },
+  { path: "/workspace/launchpad", label: "Launchpad", icon: Rocket },
   { path: "/workspace/vault", label: "Vault", icon: KeyRound },
   { path: "/workspace/git", label: "Git", icon: GitBranch },
-  { path: "/workspace/sharing", label: "Sharing", icon: Share2 },
-  { path: "/workspace/billing", label: "Billing", icon: CreditCard },
   { path: "/workspace/settings", label: "Settings", icon: Settings },
-  { path: "/workspace/profile", label: "Profile", icon: UserRound },
-  { path: "/workspace/launchpad", label: "Launchpad", icon: Rocket },
-];
-
-const operationalNavItems = [
-  { path: "/workspace/analytics", label: "Analytics", icon: BarChart3 },
-  { path: "/workspace/builders", label: "Builders", icon: Bot },
-  { path: "/workspace/costs", label: "Costs", icon: DollarSign },
-  { path: "/workspace/deployments", label: "Deployments", icon: Rocket },
-  { path: "/workspace/jobs", label: "Jobs", icon: ListTodo },
-  {
-    path: "/workspace/observability",
-    label: "Observability",
-    icon: HeartPulse,
-  },
-  { path: "/workspace/security", label: "Security", icon: ShieldCheck },
-  { path: "/workspace/recyclatorium", label: "Recyclatorium", icon: Package },
 ];
 
 interface TopNavProps {
@@ -78,12 +44,10 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
   const [location] = useLocation();
   const { activeProject } = useProjectStore();
   const { agents } = useOrchestrationStore();
-  const { user, isAuthenticated, logout } = useAuth();
+  const { isAuthenticated, logout } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const menuHistoryPushed = useRef(false);
   const activeAgents = agents.filter(a => a.status === "active").length;
-  const availableNavItems =
-    user?.role === "admin" ? [...navItems, ...operationalNavItems] : navItems;
 
   const openMobileMenu = () => {
     setMobileMenuOpen(true);
@@ -160,7 +124,7 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
 
       {/* Desktop Navigation */}
       <div className="hidden lg:flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto">
-        {availableNavItems.map(item => {
+        {navItems.map(item => {
           const isActive = location === item.path;
           const Icon = item.icon;
           return (
@@ -212,24 +176,14 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
         <SystemHealthStatus />
 
         {isAuthenticated && (
-          <>
-            <Link
-              href="/workspace/profile"
-              className="hidden md:flex h-7 w-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:border-primary/30 hover:text-primary"
-              aria-label="Open profile"
-              title={user?.name || "Profile"}
-            >
-              <UserRound size={13} />
-            </Link>
-            <button
-              onClick={() => void logout()}
-              className="hidden md:flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-              aria-label="Sign out"
-              title="Sign out"
-            >
-              <LogOut size={13} />
-            </button>
-          </>
+          <button
+            onClick={() => void logout()}
+            className="hidden md:flex h-7 w-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={13} />
+          </button>
         )}
 
         {/* Mobile menu toggle (hamburger for nav items) */}
@@ -252,7 +206,7 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
             transition={{ duration: duration.fast, ease: ease.out }}
           >
             <div className="grid grid-cols-2 gap-1.5">
-              {availableNavItems.map(item => {
+              {navItems.map(item => {
                 const isActive = location === item.path;
                 const Icon = item.icon;
                 return (
