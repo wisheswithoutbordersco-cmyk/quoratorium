@@ -15,19 +15,28 @@ export const gitRouter = router({
         username: conn.username,
         defaultRepo: conn.defaultRepo || conn.default_repo || null,
         defaultBranch: conn.defaultBranch || conn.default_branch || null,
+        connectionSource: "personal" as const,
       };
     }
     // Fallback: check system GitHub token
     const systemUsername = await github.getSystemGitHubUsername();
     if (systemUsername) {
+      const defaults = await github.getSystemGitHubDefaults(ctx.user.id);
       return {
         connected: true,
         username: systemUsername,
-        defaultRepo: null,
-        defaultBranch: "main",
+        defaultRepo: defaults.defaultRepo,
+        defaultBranch: defaults.defaultBranch,
+        connectionSource: "workspace" as const,
       };
     }
-    return { connected: false, username: null, defaultRepo: null, defaultBranch: null };
+    return {
+      connected: false,
+      username: null,
+      defaultRepo: null,
+      defaultBranch: null,
+      connectionSource: null,
+    };
   }),
 
   // Connect GitHub with PAT
@@ -50,13 +59,20 @@ export const gitRouter = router({
 
   // Create a new repo
   createRepo: protectedProcedure
-    .input(z.object({
-      name: z.string().min(1),
-      description: z.string().optional(),
-      isPrivate: z.boolean().optional(),
-    }))
+    .input(
+      z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        isPrivate: z.boolean().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      return github.createRepo(ctx.user.id, input.name, input.description, input.isPrivate ?? true);
+      return github.createRepo(
+        ctx.user.id,
+        input.name,
+        input.description,
+        input.isPrivate ?? true
+      );
     }),
 
   // Get commits for a repo
@@ -75,25 +91,40 @@ export const gitRouter = router({
 
   // Create a branch
   createBranch: protectedProcedure
-    .input(z.object({
-      repo: z.string(),
-      branchName: z.string().min(1),
-      fromBranch: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        repo: z.string(),
+        branchName: z.string().min(1),
+        fromBranch: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      return github.createBranch(ctx.user.id, input.repo, input.branchName, input.fromBranch);
+      return github.createBranch(
+        ctx.user.id,
+        input.repo,
+        input.branchName,
+        input.fromBranch
+      );
     }),
 
   // Push files to a repo
   push: protectedProcedure
-    .input(z.object({
-      repo: z.string(),
-      files: z.array(z.object({ path: z.string(), content: z.string() })),
-      commitMessage: z.string(),
-      branch: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        repo: z.string(),
+        files: z.array(z.object({ path: z.string(), content: z.string() })),
+        commitMessage: z.string(),
+        branch: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      return github.pushFiles(ctx.user.id, input.repo, input.files, input.commitMessage, input.branch);
+      return github.pushFiles(
+        ctx.user.id,
+        input.repo,
+        input.files,
+        input.commitMessage,
+        input.branch
+      );
     }),
 
   // Pull files from a repo
@@ -105,11 +136,17 @@ export const gitRouter = router({
 
   // Update default repo/branch
   updateDefaults: protectedProcedure
-    .input(z.object({
-      defaultRepo: z.string().optional(),
-      defaultBranch: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        defaultRepo: z.string().optional(),
+        defaultBranch: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      return github.updateDefaults(ctx.user.id, input.defaultRepo, input.defaultBranch);
+      return github.updateDefaults(
+        ctx.user.id,
+        input.defaultRepo,
+        input.defaultBranch
+      );
     }),
 });

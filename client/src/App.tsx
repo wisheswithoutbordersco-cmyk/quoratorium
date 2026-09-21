@@ -19,6 +19,7 @@ import Home from "./pages/Home";
 import Projects from "./pages/Projects";
 import Vault from "./pages/Vault";
 import Settings from "./pages/Settings";
+import Git from "./pages/Git";
 import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
@@ -35,6 +36,7 @@ function Router() {
       <Route path="/workspace/projects" component={Projects} />
       <Route path="/workspace/vault" component={Vault} />
       <Route path="/workspace/launchpad" component={Launchpad} />
+      <Route path="/workspace/git" component={Git} />
       <Route path="/recyclatorium" component={Recyclatorium} />
       <Route path="/workspace/settings" component={Settings} />
 
@@ -42,6 +44,7 @@ function Router() {
       <Route path="/projects" component={Projects} />
       <Route path="/vault" component={Vault} />
       <Route path="/launchpad" component={Launchpad} />
+      <Route path="/git" component={Git} />
       <Route path="/settings" component={Settings} />
 
       <Route component={NotFound} />
