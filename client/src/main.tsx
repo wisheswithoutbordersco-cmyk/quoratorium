@@ -16,17 +16,12 @@ Sentry.init({
 import { trpc } from "@/lib/trpc";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { httpBatchLink, TRPCClientError } from "@trpc/client";
-import { ClerkProvider, useAuth as useClerkAuth } from "@clerk/clerk-react";
 import { createRoot } from "react-dom/client";
 import superjson from "superjson";
 import App from "./App";
 import "./index.css";
 
 const queryClient = new QueryClient();
-const clerkPublishableKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-const hasClerkConfiguration = Boolean(clerkPublishableKey?.startsWith("pk_"));
-
-let getClerkToken: (() => Promise<string | null>) | null = null;
 
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === "updated" && event.action.type === "error") {
@@ -53,10 +48,6 @@ const trpcClient = trpc.createClient({
     httpBatchLink({
       url: "/api/trpc",
       transformer: superjson,
-      headers: async () => {
-        const token = await getClerkToken?.();
-        return token ? { Authorization: `Bearer ${token}` } : {};
-      },
       fetch(input, init) {
         return globalThis.fetch(input, {
           ...(init ?? {}),
@@ -68,17 +59,15 @@ const trpcClient = trpc.createClient({
 });
 
 function mountApp() {
-  // Guard: ensure root element exists before mounting
   let rootEl = document.getElementById("root");
   if (!rootEl) {
-    // Fallback: create the root element if it's missing (e.g., browser extension interference)
     rootEl = document.createElement("div");
     rootEl.id = "root";
     document.body.appendChild(rootEl);
     Sentry.captureMessage("Root element missing — created fallback", "warning");
   }
 
-  const application = (
+  createRoot(rootEl).render(
     <Sentry.ErrorBoundary
       fallback={({ error }) => (
         <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
@@ -104,31 +93,8 @@ function mountApp() {
       </trpc.Provider>
     </Sentry.ErrorBoundary>
   );
-
-  createRoot(rootEl).render(
-    hasClerkConfiguration ? (
-      <ClerkProvider
-        publishableKey={clerkPublishableKey!}
-        afterSignOutUrl="/"
-        afterSignInUrl="/workspace"
-        afterSignUpUrl="/workspace"
-      >
-        <ClerkTokenBridge>{application}</ClerkTokenBridge>
-      </ClerkProvider>
-    ) : (
-      application
-    )
-  );
 }
 
-function ClerkTokenBridge({ children }: { children: React.ReactNode }) {
-  const { getToken } = useClerkAuth();
-
-  getClerkToken = getToken;
-  return <>{children}</>;
-}
-
-// Mount immediately if DOM is ready, otherwise wait for DOMContentLoaded
 if (document.readyState === "loading") {
   document.addEventListener("DOMContentLoaded", mountApp);
 } else {

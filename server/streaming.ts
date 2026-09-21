@@ -244,7 +244,7 @@ export function registerStreamingRoutes(app: Express) {
     }
 
     // Streaming is protected independently of tRPC and must resolve the same
-    // verified Clerk identity used by protected procedures.
+    // verified workspace identity used by protected procedures.
     let authenticatedUser: Awaited<
       ReturnType<typeof resolveAuthenticatedUser>
     > = null;
@@ -257,7 +257,7 @@ export function registerStreamingRoutes(app: Express) {
     }
 
     if (!authenticatedUser) {
-      res.status(401).json({ error: "Sign in to use workspace chat." });
+      res.status(401).json({ error: "Unlock the workspace to use chat." });
       return;
     }
     const userId = authenticatedUser.id;

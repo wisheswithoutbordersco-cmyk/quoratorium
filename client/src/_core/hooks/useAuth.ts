@@ -1,12 +1,4 @@
-/**
- * Application authentication adapter.
- *
- * Clerk is the source of session state and tokens. The server-side session
- * query supplies the application role, which remains authoritative for API
- * authorization. Do not replace this with browser storage or a local secret.
- */
-import { useAuth as useClerkAuth, useUser } from "@clerk/clerk-react";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { trpc } from "@/lib/trpc";
 
 export type AuthUser = {
@@ -19,57 +11,45 @@ export type AuthUser = {
 };
 
 export function useAuth(_options?: { redirectOnUnauthenticated?: boolean }) {
-  const {
-    isLoaded: isAuthLoaded,
-    isSignedIn,
-    getToken,
-    signOut,
-  } = useClerkAuth();
-  const { isLoaded: isUserLoaded, user: clerkUser } = useUser();
-  const sessionQuery = trpc.auth.session.useQuery(undefined, {
-    enabled: isAuthLoaded && Boolean(isSignedIn),
+  const utils = trpc.useUtils();
+  const session = trpc.auth.session.useQuery(undefined, {
     retry: false,
-    staleTime: 60_000,
+    refetchOnWindowFocus: false,
   });
+  const logoutMutation = trpc.auth.logout.useMutation();
 
-  const user = useMemo<AuthUser | null>(() => {
-    if (!isSignedIn || !clerkUser) return null;
-
-    const verifiedUser = sessionQuery.data?.user;
-    const email = clerkUser.primaryEmailAddress?.emailAddress ?? null;
-    const name = clerkUser.fullName || clerkUser.username || email || "User";
-
-    return {
-      id: verifiedUser ? String(verifiedUser.id) : clerkUser.id,
-      name,
-      email,
-      avatar: clerkUser.imageUrl ?? null,
-      // The API-provided role is authoritative. Until it arrives, default to
-      // the least-privileged UI role; server procedures enforce this again.
-      role: verifiedUser?.role === "admin" ? "admin" : "user",
-      created_at: clerkUser.createdAt?.getTime() ?? Date.now(),
-    };
-  }, [clerkUser, isSignedIn, sessionQuery.data?.user]);
+  const user: AuthUser | null = session.data?.user
+    ? {
+        id: String(session.data.user.id),
+        name: session.data.user.name || "Owner",
+        email: session.data.user.email,
+        avatar: null,
+        role: session.data.user.role === "admin" ? "admin" : "user",
+        created_at: 0,
+      }
+    : null;
 
   const refresh = useCallback(async () => {
-    await getToken({ skipCache: true });
-    await sessionQuery.refetch();
-  }, [getToken, sessionQuery]);
+    await session.refetch();
+  }, [session]);
 
   const logout = useCallback(async () => {
-    await signOut({ redirectUrl: "/" });
-  }, [signOut]);
+    await logoutMutation.mutateAsync();
+    await Promise.all([
+      utils.auth.session.invalidate(),
+      utils.auth.accessStatus.invalidate(),
+      utils.auth.me.invalidate(),
+    ]);
+    window.location.reload();
+  }, [logoutMutation, utils.auth]);
 
   return {
     user,
-    loading:
-      !isAuthLoaded ||
-      !isUserLoaded ||
-      (Boolean(isSignedIn) && sessionQuery.isLoading),
-    error: sessionQuery.error instanceof Error ? sessionQuery.error : null,
-    isAuthenticated: Boolean(isSignedIn),
+    loading: session.isLoading || session.isFetching,
+    error: session.error instanceof Error ? session.error : null,
+    isAuthenticated: Boolean(session.data?.authenticated),
     refresh,
     logout,
-    getToken,
+    getToken: async (): Promise<string | null> => null,
   };
 }

@@ -4,7 +4,9 @@ import { createContext, type TrpcContext } from "./context";
 import { protectedProcedure, router } from "./trpc";
 
 const testRouter = router({
-  protectedValue: protectedProcedure.query(({ ctx }) => ({ userId: ctx.user.id })),
+  protectedValue: protectedProcedure.query(({ ctx }) => ({
+    userId: ctx.user.id,
+  })),
 });
 
 function unauthenticatedContext(): TrpcContext {
@@ -18,8 +20,8 @@ function unauthenticatedContext(): TrpcContext {
   };
 }
 
-describe("tRPC Clerk authentication boundary", () => {
-  it("does not substitute an owner when an Express request lacks verified Clerk auth", async () => {
+describe("tRPC workspace authentication boundary", () => {
+  it("does not substitute an owner when a request lacks a verified session", async () => {
     const context = await createContext({
       req: { headers: {} } as TrpcContext["req"],
       res: {} as TrpcContext["res"],
@@ -33,7 +35,9 @@ describe("tRPC Clerk authentication boundary", () => {
   it("rejects anonymous callers before a protected procedure executes", async () => {
     const caller = testRouter.createCaller(unauthenticatedContext());
 
-    await expect(caller.protectedValue()).rejects.toMatchObject<Partial<TRPCError>>({
+    await expect(caller.protectedValue()).rejects.toMatchObject<
+      Partial<TRPCError>
+    >({
       code: "UNAUTHORIZED",
     });
   });
