@@ -1,6 +1,6 @@
 /**
  * Code Execution Engine
- * 
+ *
  * Primary: Sprites.dev (persistent Linux sandboxes via Fly.io)
  * Fallback: Local child_process execution (when Sprites unavailable)
  */
@@ -8,12 +8,34 @@ import { spawn } from "child_process";
 import { writeFile, unlink, mkdtemp } from "fs/promises";
 import { tmpdir } from "os";
 import { join } from "path";
-import { executeCodeInSprite, getSprite, type ExecResult } from "./spritesClient";
+import {
+  executeCodeInSprite,
+  getSprite,
+  type ExecResult,
+} from "./spritesClient";
 import { validateCode } from "./security";
 import { logger, startTrace, endTrace, recordMetric } from "./observability";
 
 const MAX_TIMEOUT_MS = 30_000;
 const MAX_OUTPUT_SIZE = 50_000;
+
+/**
+ * Code submitted through Toríu must never inherit application credentials.
+ * Keep only the minimum process environment required to locate runtimes and
+ * create temporary files. In particular, GitHub, Supabase, Stripe, model, and
+ * deployment credentials are intentionally excluded.
+ */
+export function getSandboxProcessEnvironment(): NodeJS.ProcessEnv {
+  return {
+    PATH: process.env.PATH || "/usr/local/bin:/usr/bin:/bin",
+    HOME: tmpdir(),
+    TMPDIR: tmpdir(),
+    LANG: process.env.LANG || "C.UTF-8",
+    LC_ALL: process.env.LC_ALL || "C.UTF-8",
+    NODE_ENV: "sandbox",
+    NO_COLOR: "1",
+  };
+}
 
 export interface ExecutionResult {
   success: boolean;
@@ -41,14 +63,26 @@ export async function executeCode(
     forceLocal?: boolean;
   } = {}
 ): Promise<ExecutionResult> {
-  const { timeoutMs = MAX_TIMEOUT_MS, dependencies, spriteName, forceLocal } = options;
+  const {
+    timeoutMs = MAX_TIMEOUT_MS,
+    dependencies,
+    spriteName,
+    forceLocal,
+  } = options;
   const startTime = Date.now();
-  const span = startTrace("code_execution", { service: "executor", worker: "executor", attributes: { language } });
+  const span = startTrace("code_execution", {
+    service: "executor",
+    worker: "executor",
+    attributes: { language },
+  });
 
   // Security: validate code before execution
   const validation = validateCode(code, language);
   if (!validation.safe) {
-    logger.warn(`[Security] Code validation failed: ${validation.violations.map(v => v.message).join(", ")}`, { worker: "executor" });
+    logger.warn(
+      `[Security] Code validation failed: ${validation.violations.map(v => v.message).join(", ")}`,
+      { worker: "executor" }
+    );
     endTrace(span, "failed");
     recordMetric("code_execution_blocked", 1, "counter", { language });
     return {
@@ -61,7 +95,9 @@ export async function executeCode(
       engine: "local",
     };
   }
-  logger.info(`[Executor] Running ${language} code (${code.length} chars)`, { worker: "executor" });
+  logger.info(`[Executor] Running ${language} code (${code.length} chars)`, {
+    worker: "executor",
+  });
 
   // Try Sprites.dev first (if token available and not forced local)
   if (!forceLocal && process.env.SPRITES_TOKEN) {
@@ -72,17 +108,26 @@ export async function executeCode(
         spriteName,
       });
       endTrace(span, result.success ? "completed" : "failed");
-      recordMetric("code_execution_duration_ms", result.duration, "histogram", { language, engine: "sprites" });
+      recordMetric("code_execution_duration_ms", result.duration, "histogram", {
+        language,
+        engine: "sprites",
+      });
       return result;
     } catch (err) {
-      console.warn("[CodeExecutor] Sprites.dev failed, falling back to local:", err);
+      console.warn(
+        "[CodeExecutor] Sprites.dev failed, falling back to local:",
+        err
+      );
     }
   }
 
   // Fallback to local execution
   const result = await executeLocally(code, language, timeoutMs, startTime);
   endTrace(span, result.success ? "completed" : "failed");
-  recordMetric("code_execution_duration_ms", result.duration, "histogram", { language, engine: "local" });
+  recordMetric("code_execution_duration_ms", result.duration, "histogram", {
+    language,
+    engine: "local",
+  });
   return result;
 }
 
@@ -141,19 +186,43 @@ async function executeLocally(
       case "javascript":
         tempFile = join(tempDir, "script.mjs");
         await writeFile(tempFile, code, "utf-8");
-        return await runProcess("node", [tempFile], timeout, startTime, language);
+        return await runProcess(
+          "node",
+          [tempFile],
+          timeout,
+          startTime,
+          language
+        );
       case "typescript":
         tempFile = join(tempDir, "script.ts");
         await writeFile(tempFile, code, "utf-8");
-        return await runProcess("npx", ["tsx", tempFile], timeout, startTime, language);
+        return await runProcess(
+          "npx",
+          ["tsx", tempFile],
+          timeout,
+          startTime,
+          language
+        );
       case "python":
         tempFile = join(tempDir, "script.py");
         await writeFile(tempFile, code, "utf-8");
-        return await runProcess("python3", [tempFile], timeout, startTime, language);
+        return await runProcess(
+          "python3",
+          [tempFile],
+          timeout,
+          startTime,
+          language
+        );
       case "bash":
         tempFile = join(tempDir, "script.sh");
         await writeFile(tempFile, code, "utf-8");
-        return await runProcess("bash", [tempFile], timeout, startTime, language);
+        return await runProcess(
+          "bash",
+          [tempFile],
+          timeout,
+          startTime,
+          language
+        );
       default:
         return {
           success: false,
@@ -166,7 +235,9 @@ async function executeLocally(
         };
     }
   } finally {
-    try { if (tempFile) await unlink(tempFile); } catch {}
+    try {
+      if (tempFile) await unlink(tempFile);
+    } catch {}
   }
 }
 
@@ -177,18 +248,18 @@ function runProcess(
   startTime: number,
   language: string
 ): Promise<ExecutionResult> {
-  return new Promise((resolve) => {
+  return new Promise(resolve => {
     let stdout = "";
     let stderr = "";
     let timedOut = false;
 
     const proc = spawn(command, args, {
       timeout,
-      env: { ...process.env, NODE_ENV: "sandbox" },
+      env: getSandboxProcessEnvironment(),
       cwd: tmpdir(),
     });
 
-    proc.stdout.on("data", (data) => {
+    proc.stdout.on("data", data => {
       stdout += data.toString();
       if (stdout.length > MAX_OUTPUT_SIZE) {
         stdout = stdout.slice(0, MAX_OUTPUT_SIZE) + "\n... [output truncated]";
@@ -196,7 +267,7 @@ function runProcess(
       }
     });
 
-    proc.stderr.on("data", (data) => {
+    proc.stderr.on("data", data => {
       stderr += data.toString();
       if (stderr.length > MAX_OUTPUT_SIZE) {
         stderr = stderr.slice(0, MAX_OUTPUT_SIZE) + "\n... [output truncated]";
@@ -209,7 +280,7 @@ function runProcess(
       proc.kill("SIGKILL");
     }, timeout);
 
-    proc.on("close", (exitCode) => {
+    proc.on("close", exitCode => {
       clearTimeout(timer);
       const duration = Date.now() - startTime;
       resolve({
@@ -224,7 +295,7 @@ function runProcess(
       });
     });
 
-    proc.on("error", (err) => {
+    proc.on("error", err => {
       clearTimeout(timer);
       const duration = Date.now() - startTime;
       resolve({

@@ -4,6 +4,7 @@
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
 import * as github from "../githubService";
+import { getActionCatalog } from "../actionCatalog";
 
 export const gitRouter = router({
   // Get connection status
@@ -57,23 +58,7 @@ export const gitRouter = router({
     return github.listRepos(ctx.user.id);
   }),
 
-  // Create a new repo
-  createRepo: protectedProcedure
-    .input(
-      z.object({
-        name: z.string().min(1),
-        description: z.string().optional(),
-        isPrivate: z.boolean().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      return github.createRepo(
-        ctx.user.id,
-        input.name,
-        input.description,
-        input.isPrivate ?? true
-      );
-    }),
+  capabilities: protectedProcedure.query(() => getActionCatalog("GitHub")),
 
   // Get commits for a repo
   commits: protectedProcedure
@@ -89,49 +74,72 @@ export const gitRouter = router({
       return github.listBranches(ctx.user.id, input.repo);
     }),
 
-  // Create a branch
-  createBranch: protectedProcedure
+  overview: protectedProcedure
     .input(
       z.object({
         repo: z.string(),
-        branchName: z.string().min(1),
-        fromBranch: z.string().optional(),
+        projectId: z.number().int().positive().optional(),
       })
     )
-    .mutation(async ({ ctx, input }) => {
-      return github.createBranch(
-        ctx.user.id,
-        input.repo,
-        input.branchName,
-        input.fromBranch
-      );
-    }),
-
-  // Push files to a repo
-  push: protectedProcedure
-    .input(
-      z.object({
-        repo: z.string(),
-        files: z.array(z.object({ path: z.string(), content: z.string() })),
-        commitMessage: z.string(),
-        branch: z.string().optional(),
-      })
-    )
-    .mutation(async ({ ctx, input }) => {
-      return github.pushFiles(
-        ctx.user.id,
-        input.repo,
-        input.files,
-        input.commitMessage,
-        input.branch
-      );
-    }),
-
-  // Pull files from a repo
-  pull: protectedProcedure
-    .input(z.object({ repo: z.string(), branch: z.string().optional() }))
     .query(async ({ ctx, input }) => {
-      return github.pullFiles(ctx.user.id, input.repo, input.branch);
+      return github.getRepositoryOverview(
+        ctx.user.id,
+        input.repo,
+        input.projectId
+      );
+    }),
+
+  tree: protectedProcedure
+    .input(
+      z.object({
+        repo: z.string(),
+        reference: z.string().optional(),
+        projectId: z.number().int().positive().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return github.getRepositoryTree(
+        ctx.user.id,
+        input.repo,
+        input.reference,
+        input.projectId
+      );
+    }),
+
+  readFile: protectedProcedure
+    .input(
+      z.object({
+        repo: z.string(),
+        path: z.string(),
+        reference: z.string().optional(),
+        projectId: z.number().int().positive().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return github.readRepositoryFile(
+        ctx.user.id,
+        input.repo,
+        input.path,
+        input.reference,
+        input.projectId
+      );
+    }),
+
+  searchCode: protectedProcedure
+    .input(
+      z.object({
+        repo: z.string(),
+        query: z.string().min(2).max(160),
+        projectId: z.number().int().positive().optional(),
+      })
+    )
+    .query(async ({ ctx, input }) => {
+      return github.searchRepositoryCode(
+        ctx.user.id,
+        input.repo,
+        input.query,
+        input.projectId
+      );
     }),
 
   // Update default repo/branch
