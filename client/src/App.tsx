@@ -10,7 +10,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { SettingsInitializer } from "./components/SettingsInitializer";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { PasswordGate } from "./components/PasswordGate";
-import { useAuth } from "./_core/hooks/useAuth";
 
 // Landing Page
 import LandingPage from "./pages/LandingPage";
@@ -24,31 +23,6 @@ import Git from "./pages/Git";
 import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
-import Analytics from "./pages/Analytics";
-import Billing from "./pages/Billing";
-import Builders from "./pages/Builders";
-import Costs from "./pages/Costs";
-import Deployments from "./pages/Deployments";
-import Jobs from "./pages/Jobs";
-import Knowledge from "./pages/Knowledge";
-import Memory from "./pages/Memory";
-import Observability from "./pages/Observability";
-import Profile from "./pages/Profile";
-import Security from "./pages/Security";
-import Sharing from "./pages/Sharing";
-import Templates from "./pages/Templates";
-
-function AdminWorkspaceRoute({
-  component: Component,
-}: {
-  component: React.ComponentType;
-}) {
-  const { user, loading } = useAuth();
-
-  if (loading) return null;
-  if (user?.role !== "admin") return <Redirect to="/workspace" replace />;
-  return <Component />;
-}
 
 function WorkspaceRouter() {
   return (
@@ -60,34 +34,48 @@ function WorkspaceRouter() {
       <Route path="/workspace/launchpad" component={Launchpad} />
       <Route path="/workspace/git" component={Git} />
       <Route path="/workspace/settings" component={Settings} />
+      <Route path="/workspace/recyclatorium" component={Recyclatorium} />
+
+      {/* These legacy workspace surfaces were intentionally retired. */}
       <Route path="/workspace/analytics">
-        <AdminWorkspaceRoute component={Analytics} />
+        <Redirect to="/workspace" replace />
       </Route>
-      <Route path="/workspace/billing" component={Billing} />
+      <Route path="/workspace/billing">
+        <Redirect to="/workspace" replace />
+      </Route>
       <Route path="/workspace/builders">
-        <AdminWorkspaceRoute component={Builders} />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/workspace/costs">
-        <AdminWorkspaceRoute component={Costs} />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/workspace/deployments">
-        <AdminWorkspaceRoute component={Deployments} />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/workspace/jobs">
-        <AdminWorkspaceRoute component={Jobs} />
+        <Redirect to="/workspace" replace />
       </Route>
-      <Route path="/workspace/knowledge" component={Knowledge} />
-      <Route path="/workspace/memory" component={Memory} />
+      <Route path="/workspace/knowledge">
+        <Redirect to="/workspace" replace />
+      </Route>
+      <Route path="/workspace/memory">
+        <Redirect to="/workspace" replace />
+      </Route>
       <Route path="/workspace/observability">
-        <AdminWorkspaceRoute component={Observability} />
+        <Redirect to="/workspace" replace />
       </Route>
-      <Route path="/workspace/profile" component={Profile} />
+      <Route path="/workspace/profile">
+        <Redirect to="/workspace" replace />
+      </Route>
       <Route path="/workspace/security">
-        <AdminWorkspaceRoute component={Security} />
+        <Redirect to="/workspace" replace />
       </Route>
-      <Route path="/workspace/sharing" component={Sharing} />
-      <Route path="/workspace/templates" component={Templates} />
-      <Route path="/workspace/recyclatorium" component={Recyclatorium} />
+      <Route path="/workspace/sharing">
+        <Redirect to="/workspace" replace />
+      </Route>
+      <Route path="/workspace/templates">
+        <Redirect to="/workspace" replace />
+      </Route>
 
       {/* Legacy aliases redirect to canonical workspace routes. */}
       <Route path="/projects">
@@ -106,43 +94,43 @@ function WorkspaceRouter() {
         <Redirect to="/workspace/settings" replace />
       </Route>
       <Route path="/analytics">
-        <Redirect to="/workspace/analytics" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/billing">
-        <Redirect to="/workspace/billing" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/builders">
-        <Redirect to="/workspace/builders" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/costs">
-        <Redirect to="/workspace/costs" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/deployments">
-        <Redirect to="/workspace/deployments" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/jobs">
-        <Redirect to="/workspace/jobs" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/knowledge">
-        <Redirect to="/workspace/knowledge" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/memory">
-        <Redirect to="/workspace/memory" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/observability">
-        <Redirect to="/workspace/observability" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/profile">
-        <Redirect to="/workspace/profile" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/security">
-        <Redirect to="/workspace/security" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/sharing">
-        <Redirect to="/workspace/sharing" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/templates">
-        <Redirect to="/workspace/templates" replace />
+        <Redirect to="/workspace" replace />
       </Route>
       <Route path="/recyclatorium">
         <Redirect to="/workspace/recyclatorium" replace />
