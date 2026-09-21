@@ -3,28 +3,50 @@ import type { User } from "../db";
 import { clerkClient, getAuth } from "@clerk/express";
 import * as db from "../db";
 import { ENV, OWNER_EMAILS } from "./env";
+import { getOwnerAccessSession } from "../ownerAccessAuth";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
-  /** A database user resolved from a verified Clerk session; never an anonymous fallback. */
+  /** A database user resolved from a verified Clerk or signed owner session. */
   user: User | null;
-  /** True only when the verified Clerk identity is the configured owner. */
+  /** True only when the verified identity is the configured owner. */
   isOwner: boolean;
-  /** Retained for compatibility; always mirrors `user` for production contexts. */
+  /** Retained for compatibility; mirrors the verified workspace user. */
   authenticatedUser?: User | null;
-  /** Retained for compatibility; only derived from a verified Clerk identity. */
+  /** Retained for compatibility; only derived from a verified identity. */
   isVerifiedOwner?: boolean;
 };
 
-/**
- * Legacy compatibility export for routes that have not yet been migrated to
- * Clerk-aware request handling. It intentionally never resolves an owner:
- * callers must authenticate the request and use resolveAuthenticatedUser
- * instead. Keeping this fail-closed prevents anonymous owner impersonation.
- */
+let ownerUserCache: User | null | undefined;
+
 export async function getOwnerUser(): Promise<User | null> {
-  return null;
+  if (ownerUserCache !== undefined) return ownerUserCache;
+  const ownerOpenId = process.env.OWNER_OPEN_ID || ENV.ownerOpenId;
+  if (!ownerOpenId) {
+    ownerUserCache = null;
+    return null;
+  }
+
+  try {
+    let ownerUser = await db.getUserByClerkId(ownerOpenId);
+    if (!ownerUser) {
+      await db.upsertUser({
+        clerkId: ownerOpenId,
+        name: process.env.OWNER_NAME || "Owner",
+        email: OWNER_EMAILS[0] || null,
+        loginMethod: "owner_access",
+        lastSignedIn: new Date(),
+        role: "admin",
+      });
+      ownerUser = await db.getUserByClerkId(ownerOpenId);
+    }
+    ownerUserCache = ownerUser ?? null;
+    return ownerUserCache;
+  } catch (error) {
+    console.error("[Auth] Failed to resolve owner workspace:", error);
+    return null;
+  }
 }
 
 function isOwnerIdentity(user: User | null): boolean {
@@ -39,9 +61,9 @@ function isOwnerIdentity(user: User | null): boolean {
 }
 
 /**
- * Resolve the real Clerk-authenticated database user for a request.
- * There is intentionally no owner fallback: protected data and external actions
- * must always be tied to a verified session.
+ * Resolve a verified database user from Clerk or from the signed, expiring
+ * owner-access cookie. No browser storage or implicit anonymous owner fallback
+ * is accepted.
  */
 export async function resolveAuthenticatedUser(
   req: CreateExpressContextOptions["req"]
@@ -49,46 +71,55 @@ export async function resolveAuthenticatedUser(
   let clerkUserId: string | null = null;
   try {
     const auth = getAuth(req);
-    // Browser workspace access must come from a verified Clerk session token.
-    if (!auth.userId || !auth.sessionId) return null;
-    clerkUserId = auth.userId;
+    if (auth.userId && auth.sessionId) clerkUserId = auth.userId;
   } catch {
-    // clerkMiddleware is intentionally absent when Clerk is not configured.
-    return null;
+    // Clerk is optional; the signed owner session below remains available.
   }
 
-  try {
-    let dbUser = await db.getUserByClerkId(clerkUserId);
-    if (!dbUser || !dbUser.email) {
-      const clerkUser = await clerkClient.users.getUser(clerkUserId);
-      const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
-      const name =
-        [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
-        clerkUser.username ||
-        email ||
-        "User";
+  if (clerkUserId) {
+    try {
+      let dbUser = await db.getUserByClerkId(clerkUserId);
+      if (!dbUser || !dbUser.email) {
+        const clerkUser = await clerkClient.users.getUser(clerkUserId);
+        const email = clerkUser.emailAddresses?.[0]?.emailAddress || null;
+        const name =
+          [clerkUser.firstName, clerkUser.lastName].filter(Boolean).join(" ") ||
+          clerkUser.username ||
+          email ||
+          "User";
 
-      await db.upsertUser({
-        clerkId: clerkUserId,
-        name,
-        email,
-        loginMethod: "clerk",
-        lastSignedIn: new Date(),
-        role:
-          email && OWNER_EMAILS.includes(email.toLowerCase())
-            ? "admin"
-            : undefined,
-      });
-      dbUser = await db.getUserByClerkId(clerkUserId);
-    } else {
-      await db.upsertUser({
-        clerkId: clerkUserId,
-        lastSignedIn: new Date(),
-      });
+        await db.upsertUser({
+          clerkId: clerkUserId,
+          name,
+          email,
+          loginMethod: "clerk",
+          lastSignedIn: new Date(),
+          role:
+            email && OWNER_EMAILS.includes(email.toLowerCase())
+              ? "admin"
+              : undefined,
+        });
+        dbUser = await db.getUserByClerkId(clerkUserId);
+      } else {
+        await db.upsertUser({
+          clerkId: clerkUserId,
+          lastSignedIn: new Date(),
+        });
+      }
+      return dbUser ?? null;
+    } catch (error) {
+      console.error("[Auth] Failed to resolve Clerk user:", error);
+      return null;
     }
-    return dbUser ?? null;
+  }
+
+  const ownerAccess = getOwnerAccessSession(req);
+  if (!ownerAccess) return null;
+  try {
+    const owner = await db.getUserById(ownerAccess.ownerId);
+    return owner && isOwnerIdentity(owner) ? owner : null;
   } catch (error) {
-    console.error("[Auth] Failed to resolve Clerk user:", error);
+    console.error("[Auth] Failed to resolve signed owner session:", error);
     return null;
   }
 }
