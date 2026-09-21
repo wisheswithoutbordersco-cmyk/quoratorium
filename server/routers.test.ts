@@ -109,13 +109,28 @@ vi.mock("./db", () => ({
 // Mock the LLM module
 vi.mock("./_core/llm", () => ({
   invokeLLM: vi.fn().mockResolvedValue({
-    choices: [{ message: { content: "Hello! I'm Toríu. How can I help you today?" } }],
+    choices: [
+      { message: { content: "Hello! I'm Toríu. How can I help you today?" } },
+    ],
+  }),
+}));
+
+vi.mock("./tools/index", () => ({
+  runToolLoop: vi.fn().mockResolvedValue({
+    response: "Hello! I'm Toríu. How can I help you today?",
+    toolsUsed: [],
+    artifacts: [],
   }),
 }));
 
 // Mock storage
 vi.mock("./storage", () => ({
-  storagePut: vi.fn().mockResolvedValue({ key: "test-key", url: "/manus-storage/test-key" }),
+  storagePut: vi
+    .fn()
+    .mockResolvedValue({ key: "test-key", url: "/manus-storage/test-key" }),
+  storageGetSignedUrl: vi
+    .fn()
+    .mockResolvedValue("https://signed.example/project.zip"),
 }));
 
 type AuthenticatedUser = NonNullable<TrpcContext["user"]>;
@@ -180,7 +195,7 @@ describe("projects router", () => {
   it("downloads project as ZIP", async () => {
     const result = await caller.projects.downloadZip({ projectId: 1 });
     expect(result).toBeDefined();
-    expect(result.url).toContain("/manus-storage/");
+    expect(result.url).toBe("https://signed.example/project.zip");
     expect(result.fileCount).toBe(2);
     expect(result.filename).toBe("Test Project.zip");
   });

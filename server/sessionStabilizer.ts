@@ -1,29 +1,4 @@
-/**
- * Session Stabilization Engine — Stabilization Process
- * 
- * The core stabilization pipeline:
- * 1. SNAPSHOT: Capture current session state (messages, context, project state)
- * 2. COMPRESS: Summarize conversation into essential context (LLM-powered)
- * 3. DISCARD: Remove noise, dead-ends, redundant explanations, stale retries
- * 4. REBUILD: Reconstruct clean context with compressed summaries + active state
- * 
- * The user should feel: "same session, refreshed cognition."
- * NOT: "new chat."
- */
-
 import { invokeLLM } from "./_core/llm";
-import { resetSessionAfterStabilization, getSessionHealth } from "./sessionHealth";
-
-// ─── Types ──────────────────────────────────────────────────────────────────
-
-export interface StabilizationSnapshot {
-  sessionId: string;
-  userId: string;
-  messages: ConversationMessage[];
-  projectContext: ProjectContext | null;
-  protectedMemories: string[];
-  timestamp: number;
-}
 
 export interface ConversationMessage {
   role: "user" | "assistant" | "system";
@@ -31,11 +6,9 @@ export interface ConversationMessage {
   timestamp?: number;
 }
 
-export interface ProjectContext {
-  projectId: number;
-  projectName: string;
-  activeFiles: string[];
-  recentDecisions: string[];
+export interface StabilizationSnapshot {
+  sessionId: string;
+  messages: ConversationMessage[];
 }
 
 export interface StabilizationResult {
@@ -48,150 +21,124 @@ export interface StabilizationResult {
   compressionRatio: number;
   summary: string;
   duration: number;
+  error?: string;
 }
-
-export type StabilizationPhase = 
-  | "idle"
-  | "snapshot" 
-  | "compressing" 
-  | "discarding" 
-  | "rebuilding" 
-  | "complete" 
-  | "failed";
-
-export interface StabilizationProgress {
-  phase: StabilizationPhase;
-  progress: number; // 0-100
-  message: string;
-}
-
-// ─── Stabilization Pipeline ─────────────────────────────────────────────────
-
-/**
- * Run the full stabilization pipeline
- */
-export async function stabilizeSession(
-  snapshot: StabilizationSnapshot,
-  onProgress?: (progress: StabilizationProgress) => void
-): Promise<StabilizationResult> {
-  const startTime = Date.now();
-  const report = (phase: StabilizationPhase, progress: number, message: string) => {
-    onProgress?.({ phase, progress, message });
-  };
-
-  try {
-    // ─── Phase 1: SNAPSHOT ─────────────────────────────────────────────
-    report("snapshot", 10, "Capturing session state...");
-    const originalTokens = estimateTokens(snapshot.messages);
-
-    // ─── Phase 2: COMPRESS ─────────────────────────────────────────────
-    report("compressing", 30, "Compressing conversation into essential context...");
-    const compressed = await compressConversation(snapshot.messages, snapshot.protectedMemories);
-
-    // ─── Phase 3: DISCARD ──────────────────────────────────────────────
-    report("discarding", 60, "Removing noise, dead-ends, and redundant content...");
-    const { preserved, discardedCount } = discardNoise(snapshot.messages, compressed.keyMessages);
-
-    // ─── Phase 4: REBUILD ──────────────────────────────────────────────
-    report("rebuilding", 85, "Reconstructing clean context...");
-    const rebuilt = await rebuildContext(
-      compressed.summary,
-      preserved,
-      snapshot.projectContext,
-      snapshot.protectedMemories
-    );
-
-    // Reset health metrics
-    const compressedTokens = estimateTokens(preserved) + estimateTokenCount(rebuilt);
-    resetSessionAfterStabilization(snapshot.sessionId, compressedTokens);
-
-    report("complete", 100, "Session stabilized successfully.");
-
-    return {
-      success: true,
-      compressedContext: rebuilt,
-      preservedMessages: preserved,
-      discardedCount,
-      originalTokenEstimate: originalTokens,
-      compressedTokenEstimate: compressedTokens,
-      compressionRatio: originalTokens > 0 ? compressedTokens / originalTokens : 1,
-      summary: compressed.summary,
-      duration: Date.now() - startTime,
-    };
-  } catch (error: any) {
-    report("failed", 0, `Stabilization failed: ${error?.message || "Unknown error"}`);
-    return {
-      success: false,
-      compressedContext: "",
-      preservedMessages: snapshot.messages.slice(-5), // Keep last 5 as fallback
-      discardedCount: 0,
-      originalTokenEstimate: estimateTokens(snapshot.messages),
-      compressedTokenEstimate: estimateTokens(snapshot.messages),
-      compressionRatio: 1,
-      summary: "Stabilization failed — session continues with existing context.",
-      duration: Date.now() - startTime,
-    };
-  }
-}
-
-// ─── Phase 2: Compression ───────────────────────────────────────────────────
 
 interface CompressionResult {
   summary: string;
-  keyMessages: number[]; // Indices of messages to preserve
-  decisions: string[];
-  activeGoals: string[];
+  keyMessages: number[];
+}
+
+/**
+ * Compresses one persisted conversation. Persistence is intentionally handled
+ * by the caller so a result is not reported as successful until its context is
+ * durably stored alongside that conversation.
+ */
+export async function stabilizeSession(
+  snapshot: StabilizationSnapshot
+): Promise<StabilizationResult> {
+  const startedAt = Date.now();
+  const messages = snapshot.messages.filter(
+    message => message.content.trim().length > 0
+  );
+  const originalTokenEstimate = estimateTokens(messages);
+
+  if (messages.length === 0) {
+    return failedResult({
+      messages,
+      originalTokenEstimate,
+      startedAt,
+      error: "There are no persisted messages to compress.",
+    });
+  }
+
+  try {
+    const compressed = await compressConversation(messages);
+    const { preservedMessages, discardedCount } = retainEssentialMessages(
+      messages,
+      compressed.keyMessages
+    );
+    const compressedContext = buildCompressedContext(
+      compressed.summary,
+      preservedMessages
+    );
+
+    if (!compressedContext.trim()) {
+      return failedResult({
+        messages,
+        originalTokenEstimate,
+        startedAt,
+        error: "No durable context was produced.",
+      });
+    }
+
+    const compressedTokenEstimate = estimateTokenCount(compressedContext);
+
+    return {
+      success: true,
+      compressedContext,
+      preservedMessages,
+      discardedCount,
+      originalTokenEstimate,
+      compressedTokenEstimate,
+      compressionRatio:
+        originalTokenEstimate > 0
+          ? compressedTokenEstimate / originalTokenEstimate
+          : 1,
+      summary: compressed.summary,
+      duration: Date.now() - startedAt,
+    };
+  } catch (error: unknown) {
+    return failedResult({
+      messages,
+      originalTokenEstimate,
+      startedAt,
+      error:
+        error instanceof Error
+          ? error.message
+          : "Unable to compress this conversation.",
+    });
+  }
 }
 
 async function compressConversation(
-  messages: ConversationMessage[],
-  protectedMemories: string[]
+  messages: ConversationMessage[]
 ): Promise<CompressionResult> {
-  // Build a condensed transcript for the LLM
   const transcript = messages
-    .map((m, i) => `[${i}] ${m.role}: ${m.content.slice(0, 300)}${m.content.length > 300 ? "..." : ""}`)
-    .join("\n");
-
-  const memoryBlock = protectedMemories.length > 0
-    ? `\n\nProtected memories (MUST preserve):\n${protectedMemories.join("\n")}`
-    : "";
+    .map(
+      (message, index) =>
+        `[${index}] ${message.role}: ${message.content.slice(0, 1_500)}`
+    )
+    .join("\n\n");
 
   try {
     const response = await invokeLLM({
       messages: [
         {
           role: "system",
-          content: `You are a session compression engine. Analyze the conversation transcript and produce a JSON response with:
-1. "summary": A 2-4 paragraph summary of the entire session — what was discussed, what was decided, what was built, what's currently in progress. Write as if briefing someone who needs to continue this exact work.
-2. "keyMessages": Array of message indices [numbers] that contain critical information that MUST be preserved verbatim (decisions, requirements, code specifications, user preferences, corrections).
-3. "decisions": Array of key decisions made during the session.
-4. "activeGoals": Array of goals/tasks that are still in progress or unfinished.
-
-Rules:
-- ALWAYS preserve messages containing: user requirements, architectural decisions, error reports, corrections, preferences
-- DISCARD: greetings, acknowledgments, "let me think about that", repeated explanations, failed attempts that were superseded
-- The summary should be dense with information — no filler
-- Keep the user's voice and intent intact in the summary`
+          content: [
+            "Summarize this persisted conversation for its next response.",
+            "Return JSON with a concise factual summary and indexes of messages whose requirements, decisions, corrections, errors, or unfinished work must be retained.",
+            "Do not invent progress, outcomes, or decisions.",
+          ].join(" "),
         },
         {
           role: "user",
-          content: `Compress this session (${messages.length} messages):${memoryBlock}\n\nTranscript:\n${transcript}`
-        }
+          content: transcript,
+        },
       ],
       response_format: {
         type: "json_schema",
         json_schema: {
-          name: "compression_result",
+          name: "conversation_compression",
           strict: true,
           schema: {
             type: "object",
             properties: {
-              summary: { type: "string", description: "Dense session summary" },
-              keyMessages: { type: "array", items: { type: "integer" }, description: "Indices of critical messages" },
-              decisions: { type: "array", items: { type: "string" }, description: "Key decisions made" },
-              activeGoals: { type: "array", items: { type: "string" }, description: "Unfinished goals" },
+              summary: { type: "string" },
+              keyMessages: { type: "array", items: { type: "integer" } },
             },
-            required: ["summary", "keyMessages", "decisions", "activeGoals"],
+            required: ["summary", "keyMessages"],
             additionalProperties: false,
           },
         },
@@ -199,151 +146,106 @@ Rules:
     });
 
     const rawContent = response?.choices?.[0]?.message?.content;
-    const content = typeof rawContent === "string" ? rawContent : Array.isArray(rawContent) ? rawContent.map((c: any) => c.text || "").join("") : null;
+    const content =
+      typeof rawContent === "string"
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent.map((part: any) => part.text || "").join("")
+          : "";
     if (content) {
       const parsed = JSON.parse(content) as CompressionResult;
-      return parsed;
+      if (
+        typeof parsed.summary === "string" &&
+        Array.isArray(parsed.keyMessages)
+      ) {
+        return {
+          summary: parsed.summary.trim(),
+          keyMessages: parsed.keyMessages.filter(
+            index =>
+              Number.isInteger(index) && index >= 0 && index < messages.length
+          ),
+        };
+      }
     }
-  } catch (err) {
-    console.warn("[Stabilizer] Compression LLM call failed:", err);
+  } catch (error) {
+    console.warn(
+      "[SessionStabilizer] LLM compression unavailable; using a bounded transcript fallback.",
+      error
+    );
   }
 
-  // Fallback: keep last 10 messages, generate basic summary
+  // This fallback is deterministic and preserves real recent messages rather
+  // than inventing a summary when an LLM response is unavailable.
   return {
-    summary: `Session with ${messages.length} messages. Last topic: ${messages[messages.length - 1]?.content.slice(0, 100) || "unknown"}`,
-    keyMessages: messages.slice(-10).map((_, i) => messages.length - 10 + i).filter(i => i >= 0),
-    decisions: [],
-    activeGoals: [],
+    summary:
+      "A compressed summary could not be generated; the retained excerpts below are the available conversation context.",
+    keyMessages: messages
+      .slice(-8)
+      .map((_, index) => Math.max(0, messages.length - 8) + index),
   };
 }
 
-// ─── Phase 3: Discard ───────────────────────────────────────────────────────
-
-interface DiscardResult {
-  preserved: ConversationMessage[];
-  discardedCount: number;
-}
-
-function discardNoise(
+function retainEssentialMessages(
   messages: ConversationMessage[],
   keyIndices: number[]
-): DiscardResult {
-  const keySet = new Set(keyIndices);
-  const preserved: ConversationMessage[] = [];
-  let discardedCount = 0;
-
-  for (let i = 0; i < messages.length; i++) {
-    const msg = messages[i];
-
-    // Always keep key messages
-    if (keySet.has(i)) {
-      preserved.push(msg);
-      continue;
-    }
-
-    // Always keep the last 3 messages (active context)
-    if (i >= messages.length - 3) {
-      preserved.push(msg);
-      continue;
-    }
-
-    // Discard criteria
-    if (shouldDiscard(msg)) {
-      discardedCount++;
-      continue;
-    }
-
-    // Keep messages with substantial content
-    if (msg.content.length > 100) {
-      preserved.push(msg);
-    } else {
-      discardedCount++;
-    }
+): { preservedMessages: ConversationMessage[]; discardedCount: number } {
+  const keep = new Set(keyIndices);
+  for (
+    let index = Math.max(0, messages.length - 3);
+    index < messages.length;
+    index += 1
+  ) {
+    keep.add(index);
   }
 
-  return { preserved, discardedCount };
+  const preservedMessages = messages.filter((_, index) => keep.has(index));
+  return {
+    preservedMessages,
+    discardedCount: Math.max(0, messages.length - preservedMessages.length),
+  };
 }
 
-function shouldDiscard(msg: ConversationMessage): boolean {
-  const lower = msg.content.toLowerCase().trim();
-
-  // Discard short acknowledgments
-  if (lower.length < 30 && /^(ok|sure|got it|thanks|understood|alright|sounds good|perfect|great)/.test(lower)) {
-    return true;
-  }
-
-  // Discard "let me think" / "processing" messages
-  if (/^(let me|i'll|processing|analyzing|working on|one moment)/.test(lower) && lower.length < 80) {
-    return true;
-  }
-
-  // Discard repeated error messages
-  if (/^(error|failed|an error occurred|something went wrong)/.test(lower) && lower.length < 100) {
-    return true;
-  }
-
-  // Discard filler
-  if (/^(here's what|as you can see|to summarize what we've discussed so far)/.test(lower) && lower.length < 60) {
-    return true;
-  }
-
-  return false;
-}
-
-// ─── Phase 4: Rebuild ───────────────────────────────────────────────────────
-
-async function rebuildContext(
+function buildCompressedContext(
   summary: string,
-  preservedMessages: ConversationMessage[],
-  projectContext: ProjectContext | null,
-  protectedMemories: string[]
-): Promise<string> {
-  const parts: string[] = [];
-
-  // Session continuity header
-  parts.push("═══ SESSION CONTEXT (Stabilized) ═══");
-  parts.push("");
-
-  // Summary
-  parts.push("## Session Summary");
-  parts.push(summary);
-  parts.push("");
-
-  // Protected memories
-  if (protectedMemories.length > 0) {
-    parts.push("## Protected Memories");
-    for (const mem of protectedMemories) {
-      parts.push(`• ${mem}`);
+  preservedMessages: ConversationMessage[]
+): string {
+  const parts = [
+    "Conversation summary:",
+    summary.trim() || "No summary was available.",
+  ];
+  if (preservedMessages.length > 0) {
+    parts.push("", "Retained excerpts:");
+    for (const message of preservedMessages) {
+      parts.push(`${message.role}: ${message.content.slice(0, 2_000)}`);
     }
-    parts.push("");
   }
-
-  // Project context
-  if (projectContext) {
-    parts.push("## Active Project");
-    parts.push(`Project: ${projectContext.projectName} (#${projectContext.projectId})`);
-    if (projectContext.activeFiles.length > 0) {
-      parts.push(`Active files: ${projectContext.activeFiles.join(", ")}`);
-    }
-    if (projectContext.recentDecisions.length > 0) {
-      parts.push("Recent decisions:");
-      for (const d of projectContext.recentDecisions) {
-        parts.push(`  • ${d}`);
-      }
-    }
-    parts.push("");
-  }
-
-  parts.push("═══ END SESSION CONTEXT ═══");
-
-  return parts.join("\n");
+  return parts.join("\n").trim();
 }
 
-// ─── Utility ────────────────────────────────────────────────────────────────
+function failedResult(input: {
+  messages: ConversationMessage[];
+  originalTokenEstimate: number;
+  startedAt: number;
+  error: string;
+}): StabilizationResult {
+  return {
+    success: false,
+    compressedContext: "",
+    preservedMessages: [],
+    discardedCount: 0,
+    originalTokenEstimate: input.originalTokenEstimate,
+    compressedTokenEstimate: input.originalTokenEstimate,
+    compressionRatio: 1,
+    summary: input.error,
+    duration: Date.now() - input.startedAt,
+    error: input.error,
+  };
+}
 
 function estimateTokens(messages: ConversationMessage[]): number {
-  // Rough estimate: 1 token ≈ 4 characters
-  return Math.ceil(messages.reduce((sum, m) => sum + m.content.length, 0) / 4);
+  return Math.ceil(
+    messages.reduce((sum, message) => sum + message.content.length, 0) / 4
+  );
 }
 
 function estimateTokenCount(text: string): number {

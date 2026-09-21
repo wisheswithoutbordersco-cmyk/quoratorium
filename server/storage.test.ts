@@ -11,6 +11,7 @@ const mocks = vi.hoisted(() => {
     storage: {
       getBucket: vi.fn(),
       createBucket: vi.fn(),
+      updateBucket: vi.fn(),
       from: vi.fn(() => bucket),
     },
   };
@@ -37,7 +38,11 @@ describe("durable storage fallback", () => {
       error: null,
     });
     mocks.storage.createBucket.mockResolvedValue({ data: null, error: null });
-    mocks.bucket.upload.mockResolvedValue({ data: { path: "stored" }, error: null });
+    mocks.storage.updateBucket.mockResolvedValue({ data: null, error: null });
+    mocks.bucket.upload.mockResolvedValue({
+      data: { path: "stored" },
+      error: null,
+    });
     mocks.bucket.createSignedUrl.mockResolvedValue({
       data: { signedUrl: "https://signed.example/private-image" },
       error: null,
@@ -49,29 +54,29 @@ describe("durable storage fallback", () => {
     const stored = await storagePut(
       "conversation-assets/1/2/example.jpg",
       Buffer.from("image-bytes"),
-      "image/jpeg",
+      "image/jpeg"
     );
 
     expect(stored.key).toMatch(
-      /^supabase:conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/,
+      /^supabase:conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/
     );
     expect(stored.url).toBe("https://signed.example/private-image");
     expect(mocks.storage.from).toHaveBeenCalledWith("quoratorium-assets");
     expect(mocks.bucket.upload).toHaveBeenCalledWith(
       expect.stringMatching(
-        /^conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/,
+        /^conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/
       ),
       expect.any(Buffer),
-      expect.objectContaining({ contentType: "image/jpeg", upsert: false }),
+      expect.objectContaining({ contentType: "image/jpeg", upsert: false })
     );
 
     await expect(storageGetSignedUrl(stored.key)).resolves.toBe(
-      "https://signed.example/private-image",
+      "https://signed.example/private-image"
     );
     await expect(storageDelete(stored.key)).resolves.toBe(true);
     expect(mocks.bucket.remove).toHaveBeenCalledWith([
       expect.stringMatching(
-        /^conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/,
+        /^conversation-assets\/1\/2\/example_[a-f0-9]{8}\.jpg$/
       ),
     ]);
   });

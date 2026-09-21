@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { protectedProcedure, publicProcedure, router } from "../_core/trpc";
-import { OWNER_EMAILS } from "../_core/env";
+import { ENV } from "../_core/env";
 import {
   getOrCreateCustomer,
   createSubscriptionCheckout,
@@ -8,51 +8,27 @@ import {
   createPortalSession,
   PLANS,
   TOP_UPS,
+  isStripeConfigured,
   type PlanId,
   type TopUpId,
 } from "../services/stripe";
-import {
-  getCreditBalance,
-  getSubscription,
-} from "../services/credits";
-
-/** Synthetic unlimited balance returned for the owner account */
-const OWNER_BALANCE = {
-  userId: 0,
-  plan: "pro" as const,
-  dailyCreditsUsed: 0,
-  dailyCreditsLimit: 999999,
-  dailyCreditsRemaining: 999999,
-  bonusCredits: 0,
-  totalAvailable: 999999,
-  resetAt: new Date(Date.UTC(new Date().getUTCFullYear(), new Date().getUTCMonth(), new Date().getUTCDate() + 1)).toISOString(),
-};
-
-/** Synthetic unlimited subscription returned for the owner account */
-const OWNER_SUBSCRIPTION = {
-  plan: "pro" as const,
-  status: "active" as const,
-  currentPeriodEnd: null,
-  cancelAtPeriodEnd: false,
-};
+import { getCreditBalance, getSubscription } from "../services/credits";
 
 export const billingRouter = router({
+  status: protectedProcedure.query(() => ({
+    available: isStripeConfigured() && Boolean(ENV.stripeWebhookSecret),
+    checkoutConfigured: isStripeConfigured(),
+    webhookConfigured: Boolean(ENV.stripeWebhookSecret),
+  })),
+
   // Get current credit balance and subscription info
   getBalance: protectedProcedure.query(async ({ ctx }) => {
-    // Owner bypass: return synthetic unlimited balance
-    if (ctx.isOwner || (ctx.user.email && OWNER_EMAILS.includes(ctx.user.email.toLowerCase()))) {
-      return OWNER_BALANCE;
-    }
     const balance = await getCreditBalance(ctx.user.id);
     return balance;
   }),
 
   // Get subscription details
   getSubscription: protectedProcedure.query(async ({ ctx }) => {
-    // Owner bypass: return synthetic unlimited subscription
-    if (ctx.isOwner || (ctx.user.email && OWNER_EMAILS.includes(ctx.user.email.toLowerCase()))) {
-      return OWNER_SUBSCRIPTION;
-    }
     const sub = await getSubscription(ctx.user.id);
     return sub;
   }),
@@ -67,11 +43,13 @@ export const billingRouter = router({
 
   // Create Checkout session for subscription upgrade
   createCheckout: protectedProcedure
-    .input(z.object({
-      plan: z.enum(["starter", "pro"]),
-      successUrl: z.string().url(),
-      cancelUrl: z.string().url(),
-    }))
+    .input(
+      z.object({
+        plan: z.enum(["starter", "pro"]),
+        successUrl: z.string().url(),
+        cancelUrl: z.string().url(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const customerId = await getOrCreateCustomer(
         ctx.user.id,
@@ -91,11 +69,13 @@ export const billingRouter = router({
 
   // Create Checkout session for credit top-up
   createTopUpCheckout: protectedProcedure
-    .input(z.object({
-      topUpId: z.enum(["small", "medium", "large"]),
-      successUrl: z.string().url(),
-      cancelUrl: z.string().url(),
-    }))
+    .input(
+      z.object({
+        topUpId: z.enum(["small", "medium", "large"]),
+        successUrl: z.string().url(),
+        cancelUrl: z.string().url(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const customerId = await getOrCreateCustomer(
         ctx.user.id,
@@ -115,9 +95,11 @@ export const billingRouter = router({
 
   // Create Customer Portal session for managing billing
   createPortalSession: protectedProcedure
-    .input(z.object({
-      returnUrl: z.string().url(),
-    }))
+    .input(
+      z.object({
+        returnUrl: z.string().url(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const customerId = await getOrCreateCustomer(
         ctx.user.id,

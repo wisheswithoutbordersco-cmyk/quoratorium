@@ -1,14 +1,8 @@
-/**
- * Q Workspace - Orchestration Engine Hook
- * 
- * Polls the database for real orchestration events and displays them.
- * Also shows events from the local orchestration store (from streaming).
- */
-import { useState, useEffect, useRef } from "react";
-import { useOrchestrationStore, useProjectStore, type Agent } from "@/stores";
+import { useMemo } from "react";
+import { useOrchestrationStore, useProjectStore } from "@/stores";
 import { trpc } from "@/lib/trpc";
 
-interface EngineEvent {
+export interface EngineEvent {
   id: string;
   type: "captain" | "builder" | "validator" | "deployer" | "system";
   title: string;
@@ -16,180 +10,173 @@ interface EngineEvent {
   status: "active" | "completed" | "error" | "pending";
   timestamp: Date;
   progress?: number;
-  details?: string;
-  reasoning?: string[];
-  handoffTo?: string;
 }
 
-interface EngineWorker {
+export interface EngineWorker {
   id: string;
   name: string;
-  type: "captain" | "builder" | "validator" | "deployer";
+  type: EngineEvent["type"];
   status: "idle" | "active" | "completed" | "error";
-  provider: string;
   lastActivity?: string;
 }
 
-const SYSTEM_THOUGHTS = [
-  "Monitoring worker pipeline status...",
-  "Evaluating task routing priorities...",
-  "Checking API availability across providers...",
-  "Analyzing response quality metrics...",
-  "Synchronizing orchestration state...",
-  "Ready for next instruction...",
-];
-
 export function useOrchestrationEngine() {
-  const { events: storeEvents, agents } = useOrchestrationStore();
-  const { activeProject } = useProjectStore();
-  const [currentThought, setCurrentThought] = useState(SYSTEM_THOUGHTS[0]);
-  const [dbEvents, setDbEvents] = useState<EngineEvent[]>([]);
-  const thoughtIndex = useRef(0);
-
-  // Poll for real orchestration events from DB
-  // Guard against NaN: activeProject.id may be a non-numeric string like "proj-1"
-  const projectIdRaw = activeProject?.id ? parseInt(activeProject.id, 10) : NaN;
-  const projectId = isNaN(projectIdRaw) ? undefined : projectIdRaw;
-  const { data: serverEvents } = trpc.ai.getOrchestrationEvents.useQuery(
+  const storeEvents = useOrchestrationStore(state => state.events);
+  const activeProject = useProjectStore(state => state.activeProject);
+  const projectId = toNumericProjectId(activeProject?.id);
+  const { data: serverEvents = [] } = trpc.ai.getOrchestrationEvents.useQuery(
     { projectId: projectId ?? 0, limit: 20 },
-    { enabled: !!projectId, refetchInterval: 3000 }
+    { enabled: projectId !== null, refetchInterval: 3_000 }
+  );
+  const { data: jobsData } = trpc.jobs.list.useQuery(undefined, {
+    refetchInterval: 5_000,
+  });
+
+  const events = useMemo(() => {
+    const persisted: EngineEvent[] = serverEvents.map((event: any) => ({
+      id: `event-${event.id}`,
+      type: mapEventType(
+        event.agent_name ||
+          event.agentName ||
+          event.event_type ||
+          event.eventType
+      ),
+      title:
+        event.agent_name ||
+        event.agentName ||
+        event.event_type ||
+        event.eventType ||
+        "Recorded activity",
+      content: event.summary || "",
+      status: mapEventStatus(event.event_type || event.eventType || ""),
+      timestamp: new Date(event.created_at || event.createdAt),
+    }));
+    const local: EngineEvent[] = storeEvents
+      .filter(event => event.projectId === activeProject?.id)
+      .map(event => ({
+        id: `local-${event.id}`,
+        type: mapEventType(
+          String(
+            event.payload?.worker || event.payload?.agentType || event.eventType
+          )
+        ),
+        title: String(event.payload?.worker || event.eventType),
+        content: String(event.payload?.summary || event.payload?.task || ""),
+        status: mapEventStatus(event.eventType),
+        timestamp: new Date(event.timestamp),
+      }));
+
+    return [...persisted, ...local]
+      .filter(
+        (event, index, all) =>
+          all.findIndex(candidate => candidate.id === event.id) === index
+      )
+      .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
+      .slice(0, 20);
+  }, [activeProject?.id, serverEvents, storeEvents]);
+
+  const projectJobs = useMemo(
+    () =>
+      (jobsData?.jobs || []).filter((job: any) => {
+        return projectId !== null && job.project_id === projectId;
+      }),
+    [jobsData?.jobs, projectId]
   );
 
-  // Convert server events to EngineEvent format
-  useEffect(() => {
-    if (!serverEvents) return;
-    const converted: EngineEvent[] = serverEvents.map((e: any) => ({
-      id: String(e.id),
-      type: mapEventType(e.agentName || e.eventType),
-      title: e.agentName || e.eventType,
-      content: e.summary || "",
-      status: mapEventStatus(e.eventType),
-      timestamp: new Date(e.createdAt),
-    }));
-    setDbEvents(converted);
-  }, [serverEvents]);
-
-  // Merge local store events with DB events
-  const localEvents: EngineEvent[] = storeEvents.slice(-15).map((e: any) => ({
-    id: e.id,
-    type: mapEventType(e.payload?.worker || e.payload?.agentType || e.eventType),
-    title: e.payload?.worker || e.eventType || "System",
-    content: e.payload?.summary || e.payload?.task || e.eventType || "",
-    status: e.eventType.includes("completed") ? "completed" as const : "active" as const,
-    timestamp: new Date(e.timestamp),
-  }));
-
-  // Combine and deduplicate, most recent first
-  const allEvents = [...localEvents, ...dbEvents]
-    .sort((a, b) => b.timestamp.getTime() - a.timestamp.getTime())
-    .slice(0, 20);
-
-  // Rotate system thoughts
-  useEffect(() => {
-    const interval = setInterval(() => {
-      thoughtIndex.current = (thoughtIndex.current + 1) % SYSTEM_THOUGHTS.length;
-      setCurrentThought(SYSTEM_THOUGHTS[thoughtIndex.current]);
-    }, 4000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Fetch sprites/execution engine status
-  const [spriteStatus, setSpriteStatus] = useState<string>("idle");
-  useEffect(() => {
-    const fetchStatus = async () => {
-      try {
-        const res = await fetch("/api/sprites/status");
-        if (res.ok) {
-          const data = await res.json();
-          if (data.spriteStatus === "running") setSpriteStatus("active");
-          else if (data.spriteStatus === "hibernated") setSpriteStatus("idle");
-          else if (data.spriteStatus === "stopped") setSpriteStatus("idle");
-          else setSpriteStatus(data.available ? "idle" : "error");
-        }
-      } catch { setSpriteStatus("idle"); }
-    };
-    fetchStatus();
-    const interval = setInterval(fetchStatus, 10000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // Build workers from AI status
-  const workers: EngineWorker[] = [
-    {
-      id: "captain",
-      name: "Toríu",
-      type: "captain",
-      status: getWorkerStatus("captain", allEvents),
-      provider: "OpenAI GPT-4o",
-      lastActivity: getLastActivity("captain", allEvents),
-    },
-    {
-      id: "builder",
-      name: "Builder",
-      type: "builder",
-      status: getWorkerStatus("builder", allEvents),
-      provider: "OpenAI GPT-4o",
-      lastActivity: getLastActivity("builder", allEvents),
-    },
-    {
-      id: "validator",
-      name: "Validator",
-      type: "validator",
-      status: getWorkerStatus("validator", allEvents),
-      provider: "Anthropic Claude",
-      lastActivity: getLastActivity("validator", allEvents),
-    },
-    {
-      id: "executor",
-      name: "Executor",
-      type: "deployer",
-      status: spriteStatus as EngineWorker["status"],
-      provider: "Sprites.dev (Fly.io)",
-      lastActivity: spriteStatus === "active" ? "Sprite running" : "Sprite cold/hibernated",
-    },
-    {
-      id: "deployer",
-      name: "Deployer",
-      type: "deployer",
-      status: getWorkerStatus("deployer", allEvents),
-      provider: "Cloudflare Pages",
-      lastActivity: getLastActivity("deployer", allEvents),
-    },
-  ];
+  const workers = useMemo(
+    () => deriveWorkers(events, projectJobs),
+    [events, projectJobs]
+  );
+  const activeEvents = events.filter(event => event.status === "active");
+  const currentThought =
+    activeEvents[0]?.content ||
+    events[0]?.content ||
+    "No recorded orchestration activity for this project.";
 
   return {
-    events: allEvents,
-    currentThought,
+    events,
     workers,
-    activeEvents: allEvents.filter((e) => e.status === "active"),
+    activeEvents,
+    currentThought,
+    projectJobs,
+    projectId,
   };
 }
 
-function mapEventType(name: string): EngineEvent["type"] {
-  const lower = (name || "").toLowerCase();
-  if (lower.includes("captain") || lower.includes("coordinator")) return "captain";
-  if (lower.includes("builder") || lower.includes("openai") || lower.includes("build")) return "builder";
-  if (lower.includes("validator") || lower.includes("anthropic") || lower.includes("claude")) return "validator";
-  if (lower.includes("deploy") || lower.includes("cloudflare")) return "deployer";
+export function toNumericProjectId(value: unknown): number | null {
+  if (typeof value === "number" && Number.isInteger(value) && value > 0)
+    return value;
+  if (typeof value === "string" && /^\d+$/.test(value)) {
+    const numeric = Number(value);
+    return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : null;
+  }
+  return null;
+}
+
+function deriveWorkers(
+  events: EngineEvent[],
+  jobs: Array<{ id: string; type: string; status: string }>
+): EngineWorker[] {
+  const byName = new Map<string, EngineWorker>();
+  for (const event of events) {
+    const key = event.title.trim().toLowerCase();
+    if (!key || byName.has(key)) continue;
+    byName.set(key, {
+      id: `event-worker-${event.id}`,
+      name: event.title,
+      type: event.type,
+      status: event.status === "pending" ? "idle" : event.status,
+      lastActivity: event.content || undefined,
+    });
+  }
+  for (const job of jobs) {
+    const key = `job:${job.type}`;
+    if (byName.has(key)) continue;
+    byName.set(key, {
+      id: `job-worker-${job.id}`,
+      name: job.type.replace(/_/g, " "),
+      type: "system",
+      status:
+        job.status === "processing" || job.status === "retrying"
+          ? "active"
+          : job.status === "failed" || job.status === "dead_letter"
+            ? "error"
+            : job.status === "completed"
+              ? "completed"
+              : "idle",
+      lastActivity: `Tracked job: ${job.status}`,
+    });
+  }
+  return Array.from(byName.values()).slice(0, 8);
+}
+
+function mapEventType(value: string): EngineEvent["type"] {
+  const normalized = value.toLowerCase();
+  if (
+    normalized.includes("captain") ||
+    normalized.includes("toriu") ||
+    normalized.includes("coordinator")
+  )
+    return "captain";
+  if (normalized.includes("builder") || normalized.includes("build"))
+    return "builder";
+  if (normalized.includes("validator") || normalized.includes("validation"))
+    return "validator";
+  if (normalized.includes("deploy")) return "deployer";
   return "system";
 }
 
-function mapEventStatus(eventType: string): EngineEvent["status"] {
-  if (eventType.includes("complete")) return "completed";
-  if (eventType.includes("fail") || eventType.includes("error")) return "error";
-  if (eventType.includes("start") || eventType.includes("spawn")) return "active";
+function mapEventStatus(value: string): EngineEvent["status"] {
+  const normalized = value.toLowerCase();
+  if (normalized.includes("fail") || normalized.includes("error"))
+    return "error";
+  if (
+    normalized.includes("start") ||
+    normalized.includes("spawn") ||
+    normalized.includes("processing")
+  )
+    return "active";
+  if (normalized.includes("pending") || normalized.includes("queue"))
+    return "pending";
   return "completed";
-}
-
-function getWorkerStatus(type: string, events: EngineEvent[]): EngineWorker["status"] {
-  const recent = events.find(e => e.type === type);
-  if (!recent) return "idle";
-  if (recent.status === "active") return "active";
-  if (recent.status === "error") return "error";
-  return "completed";
-}
-
-function getLastActivity(type: string, events: EngineEvent[]): string | undefined {
-  const recent = events.find(e => e.type === type);
-  return recent?.content?.slice(0, 60);
 }

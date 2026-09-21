@@ -4,7 +4,14 @@
  */
 import { Resend } from "resend";
 
-const resend = new Resend(process.env.RESEND_API_KEY);
+let resendClient: Resend | null = null;
+
+function getResendClient(): Resend | null {
+  const key = process.env.RESEND_API_KEY;
+  if (!key) return null;
+  resendClient ??= new Resend(key);
+  return resendClient;
+}
 
 const FROM_ADDRESS = "Quoratorium <noreply@quoratorium.com>";
 
@@ -18,7 +25,8 @@ const BRAND = {
   accentGreen: "#22c55e",
   accentGreenDark: "#16a34a",
   chromeGray: "#c0c0c0",
-  iconUrl: "https://qworkspace-f3vutepv.manus.space/manus-storage/icon-192x192_59428221.png",
+  iconUrl:
+    "https://qworkspace-f3vutepv.manus.space/manus-storage/icon-192x192_59428221.png",
 };
 
 // ─── Base Template ─────────────────────────────────────────────────────────────
@@ -81,7 +89,7 @@ function welcomeEmailHtml(userName: string): string {
       <tr>
         <td style="padding:12px 16px;border-left:3px solid ${BRAND.accentGreen};background-color:rgba(34,197,94,0.05);border-radius:0 6px 6px 0;">
           <p style="margin:0;font-size:13px;color:${BRAND.accentGreen};font-weight:600;">SYSTEM STATUS</p>
-          <p style="margin:4px 0 0;font-size:13px;color:${BRAND.textSecondary};">All orchestration engines online. Ready for your first mission.</p>
+          <p style="margin:4px 0 0;font-size:13px;color:${BRAND.textSecondary};">Your workspace is ready. Available integrations are verified when you use them.</p>
         </td>
       </tr>
     </table>
@@ -100,7 +108,10 @@ function welcomeEmailHtml(userName: string): string {
   `);
 }
 
-function buildCompleteEmailHtml(projectName: string, deployUrl: string): string {
+function buildCompleteEmailHtml(
+  projectName: string,
+  deployUrl: string
+): string {
   return baseTemplate(`
     <h1 style="margin:0 0 16px;font-size:24px;font-weight:700;color:${BRAND.textPrimary};">
       Build Complete ✓
@@ -214,7 +225,9 @@ function weeklySummaryEmailHtml(stats: WeeklySummaryStats): string {
           </table>
         </td>
       </tr>
-      ${stats.topModel ? `<tr>
+      ${
+        stats.topModel
+          ? `<tr>
         <td style="padding:16px 20px;">
           <table role="presentation" width="100%">
             <tr>
@@ -223,7 +236,9 @@ function weeklySummaryEmailHtml(stats: WeeklySummaryStats): string {
             </tr>
           </table>
         </td>
-      </tr>` : ""}
+      </tr>`
+          : ""
+      }
     </table>
     <table role="presentation" cellpadding="0" cellspacing="0" style="margin:28px 0 0;">
       <tr>
@@ -239,8 +254,13 @@ function weeklySummaryEmailHtml(stats: WeeklySummaryStats): string {
 
 // ─── Public API ────────────────────────────────────────────────────────────────
 
-export async function sendWelcomeEmail(to: string, userName: string): Promise<boolean> {
+export async function sendWelcomeEmail(
+  to: string,
+  userName: string
+): Promise<boolean> {
   try {
+    const resend = getResendClient();
+    if (!resend) return false;
     const { error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to,
@@ -265,6 +285,8 @@ export async function sendBuildCompleteEmail(
   deployUrl: string
 ): Promise<boolean> {
   try {
+    const resend = getResendClient();
+    if (!resend) return false;
     const { error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to,
@@ -275,7 +297,9 @@ export async function sendBuildCompleteEmail(
       console.error("[Email] Failed to send build complete email:", error);
       return false;
     }
-    console.log(`[Email] Build complete email sent to ${to} for project ${projectName}`);
+    console.log(
+      `[Email] Build complete email sent to ${to} for project ${projectName}`
+    );
     return true;
   } catch (err) {
     console.error("[Email] Error sending build complete email:", err);
@@ -288,6 +312,8 @@ export async function sendWeeklySummaryEmail(
   stats: WeeklySummaryStats
 ): Promise<boolean> {
   try {
+    const resend = getResendClient();
+    if (!resend) return false;
     const { error } = await resend.emails.send({
       from: FROM_ADDRESS,
       to,

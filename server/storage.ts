@@ -44,18 +44,40 @@ async function ensureSupabaseBucket(): Promise<void> {
     const client = getSupabaseAdmin();
     if (!client) {
       throw new Error(
-        "Supabase storage config missing: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY",
+        "Supabase storage config missing: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY"
       );
     }
 
-    const { data: existing } = await client.storage.getBucket(SUPABASE_ASSET_BUCKET);
-    if (existing) return;
-
-    const { error } = await client.storage.createBucket(SUPABASE_ASSET_BUCKET, {
+    const bucketOptions = {
       public: false,
       fileSizeLimit: 10 * 1024 * 1024,
-      allowedMimeTypes: ["image/jpeg", "image/png", "image/webp", "image/gif"],
-    });
+      allowedMimeTypes: [
+        "image/jpeg",
+        "image/png",
+        "image/webp",
+        "image/gif",
+        "application/zip",
+      ],
+    };
+    const { data: existing } = await client.storage.getBucket(
+      SUPABASE_ASSET_BUCKET
+    );
+    if (existing) {
+      // Buckets created before project exports allowed only image MIME types.
+      // Keep their policy in sync so ZIP exports do not fail after an upgrade.
+      const { error } = await client.storage.updateBucket(
+        SUPABASE_ASSET_BUCKET,
+        bucketOptions
+      );
+      if (error)
+        throw new Error(`Supabase bucket update failed: ${error.message}`);
+      return;
+    }
+
+    const { error } = await client.storage.createBucket(
+      SUPABASE_ASSET_BUCKET,
+      bucketOptions
+    );
 
     if (error && !error.message.toLowerCase().includes("already exists")) {
       throw new Error(`Supabase bucket creation failed: ${error.message}`);
@@ -72,7 +94,7 @@ async function forgePut(
   config: { forgeUrl: string; forgeKey: string },
   key: string,
   data: Buffer | Uint8Array | string,
-  contentType: string,
+  contentType: string
 ): Promise<{ key: string; url: string }> {
   const presignUrl = new URL("v1/storage/presign/put", config.forgeUrl + "/");
   presignUrl.searchParams.set("path", key);
@@ -110,7 +132,7 @@ async function forgePut(
 async function supabasePut(
   key: string,
   data: Buffer | Uint8Array | string,
-  contentType: string,
+  contentType: string
 ): Promise<{ key: string; url: string }> {
   await ensureSupabaseBucket();
   const client = getSupabaseAdmin();
@@ -132,7 +154,7 @@ async function supabasePut(
 export async function storagePut(
   relKey: string,
   data: Buffer | Uint8Array | string,
-  contentType = "application/octet-stream",
+  contentType = "application/octet-stream"
 ): Promise<{ key: string; url: string }> {
   const key = appendHashSuffix(normalizeKey(relKey));
   const forge = getForgeConfig();
@@ -143,9 +165,12 @@ export async function storagePut(
       return await forgePut(forge, key, data, contentType);
     } catch (error) {
       forgeError = error;
-      console.warn("[Storage] Forge upload failed; trying private Supabase storage", {
-        error: error instanceof Error ? error.message : String(error),
-      });
+      console.warn(
+        "[Storage] Forge upload failed; trying private Supabase storage",
+        {
+          error: error instanceof Error ? error.message : String(error),
+        }
+      );
     }
   }
 
@@ -161,7 +186,7 @@ export async function storagePut(
 }
 
 export async function storageGet(
-  relKey: string,
+  relKey: string
 ): Promise<{ key: string; url: string }> {
   const key = normalizeKey(relKey);
   if (isSupabaseKey(key)) {
@@ -180,7 +205,9 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
       .from(SUPABASE_ASSET_BUCKET)
       .createSignedUrl(stripSupabasePrefix(key), SIGNED_URL_TTL_SECONDS);
     if (error || !data?.signedUrl) {
-      throw new Error(`Supabase signed URL failed: ${error?.message || "empty URL"}`);
+      throw new Error(
+        `Supabase signed URL failed: ${error?.message || "empty URL"}`
+      );
     }
     return data.signedUrl;
   }
@@ -188,7 +215,7 @@ export async function storageGetSignedUrl(relKey: string): Promise<string> {
   const forge = getForgeConfig();
   if (!forge) {
     throw new Error(
-      "Forge storage config missing for this legacy asset: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY",
+      "Forge storage config missing for this legacy asset: set BUILT_IN_FORGE_API_URL and BUILT_IN_FORGE_API_KEY"
     );
   }
 
@@ -221,6 +248,7 @@ export async function storageDelete(relKey: string): Promise<boolean> {
   const { error } = await client.storage
     .from(SUPABASE_ASSET_BUCKET)
     .remove([stripSupabasePrefix(key)]);
-  if (error) throw new Error(`Supabase storage deletion failed: ${error.message}`);
+  if (error)
+    throw new Error(`Supabase storage deletion failed: ${error.message}`);
   return true;
 }

@@ -21,25 +21,65 @@ import {
   isImageRequest,
 } from "./imageWorker";
 import { executeTaskChain } from "./taskChain";
-import { retrieveRelevantMemories, buildMemoryContext, extractMemoriesFromMessage, persistExtractedMemories } from "./memoryService";
-import { saveToMemory, buildMemoryContext as buildSemanticMemoryContext } from "./memory-service";
-import { logApiCall, canAffordRequest, trackTaskCall, startTaskTracking, endTaskTracking } from "./costService";
+import {
+  retrieveRelevantMemories,
+  buildMemoryContext,
+  extractMemoriesFromMessage,
+  persistExtractedMemories,
+} from "./memoryService";
+import {
+  saveToMemory,
+  buildMemoryContext as buildSemanticMemoryContext,
+} from "./memory-service";
+import {
+  logApiCall,
+  canAffordRequest,
+  trackTaskCall,
+  startTaskTracking,
+  endTaskTracking,
+} from "./costService";
 import { analyzeComplexity, selectModel } from "./modelRouter";
 import { createStateMachine, removeStateMachine } from "./stateMachine";
 import { logger, startTrace, endTrace, recordMetric } from "./observability";
 import { checkPromptInjection } from "./security";
 import { semanticSearch, buildKnowledgeContext } from "./ragService";
-import { getGlobalMemoryContext, extractAndStoreGlobalMemories } from "./supabaseMemoryService";
+import {
+  getGlobalMemoryContext,
+  extractAndStoreGlobalMemories,
+} from "./supabaseMemoryService";
 import { getRAGContext } from "./knowledgeBaseService";
-import { getCachedAIResponse, cacheAIResponse, checkRateLimit, getCachedUserMemory, cacheUserMemory } from "./redis";
+import {
+  getCachedAIResponse,
+  cacheAIResponse,
+  checkRateLimit,
+  getCachedUserMemory,
+  cacheUserMemory,
+} from "./redis";
+import { getSupabaseAdmin } from "./supabase";
 import { OWNER_EMAILS } from "./_core/env";
-import { getOwnerUser } from "./_core/context";
+import { resolveAuthenticatedUser } from "./_core/context";
 import { persistConversationAttachments } from "./chatAssets";
 import { canAfford, deductCredits, getCreditBalance } from "./services/credits";
-import { processMessageForMemory, recallProtectedMemories } from "./twoTierMemory";
-import { recordMessage as recordSessionMessage, recordToolCall as recordSessionToolCall, recordFailure as recordSessionFailure } from "./sessionHealth";
-import { verifyResponse, shouldVerify, generateBadge } from "./synthesisVerification";
-import { createHeartbeatState, feedTokens, getHeartbeatStatus, getProgressPercent } from "./heartbeatInterrupt";
+import {
+  processMessageForMemory,
+  recallProtectedMemories,
+} from "./twoTierMemory";
+import {
+  recordMessage as recordSessionMessage,
+  recordToolCall as recordSessionToolCall,
+  recordFailure as recordSessionFailure,
+} from "./sessionHealth";
+import {
+  verifyResponse,
+  shouldVerify,
+  generateBadge,
+} from "./synthesisVerification";
+import {
+  createHeartbeatState,
+  feedTokens,
+  getHeartbeatStatus,
+  getProgressPercent,
+} from "./heartbeatInterrupt";
 import { OWNER_CONTEXT } from "./ownerContext";
 import { CAPTAIN_Q_SYSTEM_PROMPT } from "./captainQPrompt";
 import { detectCaptainRoute, type CaptainRoute } from "./assistantRouting";
@@ -60,6 +100,7 @@ import {
 } from "./chatAttachments";
 
 const CAPTAIN_SYSTEM_PROMPT = CAPTAIN_Q_SYSTEM_PROMPT;
+const SESSION_STABILIZATION_METADATA_KEY = "sessionStabilization";
 
 const BUILDER_SYSTEM_PROMPT = `You are the Builder worker in Q Workspace. You generate high-quality code, create project structures, and implement features. When asked to build something, provide complete, production-ready code with proper file structure. Use React + Tailwind + Vite as default stack for web projects.`;
 
@@ -75,10 +116,82 @@ function getSystemPrompt(_intent: ExtendedIntent): string {
 
 function getWorkerName(intent: ExtendedIntent): string {
   switch (intent) {
-    case "browser": return "Toríu · Browser";
-    case "execute": return `Toríu · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
-    default: return "Toríu";
+    case "browser":
+      return "Toríu · Browser";
+    case "execute":
+      return `Toríu · Executor (${process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox"})`;
+    default:
+      return "Toríu";
   }
+}
+
+async function getPersistedCompressedContext(
+  userId: number,
+  conversationId: number
+): Promise<string> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return "";
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("metadata")
+    .eq("user_id", userId)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    console.warn(
+      "[SessionHealth] Could not load persisted stabilized context",
+      error.message
+    );
+    return "";
+  }
+
+  for (const message of data || []) {
+    const metadata = message.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+      continue;
+    const candidate = (metadata as Record<string, unknown>)[
+      SESSION_STABILIZATION_METADATA_KEY
+    ];
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      continue;
+    const context = (candidate as Record<string, unknown>).context;
+    if (typeof context === "string" && context.trim()) return context;
+  }
+  return "";
+}
+
+async function recordPersistedConversationHealth(
+  userId: number,
+  conversationId: number,
+  responseTimeMs: number
+): Promise<void> {
+  const supabase = getSupabaseAdmin();
+  if (!supabase) return;
+
+  const { data, error } = await supabase
+    .from("messages")
+    .select("role, content")
+    .eq("user_id", userId)
+    .eq("conversation_id", conversationId)
+    .order("created_at", { ascending: false })
+    .limit(2);
+  if (error)
+    throw new Error(
+      `Could not load persisted response for health tracking: ${error.message}`
+    );
+
+  const latestAssistant = (data || []).find(
+    message => message.role === "assistant"
+  );
+  if (!latestAssistant?.content) return;
+  recordSessionMessage(
+    `${userId}_${conversationId}`,
+    Math.ceil(latestAssistant.content.length / 4),
+    latestAssistant.content,
+    responseTimeMs
+  );
 }
 
 /**
@@ -86,7 +199,10 @@ function getWorkerName(intent: ExtendedIntent): string {
  * semantic interpretation—including research, images, writing, planning, and
  * tool selection—stays with the same Toríu model.
  */
-export function detectExtendedIntent(message: string, hasImageAttachment = false): ExtendedIntent {
+export function detectExtendedIntent(
+  message: string,
+  hasImageAttachment = false
+): ExtendedIntent {
   return detectCaptainRoute(message, hasImageAttachment);
 }
 
@@ -103,6 +219,7 @@ export function registerStreamingRoutes(app: Express) {
 
   // Main streaming chat endpoint
   app.post("/api/stream/chat", async (req: Request, res: Response) => {
+    const requestStartedAt = Date.now();
     const {
       message: rawMessage,
       projectId,
@@ -120,47 +237,57 @@ export function registerStreamingRoutes(app: Express) {
         ? Number(req.query.conversationId)
         : null;
     if (!message) {
-      res.status(400).json({ error: "Message or supported image attachment required" });
+      res
+        .status(400)
+        .json({ error: "Message or supported image attachment required" });
       return;
     }
 
-    // Keep ordinary Toríu conversation on Anthony's existing owner workspace.
-    // External business procedures use a separate short-lived action session.
-    let userId: number | null = null;
-    let isGuest = true;
+    // Streaming is protected independently of tRPC and must resolve the same
+    // verified Clerk identity used by protected procedures.
+    let authenticatedUser: Awaited<
+      ReturnType<typeof resolveAuthenticatedUser>
+    > = null;
     try {
-      const owner = await getOwnerUser();
-      if (owner?.id) {
-        userId = owner.id;
-        isGuest = false;
-      }
+      authenticatedUser = await resolveAuthenticatedUser(req);
     } catch (error: any) {
-      console.error("[Conversation] Owner workspace resolution failed", {
+      console.error("[Conversation] Authenticated user resolution failed", {
         error: error?.stack || error?.message || error,
       });
     }
 
-    if (!userId) {
-      res.status(503).json({ error: "Owner workspace is temporarily unavailable." });
+    if (!authenticatedUser) {
+      res.status(401).json({ error: "Sign in to use workspace chat." });
       return;
     }
+    const userId = authenticatedUser.id;
+    const isGuest = false;
 
     // Resolve or create the conversation on the server, then persist the user message.
     let persistedConversationId: number | null = null;
     let durableAttachmentIds: string[] = [];
+    let stabilizedConversationContext = "";
     if (userId) {
       try {
         const requestedConversationId =
-          typeof queryConversationId === "number" && Number.isInteger(queryConversationId) && queryConversationId > 0
+          typeof queryConversationId === "number" &&
+          Number.isInteger(queryConversationId) &&
+          queryConversationId > 0
             ? queryConversationId
-            : typeof bodyConversationId === "number" && Number.isInteger(bodyConversationId) && bodyConversationId > 0
+            : typeof bodyConversationId === "number" &&
+                Number.isInteger(bodyConversationId) &&
+                bodyConversationId > 0
               ? bodyConversationId
               : null;
         const normalizedProjectId =
-          typeof projectId === "number" && Number.isInteger(projectId) && projectId > 0
+          typeof projectId === "number" &&
+          Number.isInteger(projectId) &&
+          projectId > 0
             ? projectId
             : null;
-        const title = message.trim().replace(/\s+/g, " ").slice(0, 80) || "New conversation";
+        const title =
+          message.trim().replace(/\s+/g, " ").slice(0, 80) ||
+          "New conversation";
 
         console.log("[Conversation] Persistence attempt", {
           userId,
@@ -169,7 +296,10 @@ export function registerStreamingRoutes(app: Express) {
         });
 
         if (requestedConversationId) {
-          const existingConversation = await db.getConversationForUser(requestedConversationId, userId);
+          const existingConversation = await db.getConversationForUser(
+            requestedConversationId,
+            userId
+          );
           if (existingConversation) {
             persistedConversationId = existingConversation.id;
             console.log("[Conversation] Reusing conversation", {
@@ -177,12 +307,19 @@ export function registerStreamingRoutes(app: Express) {
               conversationId: persistedConversationId,
             });
             if (!existingConversation.title) {
-              await db.updateConversationTitle(existingConversation.id, userId, title);
+              await db.updateConversationTitle(
+                existingConversation.id,
+                userId,
+                title
+              );
             }
           } else {
-            logger.warn(`[Conversation] Ignoring inaccessible conversation ${requestedConversationId}`, {
-              userId,
-            });
+            logger.warn(
+              `[Conversation] Ignoring inaccessible conversation ${requestedConversationId}`,
+              {
+                userId,
+              }
+            );
           }
         }
 
@@ -204,9 +341,14 @@ export function registerStreamingRoutes(app: Express) {
           conversationId: persistedConversationId,
           role: "user",
           content: message,
-          metadata: parsedAttachments.attachments.length > 0
-            ? { attachments: attachmentMetadata(parsedAttachments.attachments) }
-            : undefined,
+          metadata:
+            parsedAttachments.attachments.length > 0
+              ? {
+                  attachments: attachmentMetadata(
+                    parsedAttachments.attachments
+                  ),
+                }
+              : undefined,
         });
 
         if (parsedAttachments.attachments.length > 0) {
@@ -229,11 +371,14 @@ export function registerStreamingRoutes(app: Express) {
               });
             }
           } catch (error) {
-            console.warn("[Conversation] Durable attachment storage unavailable; continuing with this response", {
-              conversationId: persistedConversationId,
-              messageId: userMessageId,
-              error,
-            });
+            console.warn(
+              "[Conversation] Durable attachment storage unavailable; continuing with this response",
+              {
+                conversationId: persistedConversationId,
+                messageId: userMessageId,
+                error,
+              }
+            );
           }
         }
 
@@ -243,15 +388,27 @@ export function registerStreamingRoutes(app: Express) {
           messageId: userMessageId,
         });
       } catch (error: any) {
-        console.error("[Conversation] Failed to persist conversation or user message", {
-          userId,
-          conversationId: persistedConversationId,
-          error: error?.stack || error?.message || error,
-        });
+        console.error(
+          "[Conversation] Failed to persist conversation or user message",
+          {
+            userId,
+            conversationId: persistedConversationId,
+            error: error?.stack || error?.message || error,
+          }
+        );
         persistedConversationId = null;
       }
     } else {
-      console.error("[Conversation] Persistence skipped because no authenticated database user was resolved");
+      console.error(
+        "[Conversation] Persistence skipped because no authenticated database user was resolved"
+      );
+    }
+
+    if (userId && persistedConversationId) {
+      stabilizedConversationContext = await getPersistedCompressedContext(
+        userId,
+        persistedConversationId
+      );
     }
 
     // Set SSE headers
@@ -261,20 +418,28 @@ export function registerStreamingRoutes(app: Express) {
     res.setHeader("X-Accel-Buffering", "no");
 
     if (persistedConversationId) {
-      res.write(`data: ${JSON.stringify({ type: "conversation_id", conversationId: persistedConversationId })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "conversation_id", conversationId: persistedConversationId })}\n\n`
+      );
     }
 
     // ─── Memory: Retrieve relevant context ─────────────────────
     let semanticMemoryContext = "";
     if (userId) {
       try {
-        semanticMemoryContext = await buildSemanticMemoryContext(userId, message);
+        semanticMemoryContext = await buildSemanticMemoryContext(
+          userId,
+          message
+        );
       } catch (e) {
         // Non-blocking
       }
     }
 
-    const intent = detectExtendedIntent(message, parsedAttachments.imageAttachments.length > 0);
+    const intent = detectExtendedIntent(
+      message,
+      parsedAttachments.imageAttachments.length > 0
+    );
     const workerName = getWorkerName(intent);
 
     // ─── Budget Check ────────────────────────────────────────────────
@@ -282,19 +447,34 @@ export function registerStreamingRoutes(app: Express) {
     startTaskTracking(taskId);
 
     // ─── State Machine ──────────────────────────────────────────────
-    const sm = createStateMachine(taskId, { maxRetries: 3, timeoutMs: 120_000 });
+    const sm = createStateMachine(taskId, {
+      maxRetries: 3,
+      timeoutMs: 120_000,
+    });
     sm.start(message.slice(0, 200));
 
     // ─── Observability Span ─────────────────────────────────────────
-    const span = startTrace("chat_request", { service: "streaming", worker: workerName, attributes: { intent } });
-    logger.info(`[Stream] New request: intent=${intent}, worker=${workerName}`, { correlationId: taskId, worker: workerName });
+    const span = startTrace("chat_request", {
+      service: "streaming",
+      worker: workerName,
+      attributes: { intent },
+    });
+    logger.info(
+      `[Stream] New request: intent=${intent}, worker=${workerName}`,
+      { correlationId: taskId, worker: workerName }
+    );
     recordMetric("chat_requests_total", 1, "counter", { intent });
 
     // ─── Security: Prompt Injection Check ────────────────────────────
     const injectionCheck = checkPromptInjection(message);
     if (!injectionCheck.safe) {
-      logger.warn(`[Security] Prompt injection detected (score: ${injectionCheck.score})`, { correlationId: taskId });
-      res.write(`data: ${JSON.stringify({ type: "error", content: "Your message was flagged by our security system. Please rephrase your request." })}\n\n`);
+      logger.warn(
+        `[Security] Prompt injection detected (score: ${injectionCheck.score})`,
+        { correlationId: taskId }
+      );
+      res.write(
+        `data: ${JSON.stringify({ type: "error", content: "Your message was flagged by our security system. Please rephrase your request." })}\n\n`
+      );
       res.write(`data: [DONE]\n\n`);
       res.end();
       sm.failPlanning("Prompt injection detected");
@@ -308,30 +488,21 @@ export function registerStreamingRoutes(app: Express) {
     // Owner gets unlimited credits — skip all checks
     // Bypass 1: match by OWNER_OPEN_ID (Manus platform)
     // Bypass 2: match by email (wisheswithoutbordersco@gmail.com)
-    let _isOwner = false;
-    if (!isGuest && userId) {
-      try {
-        const ownerOpenId = process.env.OWNER_OPEN_ID;
-        if (ownerOpenId) {
-          const ownerUser = await db.getUserByClerkId(ownerOpenId);
-          _isOwner = !!(ownerUser && ownerUser.id === userId);
-        }
-        // Email-based bypass: check if the authenticated user's email is in the owner list
-        if (!_isOwner) {
-          const currentUser = await db.getUserById(userId);
-          if (currentUser?.email && OWNER_EMAILS.includes(currentUser.email.toLowerCase())) {
-            _isOwner = true;
-          }
-        }
-      } catch { /* non-blocking */ }
-    }
+    const _isOwner = Boolean(
+      (process.env.OWNER_OPEN_ID &&
+        authenticatedUser.clerk_id === process.env.OWNER_OPEN_ID) ||
+        (authenticatedUser.email &&
+          OWNER_EMAILS.includes(authenticatedUser.email.toLowerCase()))
+    );
 
     // ─── Credit Check (only for authenticated non-owner users) ──────────────
     if (!isGuest && userId && !_isOwner) {
       try {
         const budgetCheck = await canAffordRequest(userId, 0.01);
         if (!budgetCheck.allowed) {
-          res.write(`data: ${JSON.stringify({ type: "error", content: `Budget limit reached: ${budgetCheck.reason}` })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "error", content: `Budget limit reached: ${budgetCheck.reason}` })}\n\n`
+          );
           res.write(`data: [DONE]\n\n`);
           res.end();
           sm.failPlanning("Budget limit reached");
@@ -347,7 +518,9 @@ export function registerStreamingRoutes(app: Express) {
         const creditOk = await canAfford(userId, 1);
         if (!creditOk) {
           const balance = await getCreditBalance(userId);
-          res.write(`data: ${JSON.stringify({ type: "error", content: `You've used all your credits for today (${balance.dailyCreditsLimit} credits/day on the ${balance.plan} plan). Upgrade your plan or buy a top-up at /billing to continue.`, credit_exhausted: true, plan: balance.plan })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "error", content: `You've used all your credits for today (${balance.dailyCreditsLimit} credits/day on the ${balance.plan} plan). Upgrade your plan or buy a top-up at /workspace/billing to continue.`, credit_exhausted: true, plan: balance.plan })}\n\n`
+          );
           res.write(`data: [DONE]\n\n`);
           res.end();
           sm.failPlanning("Credits exhausted");
@@ -366,9 +539,13 @@ export function registerStreamingRoutes(app: Express) {
     // Guests: credit enforcement is client-side (localStorage limit)
     // ─── Rate Limiting (via Redis) ───────────────────────────────────────
     try {
-      const rateCheck = _isOwner ? { allowed: true } : await checkRateLimit(String(userId || "guest"), "chat", 60, 60);
+      const rateCheck = _isOwner
+        ? { allowed: true }
+        : await checkRateLimit(String(userId || "guest"), "chat", 60, 60);
       if (!rateCheck.allowed) {
-        res.write(`data: ${JSON.stringify({ type: "error", content: "Rate limit exceeded. Please wait a moment before sending another message." })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "error", content: "Rate limit exceeded. Please wait a moment before sending another message." })}\n\n`
+        );
         res.write(`data: [DONE]\n\n`);
         res.end();
         sm.failPlanning("Rate limit exceeded");
@@ -391,16 +568,26 @@ export function registerStreamingRoutes(app: Express) {
     if (!isGuest && userId) {
       try {
         // Check Redis cache first for user memory
-        const cachedMemory = await getCachedUserMemory<{ context: string; count: number }>(String(userId));
+        const cachedMemory = await getCachedUserMemory<{
+          context: string;
+          count: number;
+        }>(String(userId));
         if (cachedMemory) {
           memoryContext = cachedMemory.context;
           memoryCount = cachedMemory.count;
         } else {
-          const { memories, count } = await retrieveRelevantMemories(userId, message, { projectId: projectId || undefined });
+          const { memories, count } = await retrieveRelevantMemories(
+            userId,
+            message,
+            { projectId: projectId || undefined }
+          );
           if (count > 0) {
             memoryContext = buildMemoryContext(memories);
             memoryCount = count;
-            cacheUserMemory(String(userId), { context: memoryContext, count: memoryCount }).catch(() => {});
+            cacheUserMemory(String(userId), {
+              context: memoryContext,
+              count: memoryCount,
+            }).catch(() => {});
           }
         }
       } catch (err) {
@@ -421,7 +608,9 @@ export function registerStreamingRoutes(app: Express) {
         const ragResults = await semanticSearch(userId, message, 5);
         if (ragResults.length > 0) {
           knowledgeContext = buildKnowledgeContext(ragResults);
-          knowledgeSources = Array.from(new Set(ragResults.map(r => r.filename)));
+          knowledgeSources = Array.from(
+            new Set(ragResults.map(r => r.filename))
+          );
         }
       } catch (err) {
         console.warn("[RAG] Knowledge retrieval failed:", err);
@@ -447,12 +636,18 @@ export function registerStreamingRoutes(app: Express) {
       // This is the CRITICAL step that injects stored user identity, preferences,
       // names, credentials, etc. into the conversation context.
       try {
-        const protectedContext = await recallProtectedMemories(String(userId), message);
+        const protectedContext = await recallProtectedMemories(
+          String(userId),
+          message
+        );
         if (protectedContext) {
           memoryContext = protectedContext + "\n" + memoryContext;
           memoryCount += 1;
           // Invalidate Redis cache so fresh memories are always used
-          cacheUserMemory(String(userId), { context: memoryContext, count: memoryCount }).catch(() => {});
+          cacheUserMemory(String(userId), {
+            context: memoryContext,
+            count: memoryCount,
+          }).catch(() => {});
         }
       } catch (err) {
         console.warn("[TwoTierMemory] Protected recall failed:", err);
@@ -460,16 +655,22 @@ export function registerStreamingRoutes(app: Express) {
     }
 
     // Send initial event with worker info
-    res.write(`data: ${JSON.stringify({ type: "start", worker: workerName, intent })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "start", worker: workerName, intent })}\n\n`
+    );
 
     // Send memory active event
     if (memoryCount > 0) {
-      res.write(`data: ${JSON.stringify({ type: "memory_active", count: memoryCount })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "memory_active", count: memoryCount })}\n\n`
+      );
     }
 
     // Send knowledge active event
     if (knowledgeSources.length > 0) {
-      res.write(`data: ${JSON.stringify({ type: "knowledge_active", sources: knowledgeSources })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "knowledge_active", sources: knowledgeSources })}\n\n`
+      );
     }
 
     // Persist orchestration event: worker spawned
@@ -490,15 +691,42 @@ export function registerStreamingRoutes(app: Express) {
       processMessageForMemory(String(userId), message).catch(() => {});
     }
 
-    sm.setPlan({ taskId, objective: message.slice(0, 200), steps: [{ id: "step_1", name: intent, worker: workerName, input: message.slice(0, 100), dependencies: [], status: "pending" }], estimatedComplexity: "low", createdAt: Date.now() });
+    sm.setPlan({
+      taskId,
+      objective: message.slice(0, 200),
+      steps: [
+        {
+          id: "step_1",
+          name: intent,
+          worker: workerName,
+          input: message.slice(0, 100),
+          dependencies: [],
+          status: "pending",
+        },
+      ],
+      estimatedComplexity: "low",
+      createdAt: Date.now(),
+    });
     try {
       // Route to appropriate worker
       switch (intent) {
         case "browser":
-          await handleBrowserTask(res, message, projectId, userId, persistedConversationId);
+          await handleBrowserTask(
+            res,
+            message,
+            projectId,
+            userId,
+            persistedConversationId
+          );
           break;
         case "execute":
-          await handleCodeExecution(res, message, projectId, userId, persistedConversationId);
+          await handleCodeExecution(
+            res,
+            message,
+            projectId,
+            userId,
+            persistedConversationId
+          );
           break;
         default:
           if (isImageRequest(message)) {
@@ -508,7 +736,7 @@ export function registerStreamingRoutes(app: Express) {
               projectId,
               userId,
               persistedConversationId,
-              parsedAttachments.imageAttachments,
+              parsedAttachments.imageAttachments
             );
           } else {
             await handleStandardChat(
@@ -522,17 +750,26 @@ export function registerStreamingRoutes(app: Express) {
               userId,
               persistedConversationId,
               parsedAttachments.imageAttachments,
-              durableAttachmentIds
+              durableAttachmentIds,
+              stabilizedConversationContext
             );
           }
           break;
       }
     } catch (error: any) {
-      logger.error(`[Stream Error] ${error?.message || error}`, { correlationId: taskId, worker: workerName });
+      logger.error(`[Stream Error] ${error?.message || error}`, {
+        correlationId: taskId,
+        worker: workerName,
+      });
       sm.failExecution(error?.message || "Unknown error");
       endTrace(span, "failed");
       recordMetric("chat_errors_total", 1, "counter", { intent });
-      res.write(`data: ${JSON.stringify({ type: "error", content: "An error occurred while processing your request." })}\n\n`);
+      if (userId && persistedConversationId) {
+        recordSessionFailure(`${userId}_${persistedConversationId}`);
+      }
+      res.write(
+        `data: ${JSON.stringify({ type: "error", content: "An error occurred while processing your request." })}\n\n`
+      );
       res.write(`data: [DONE]\n\n`);
       res.end();
       endTaskTracking(taskId);
@@ -547,16 +784,19 @@ export function registerStreamingRoutes(app: Express) {
     removeStateMachine(taskId);
 
     // ─── Session Health: Record message exchange ────────────────────────
-    if (!isGuest && userId) {
-      const sessionKey = projectId ? `${userId}_${projectId}` : `${userId}_default`;
-      const responseTime = Date.now() - (sm as any)?.startedAt || 3000;
-      const estimatedTokens = Math.ceil(message.length / 4) + 500; // rough estimate
-      recordSessionMessage(
-        sessionKey,
-        estimatedTokens,
-        message,
-        responseTime
-      );
+    if (!isGuest && userId && persistedConversationId) {
+      try {
+        await recordPersistedConversationHealth(
+          userId,
+          persistedConversationId,
+          Date.now() - requestStartedAt
+        );
+      } catch (error) {
+        console.warn(
+          "[SessionHealth] Could not record persisted response",
+          error
+        );
+      }
     }
 
     // Supabase global memory extraction (async, non-blocking)
@@ -594,7 +834,9 @@ export function registerStreamingRoutes(app: Express) {
     }
     const validLangs = ["javascript", "typescript", "python"];
     if (!validLangs.includes(language)) {
-      res.status(400).json({ error: `Unsupported language. Use: ${validLangs.join(", ")}` });
+      res
+        .status(400)
+        .json({ error: `Unsupported language. Use: ${validLangs.join(", ")}` });
       return;
     }
     const result = await executeCode(code, language);
@@ -676,20 +918,30 @@ async function handleImageGeneration(
   projectId: number | null,
   userId: number | null,
   conversationId: number | null,
-  imageAttachments: ChatAttachment[] = [],
+  imageAttachments: ChatAttachment[] = []
 ) {
   const prompt = extractImagePrompt(message);
   const requestedCount = getRequestedImageCount(message);
-  let assistantResponse = requestedCount > 1
-    ? `Creating ${requestedCount} image variations now.\n\n`
-    : "Creating your image now.\n\n";
-  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
+  let assistantResponse =
+    requestedCount > 1
+      ? `Creating ${requestedCount} image variations now.\n\n`
+      : "Creating your image now.\n\n";
+  res.write(
+    `data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`
+  );
 
-  const originalImages = imageAttachments.flatMap((attachment) => {
+  const originalImages = imageAttachments.flatMap(attachment => {
     if (!attachment.dataUrl) return [];
-    const match = attachment.dataUrl.match(/^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i);
+    const match = attachment.dataUrl.match(
+      /^data:(image\/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/=\s]+)$/i
+    );
     if (!match) return [];
-    return [{ mimeType: match[1].toLowerCase(), b64Json: match[2].replace(/\s/g, "") }];
+    return [
+      {
+        mimeType: match[1].toLowerCase(),
+        b64Json: match[2].replace(/\s/g, ""),
+      },
+    ];
   });
 
   const generatedImages: Array<{ url: string; title: string }> = [];
@@ -698,50 +950,70 @@ async function handleImageGeneration(
   const failures: string[] = [];
 
   for (let index = 0; index < requestedCount; index += 1) {
-    const variationPrompt = buildImageVariationPrompt(prompt, index, requestedCount);
+    const variationPrompt = buildImageVariationPrompt(
+      prompt,
+      index,
+      requestedCount
+    );
     const result = await generateImage(variationPrompt, {
       quality: "high",
       originalImages: originalImages.length > 0 ? originalImages : undefined,
     });
 
     if (result.success && result.imageUrl) {
-      const title = requestedCount > 1 ? `Generated image ${index + 1}` : "Generated image";
+      const title =
+        requestedCount > 1 ? `Generated image ${index + 1}` : "Generated image";
       generatedImages.push({ url: result.imageUrl, title });
       if (result.provider) providers.add(result.provider);
       usedFallback = usedFallback || Boolean(result.fallbackUsed);
-      res.write(`data: ${JSON.stringify({ type: "image", url: result.imageUrl, title, revisedPrompt: result.revisedPrompt })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "image", url: result.imageUrl, title, revisedPrompt: result.revisedPrompt })}\n\n`
+      );
       continue;
     }
 
     const providerDetail = result.providerErrors
-      ?.map((failure) => `${failure.provider}: ${failure.message}`)
+      ?.map(failure => `${failure.provider}: ${failure.message}`)
       .join("; ");
-    failures.push(`${result.error || "Both image providers failed."}${providerDetail ? ` ${providerDetail}` : ""}`);
+    failures.push(
+      `${result.error || "Both image providers failed."}${providerDetail ? ` ${providerDetail}` : ""}`
+    );
   }
 
   if (generatedImages.length > 0) {
-    const completion = generatedImages.length === 1
-      ? "Done. Click the image to view the complete version."
-      : `Done. I created ${generatedImages.length} image variations. Click any image to view the complete version.`;
-    const partial = generatedImages.length < requestedCount
-      ? ` ${requestedCount - generatedImages.length} variation${requestedCount - generatedImages.length === 1 ? "" : "s"} could not be completed.`
-      : "";
-    res.write(`data: ${JSON.stringify({ type: "token", content: completion + partial })}\n\n`);
+    const completion =
+      generatedImages.length === 1
+        ? "Done. Click the image to view the complete version."
+        : `Done. I created ${generatedImages.length} image variations. Click any image to view the complete version.`;
+    const partial =
+      generatedImages.length < requestedCount
+        ? ` ${requestedCount - generatedImages.length} variation${requestedCount - generatedImages.length === 1 ? "" : "s"} could not be completed.`
+        : "";
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: completion + partial })}\n\n`
+    );
     assistantResponse += completion + partial;
   } else {
     const failure = `I could not generate the image. ${failures[0] || "The primary image service and its backup were unavailable."}`;
-    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: failure })}\n\n`
+    );
     assistantResponse += failure;
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, {
-    intent: "image",
-    providers: Array.from(providers),
-    fallbackUsed: usedFallback,
-    sourceImageCount: originalImages.length,
-    requestedImageCount: requestedCount,
-    images: generatedImages,
-  });
+  await persistAssistantConversationMessage(
+    userId,
+    conversationId,
+    assistantResponse,
+    {
+      intent: "image",
+      providers: Array.from(providers),
+      fallbackUsed: usedFallback,
+      sourceImageCount: originalImages.length,
+      requestedImageCount: requestedCount,
+      images: generatedImages,
+    }
+  );
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -757,28 +1029,43 @@ async function handleBrowserTask(
 ) {
   const task = parseBrowserTask(message);
   let assistantResponse = `🌐 Browser worker activated...\n\n**Action:** ${task?.action || "extract"}\n**URL:** ${task?.url || "unknown"}\n\n`;
-  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
+  res.write(
+    `data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`
+  );
 
   const result = await executeBrowserTask(message);
 
   if (result.success) {
     if (result.type === "screenshot") {
       const completion = `\n\n✅ Screenshot captured: **${result.title}**\nURL: ${result.url}`;
-      res.write(`data: ${JSON.stringify({ type: "image", url: `data:image/png;base64,${result.content}`, title: result.title })}\n\n`);
-      res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "image", url: `data:image/png;base64,${result.content}`, title: result.title })}\n\n`
+      );
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: completion })}\n\n`
+      );
       assistantResponse += completion;
     } else {
       const completion = `✅ **${result.title || "Page"}** (${result.url})\n\n\`\`\`\n${result.content.slice(0, 5000)}\n\`\`\``;
-      res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: completion })}\n\n`
+      );
       assistantResponse += completion;
     }
   } else {
     const failure = `❌ Browser task failed: ${result.error}\n\nNote: The browser worker requires Chromium to be installed in the deployment environment. This feature works best in development.`;
-    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: failure })}\n\n`
+    );
     assistantResponse += failure;
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "browser" });
+  await persistAssistantConversationMessage(
+    userId,
+    conversationId,
+    assistantResponse,
+    { intent: "browser" }
+  );
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -795,9 +1082,14 @@ async function handleCodeExecution(
   // Extract code block from message
   const codeMatch = message.match(/```(\w+)?\n([\s\S]*?)```/);
   if (!codeMatch) {
-    const failure = "❌ No code block found. Please wrap your code in triple backticks:\n\n```javascript\nconsole.log('hello');\n```";
-    res.write(`data: ${JSON.stringify({ type: "token", content: failure })}\n\n`);
-    await persistAssistantConversationMessage(userId, conversationId, failure, { intent: "execute" });
+    const failure =
+      "❌ No code block found. Please wrap your code in triple backticks:\n\n```javascript\nconsole.log('hello');\n```";
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: failure })}\n\n`
+    );
+    await persistAssistantConversationMessage(userId, conversationId, failure, {
+      intent: "execute",
+    });
     res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
     res.write(`data: [DONE]\n\n`);
     res.end();
@@ -807,45 +1099,71 @@ async function handleCodeExecution(
   const langHint = (codeMatch[1] || "javascript").toLowerCase();
   const code = codeMatch[2];
   const language: "javascript" | "typescript" | "python" | "bash" =
-    langHint === "python" || langHint === "py" ? "python" :
-    langHint === "typescript" || langHint === "ts" ? "typescript" :
-    langHint === "bash" || langHint === "sh" || langHint === "shell" ? "bash" : "javascript";
+    langHint === "python" || langHint === "py"
+      ? "python"
+      : langHint === "typescript" || langHint === "ts"
+        ? "typescript"
+        : langHint === "bash" || langHint === "sh" || langHint === "shell"
+          ? "bash"
+          : "javascript";
 
-  const engineLabel = process.env.SPRITES_TOKEN ? "Sprites.dev" : "Local Sandbox";
+  const engineLabel = process.env.SPRITES_TOKEN
+    ? "Sprites.dev"
+    : "Local Sandbox";
   let assistantResponse = `⚡ Executing ${language} code via **${engineLabel}**...\n\n`;
-  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
+  res.write(
+    `data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`
+  );
 
   const result = await executeCode(code, language);
 
-  const engineInfo = result.engine === "sprites"
-    ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}`
-    : " | Engine: Local";
+  const engineInfo =
+    result.engine === "sprites"
+      ? ` | Engine: Sprites.dev${result.spriteName ? ` (${result.spriteName})` : ""}`
+      : " | Engine: Local";
 
   if (result.success) {
     const output = result.stdout || "(no output)";
     const completion = `✅ **Execution successful** (${result.duration}ms${engineInfo})\n\n\`\`\`\n${output}\n\`\`\``;
-    res.write(`data: ${JSON.stringify({ type: "execution", language, success: true, stdout: result.stdout, stderr: result.stderr, duration: result.duration, engine: result.engine, spriteName: result.spriteName })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "execution", language, success: true, stdout: result.stdout, stderr: result.stderr, duration: result.duration, engine: result.engine, spriteName: result.spriteName })}\n\n`
+    );
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: completion })}\n\n`
+    );
     assistantResponse += completion;
   } else {
-    const errorMsg = result.timedOut ? "⏱️ Execution timed out (30s limit)" : "❌ Execution failed";
+    const errorMsg = result.timedOut
+      ? "⏱️ Execution timed out (30s limit)"
+      : "❌ Execution failed";
     const completion = `${errorMsg}${engineInfo}\n\n\`\`\`\n${result.stderr || result.stdout || "Unknown error"}\n\`\`\``;
-    res.write(`data: ${JSON.stringify({ type: "execution", language, success: false, stdout: result.stdout, stderr: result.stderr, duration: result.duration, timedOut: result.timedOut, engine: result.engine })}\n\n`);
-    res.write(`data: ${JSON.stringify({ type: "token", content: completion })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "execution", language, success: false, stdout: result.stdout, stderr: result.stderr, duration: result.duration, timedOut: result.timedOut, engine: result.engine })}\n\n`
+    );
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: completion })}\n\n`
+    );
     assistantResponse += completion;
   }
 
   if (result.stderr && result.success) {
     const warnings = `\n\n⚠️ Warnings:\n\`\`\`\n${result.stderr}\n\`\`\``;
-    res.write(`data: ${JSON.stringify({ type: "token", content: warnings })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: warnings })}\n\n`
+    );
     assistantResponse += warnings;
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, {
-    intent: "execute",
-    language,
-    success: result.success,
-  });
+  await persistAssistantConversationMessage(
+    userId,
+    conversationId,
+    assistantResponse,
+    {
+      intent: "execute",
+      language,
+      success: result.success,
+    }
+  );
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -860,8 +1178,11 @@ async function handleMultiStepChain(
   userId: number | null,
   conversationId: number | null
 ) {
-  let assistantResponse = "🔗 **Toríu: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n";
-  res.write(`data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`);
+  let assistantResponse =
+    "🔗 **Toríu: Multi-Step Task Chain**\n\nAnalyzing your request and creating an execution plan...\n\n";
+  res.write(
+    `data: ${JSON.stringify({ type: "token", content: assistantResponse })}\n\n`
+  );
 
   const result = await executeTaskChain(
     message,
@@ -870,11 +1191,22 @@ async function handleMultiStepChain(
     projectId,
     (step, index, total) => {
       // Send progress updates
-      const statusEmoji = step.status === "completed" ? "✅" : step.status === "running" ? "⏳" : step.status === "failed" ? "❌" : "🔄";
-      res.write(`data: ${JSON.stringify({ type: "progress", step: index + 1, total, name: step.name, status: step.status })}\n\n`);
+      const statusEmoji =
+        step.status === "completed"
+          ? "✅"
+          : step.status === "running"
+            ? "⏳"
+            : step.status === "failed"
+              ? "❌"
+              : "🔄";
+      res.write(
+        `data: ${JSON.stringify({ type: "progress", step: index + 1, total, name: step.name, status: step.status })}\n\n`
+      );
       if (step.status === "running") {
         const progress = `\n${statusEmoji} **Step ${index + 1}/${total}: ${step.name}**\n_Worker: ${step.worker}_\n\n`;
-        res.write(`data: ${JSON.stringify({ type: "token", content: progress })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "token", content: progress })}\n\n`
+        );
         assistantResponse += progress;
       }
     }
@@ -889,12 +1221,19 @@ async function handleMultiStepChain(
   for (const step of result.steps) {
     if (step.result) {
       const stepResponse = `### ${step.name}\n${step.result.slice(0, 2000)}\n\n`;
-      res.write(`data: ${JSON.stringify({ type: "token", content: stepResponse })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: stepResponse })}\n\n`
+      );
       assistantResponse += stepResponse;
     }
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, assistantResponse, { intent: "complex" });
+  await persistAssistantConversationMessage(
+    userId,
+    conversationId,
+    assistantResponse,
+    { intent: "complex" }
+  );
 
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -912,14 +1251,21 @@ async function handleStandardChat(
   userId?: number | null,
   conversationId?: number | null,
   imageAttachments: ChatAttachment[] = [],
-  durableAttachmentIds: string[] = []
+  durableAttachmentIds: string[] = [],
+  stabilizedConversationContext: string = ""
 ) {
   const basePrompt = getSystemPrompt(intent);
-  let systemPrompt = memoryContext ? basePrompt + OWNER_CONTEXT + memoryContext : basePrompt + OWNER_CONTEXT;
-  systemPrompt = addImageAnalysisGuidance(systemPrompt, imageAttachments.length);
-  const messages: LLMMessage[] = [
-    { role: "system", content: systemPrompt },
-  ];
+  let systemPrompt = memoryContext
+    ? basePrompt + OWNER_CONTEXT + memoryContext
+    : basePrompt + OWNER_CONTEXT;
+  if (stabilizedConversationContext) {
+    systemPrompt += `\n\nPersisted context from this conversation's prior stabilization:\n${stabilizedConversationContext}`;
+  }
+  systemPrompt = addImageAnalysisGuidance(
+    systemPrompt,
+    imageAttachments.length
+  );
+  const messages: LLMMessage[] = [{ role: "system", content: systemPrompt }];
 
   if (semanticMemoryContext) {
     // Inject memory context into the system prompt
@@ -933,7 +1279,10 @@ async function handleStandardChat(
   }
 
   messages.push(...normalizeChatHistory(history));
-  messages.push({ role: "user", content: buildChatUserContent(message, imageAttachments) });
+  messages.push({
+    role: "user",
+    content: buildChatUserContent(message, imageAttachments),
+  });
 
   let fullResponse = "";
   let toolsUsed: string[] = [];
@@ -961,49 +1310,74 @@ async function handleStandardChat(
       (toolName: string, args: Record<string, any>) => {
         if (!toolModeActive) {
           toolModeActive = true;
-          res.write(`data: ${JSON.stringify({ type: "tool_mode", active: true })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "tool_mode", active: true })}\n\n`
+          );
         }
-        res.write(`data: ${JSON.stringify({ type: "tool_start", tool: toolName, args: Object.keys(args) })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "tool_start", tool: toolName, args: Object.keys(args) })}\n\n`
+        );
       },
       (toolName: string, result: import("./tools/index").ToolResult) => {
-        const artifacts = result.artifacts?.map((artifact) => ({
-          type: artifact.type,
-          name: artifact.name,
-          url: artifact.url,
-        })) || [];
-        res.write(`data: ${JSON.stringify({
-          type: "tool_result",
-          tool: toolName,
-          success: result.success,
-          artifacts,
-          data: result.data,
-        })}\n\n`);
-        const urlArtifact = result.artifacts?.find((artifact) => artifact.type === "url" && artifact.url);
+        const artifacts =
+          result.artifacts?.map(artifact => ({
+            type: artifact.type,
+            name: artifact.name,
+            url: artifact.url,
+          })) || [];
+        res.write(
+          `data: ${JSON.stringify({
+            type: "tool_result",
+            tool: toolName,
+            success: result.success,
+            artifacts,
+            data: result.data,
+          })}\n\n`
+        );
+        const urlArtifact = result.artifacts?.find(
+          artifact => artifact.type === "url" && artifact.url
+        );
         if (urlArtifact?.url) {
-          res.write(`data: ${JSON.stringify({ type: "sandbox_url", url: urlArtifact.url, name: urlArtifact.name })}\n\n`);
+          res.write(
+            `data: ${JSON.stringify({ type: "sandbox_url", url: urlArtifact.url, name: urlArtifact.name })}\n\n`
+          );
         }
-      },
+      }
     );
 
     toolsUsed = toolResult.toolsUsed;
     generatedImages = toolResult.artifacts
-      .filter((artifact) => artifact.type === "image" && artifact.url)
-      .map((artifact) => ({ url: artifact.url!, title: artifact.name }));
-    const preparedShopifyProposal = toolsUsed.includes("propose_shopify_product_draft");
+      .filter(artifact => artifact.type === "image" && artifact.url)
+      .map(artifact => ({ url: artifact.url!, title: artifact.name }));
+    const preparedShopifyProposal = toolsUsed.includes(
+      "propose_shopify_product_draft"
+    );
     fullResponse = preparedShopifyProposal
       ? "I prepared the Shopify product draft proposal below for your review. Nothing was created or published. Unlock business actions when you are ready to review or edit the card."
-      : toolResult.response?.trim() || (toolsUsed.length > 0
-        ? "Done. I completed the requested action."
-        : "I couldn't produce a useful response. Please try that again.");
+      : toolResult.response?.trim() ||
+        (toolsUsed.length > 0
+          ? "Done. I completed the requested action."
+          : "I couldn't produce a useful response. Please try that again.");
 
-    res.write(`data: ${JSON.stringify({ type: "token", content: fullResponse })}\n\n`);
+    res.write(
+      `data: ${JSON.stringify({ type: "token", content: fullResponse })}\n\n`
+    );
     if (toolModeActive) {
-      res.write(`data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "tool_mode", active: false, toolsUsed })}\n\n`
+      );
     }
   } catch (primaryError: any) {
-    console.warn("[Toríu] Unified reasoning loop failed, using direct model fallback:", primaryError?.message || primaryError);
+    console.warn(
+      "[Toríu] Unified reasoning loop failed, using direct model fallback:",
+      primaryError?.message || primaryError
+    );
     if (process.env.OPENROUTER_API_KEY) {
-      fullResponse = await streamOpenRouterCollecting(res, messages, CAPTAIN_OPENROUTER_MODEL);
+      fullResponse = await streamOpenRouterCollecting(
+        res,
+        messages,
+        CAPTAIN_OPENROUTER_MODEL
+      );
     } else if (process.env.OPENAI_API_KEY) {
       fullResponse = await streamOpenAICollecting(res, messages);
     } else {
@@ -1011,17 +1385,32 @@ async function handleStandardChat(
     }
   }
 
-  await persistAssistantConversationMessage(userId, conversationId, fullResponse, {
-    intent,
-    toolsUsed,
-    images: generatedImages,
-  });
+  await persistAssistantConversationMessage(
+    userId,
+    conversationId,
+    fullResponse,
+    {
+      intent,
+      toolsUsed,
+      images: generatedImages,
+    }
+  );
 
   // ─── Memory: Save messages for future recall ─────────────
   if (userId) {
-    saveToMemory({ userId, conversationId: conversationId || undefined, role: "user", content: message }).catch(() => {});
+    saveToMemory({
+      userId,
+      conversationId: conversationId || undefined,
+      role: "user",
+      content: message,
+    }).catch(() => {});
     if (fullResponse) {
-      saveToMemory({ userId, conversationId: conversationId || undefined, role: "assistant", content: fullResponse }).catch(() => {});
+      saveToMemory({
+        userId,
+        conversationId: conversationId || undefined,
+        role: "assistant",
+        content: fullResponse,
+      }).catch(() => {});
     }
   }
 
@@ -1035,8 +1424,18 @@ async function handleStandardChat(
 /**
  * Extract code blocks from markdown for post-build processing
  */
-function extractCodeBlocksFromMarkdown(markdown: string): Array<{ filename: string; filepath: string; content: string; language: string }> {
-  const blocks: Array<{ filename: string; filepath: string; content: string; language: string }> = [];
+function extractCodeBlocksFromMarkdown(markdown: string): Array<{
+  filename: string;
+  filepath: string;
+  content: string;
+  language: string;
+}> {
+  const blocks: Array<{
+    filename: string;
+    filepath: string;
+    content: string;
+    language: string;
+  }> = [];
   const regex = /```(\w+)?(?:\s+([^\n]+))?\n([\s\S]*?)```/g;
   let match;
   let index = 0;
@@ -1047,9 +1446,18 @@ function extractCodeBlocksFromMarkdown(markdown: string): Array<{ filename: stri
     if (!content) continue;
     // Infer filename from hint or language
     const extMap: Record<string, string> = {
-      javascript: "js", typescript: "ts", python: "py", html: "html",
-      css: "css", json: "json", jsx: "jsx", tsx: "tsx",
-      bash: "sh", shell: "sh", yaml: "yml", markdown: "md",
+      javascript: "js",
+      typescript: "ts",
+      python: "py",
+      html: "html",
+      css: "css",
+      json: "json",
+      jsx: "jsx",
+      tsx: "tsx",
+      bash: "sh",
+      shell: "sh",
+      yaml: "yml",
+      markdown: "md",
     };
     const ext = extMap[language] || language;
     const filename = filenameHint || `file${++index}.${ext}`;
@@ -1086,7 +1494,9 @@ async function streamOpenRouter(
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) {
-      res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+      );
     }
     if ((chunk as any).usage) {
       totalTokens.prompt = (chunk as any).usage.prompt_tokens || 0;
@@ -1097,16 +1507,23 @@ async function streamOpenRouter(
     }
   }
   logApiCall({
-    userId: 0, model, worker: "captain",
-    inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model,
+    worker: "captain",
+    inputTokens: totalTokens.prompt,
+    outputTokens: totalTokens.completion,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
   res.end();
 }
 
-async function streamOpenAI(res: Response, messages: Array<{ role: string; content: string }>) {
+async function streamOpenAI(
+  res: Response,
+  messages: Array<{ role: string; content: string }>
+) {
   const startTime = Date.now();
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
   const stream = await openai.chat.completions.create({
@@ -1121,7 +1538,9 @@ async function streamOpenAI(res: Response, messages: Array<{ role: string; conte
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) {
-      res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+      );
     }
     if (chunk.usage) {
       totalTokens.prompt = chunk.usage.prompt_tokens || 0;
@@ -1132,9 +1551,13 @@ async function streamOpenAI(res: Response, messages: Array<{ role: string; conte
     }
   }
   logApiCall({
-    userId: 0, model: "gpt-4o", worker: "captain",
-    inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model: "gpt-4o",
+    worker: "captain",
+    inputTokens: totalTokens.prompt,
+    outputTokens: totalTokens.completion,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -1150,10 +1573,16 @@ async function streamAnthropic(
 ) {
   const startTime = Date.now();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const anthropicMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  const anthropicMessages: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }> = [];
   if (history && Array.isArray(history)) {
     for (const msg of history.slice(-10)) {
-      anthropicMessages.push({ role: msg.role as "user" | "assistant", content: msg.content });
+      anthropicMessages.push({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      });
     }
   }
   anthropicMessages.push({ role: "user", content: userMessage });
@@ -1164,15 +1593,24 @@ async function streamAnthropic(
     messages: anthropicMessages,
   });
   for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
-      res.write(`data: ${JSON.stringify({ type: "token", content: event.delta.text })}\n\n`);
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: event.delta.text })}\n\n`
+      );
     }
   }
   const finalMessage = await stream.finalMessage();
   logApiCall({
-    userId: 0, model: "claude-sonnet-4-20250514", worker: "validator",
-    inputTokens: finalMessage.usage?.input_tokens || 0, outputTokens: finalMessage.usage?.output_tokens || 0,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model: "claude-sonnet-4-20250514",
+    worker: "validator",
+    inputTokens: finalMessage.usage?.input_tokens || 0,
+    outputTokens: finalMessage.usage?.output_tokens || 0,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
   res.write(`data: [DONE]\n\n`);
@@ -1199,19 +1637,28 @@ async function streamPerplexity(
     for await (const chunk of stream) {
       const delta = chunk.choices[0]?.delta?.content;
       if (delta) {
-        res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+        );
       }
       if (chunk.choices[0]?.finish_reason === "stop") {
         break;
       }
     }
     logApiCall({
-      userId: 0, model: "sonar", worker: "research",
-      inputTokens: Math.round(query.length / 4), outputTokens: 500,
-      durationMs: Date.now() - startTime, success: true,
+      userId: 0,
+      model: "sonar",
+      worker: "research",
+      inputTokens: Math.round(query.length / 4),
+      outputTokens: 500,
+      durationMs: Date.now() - startTime,
+      success: true,
     }).catch(() => {});
   } catch (error: any) {
-    console.warn("[Perplexity Stream] Falling back to non-streaming:", error?.message);
+    console.warn(
+      "[Perplexity Stream] Falling back to non-streaming:",
+      error?.message
+    );
     const perplexityNonStream = new OpenAI({
       apiKey: process.env.SONAR_API_KEY,
       baseURL: "https://api.perplexity.ai",
@@ -1223,15 +1670,22 @@ async function streamPerplexity(
     });
     const usage = response.usage;
     logApiCall({
-      userId: 0, model: "sonar", worker: "research",
-      inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-      durationMs: Date.now() - startTime, success: true,
+      userId: 0,
+      model: "sonar",
+      worker: "research",
+      inputTokens: usage?.prompt_tokens || 0,
+      outputTokens: usage?.completion_tokens || 0,
+      durationMs: Date.now() - startTime,
+      success: true,
     }).catch(() => {});
-    const content = response.choices[0]?.message?.content || "No results found.";
+    const content =
+      response.choices[0]?.message?.content || "No results found.";
     const words = content.split(" ");
     for (let i = 0; i < words.length; i += 3) {
       const chunk = words.slice(i, i + 3).join(" ") + " ";
-      res.write(`data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`
+      );
     }
   }
   res.write(`data: ${JSON.stringify({ type: "done" })}\n\n`);
@@ -1239,7 +1693,10 @@ async function streamPerplexity(
   res.end();
 }
 
-async function streamForgeFallback(res: Response, messages: Array<{ role: string; content: string }>) {
+async function streamForgeFallback(
+  res: Response,
+  messages: Array<{ role: string; content: string }>
+) {
   const startTime = Date.now();
   const result = await invokeLLM({
     model: CAPTAIN_FORGE_MODEL,
@@ -1249,9 +1706,13 @@ async function streamForgeFallback(res: Response, messages: Array<{ role: string
   });
   const usage = result.usage;
   logApiCall({
-    userId: 0, model: CAPTAIN_FORGE_MODEL, worker: "captain",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model: CAPTAIN_FORGE_MODEL,
+    worker: "captain",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   const text = typeof content === "string" ? content : JSON.stringify(content);
@@ -1285,20 +1746,22 @@ async function streamOpenRouterCollecting(
     },
   });
   const reasoning = getCaptainReasoning(model);
-  const stream = await openrouter.chat.completions.create({
+  const stream = (await openrouter.chat.completions.create({
     model,
     messages: messages as any,
     stream: true,
     max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
     ...(reasoning ? { reasoning } : {}),
-  } as any) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+  } as any)) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   let fullText = "";
   let totalTokens = { prompt: 0, completion: 0 };
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) {
       fullText += delta;
-      res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+      );
     }
     if ((chunk as any).usage) {
       totalTokens.prompt = (chunk as any).usage.prompt_tokens || 0;
@@ -1307,9 +1770,13 @@ async function streamOpenRouterCollecting(
     if (chunk.choices[0]?.finish_reason === "stop") break;
   }
   logApiCall({
-    userId: 0, model, worker: "captain",
-    inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model,
+    worker: "captain",
+    inputTokens: totalTokens.prompt,
+    outputTokens: totalTokens.completion,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   // Note: caller is responsible for writing done/end
   return fullText;
@@ -1321,21 +1788,23 @@ async function streamOpenAICollecting(
 ): Promise<string> {
   const startTime = Date.now();
   const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-  const stream = await openai.chat.completions.create({
+  const stream = (await openai.chat.completions.create({
     model: CAPTAIN_OPENAI_MODEL,
     messages: messages as any,
     stream: true,
     stream_options: { include_usage: true },
     max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
     reasoning_effort: "low",
-  } as any) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
+  } as any)) as unknown as AsyncIterable<OpenAI.Chat.Completions.ChatCompletionChunk>;
   let fullText = "";
   let totalTokens = { prompt: 0, completion: 0 };
   for await (const chunk of stream) {
     const delta = chunk.choices[0]?.delta?.content;
     if (delta) {
       fullText += delta;
-      res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+      );
     }
     if (chunk.usage) {
       totalTokens.prompt = chunk.usage.prompt_tokens || 0;
@@ -1344,9 +1813,13 @@ async function streamOpenAICollecting(
     if (chunk.choices[0]?.finish_reason === "stop") break;
   }
   logApiCall({
-    userId: 0, model: CAPTAIN_OPENAI_MODEL, worker: "captain",
-    inputTokens: totalTokens.prompt, outputTokens: totalTokens.completion,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model: CAPTAIN_OPENAI_MODEL,
+    worker: "captain",
+    inputTokens: totalTokens.prompt,
+    outputTokens: totalTokens.completion,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   return fullText;
 }
@@ -1359,10 +1832,16 @@ async function streamAnthropicCollecting(
 ): Promise<string> {
   const startTime = Date.now();
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const anthropicMessages: Array<{ role: "user" | "assistant"; content: string }> = [];
+  const anthropicMessages: Array<{
+    role: "user" | "assistant";
+    content: string;
+  }> = [];
   if (history && Array.isArray(history)) {
     for (const msg of history.slice(-10)) {
-      anthropicMessages.push({ role: msg.role as "user" | "assistant", content: msg.content });
+      anthropicMessages.push({
+        role: msg.role as "user" | "assistant",
+        content: msg.content,
+      });
     }
   }
   anthropicMessages.push({ role: "user", content: userMessage });
@@ -1375,9 +1854,14 @@ async function streamAnthropicCollecting(
   });
   let fullText = "";
   for await (const event of stream) {
-    if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+    if (
+      event.type === "content_block_delta" &&
+      event.delta.type === "text_delta"
+    ) {
       fullText += event.delta.text;
-      res.write(`data: ${JSON.stringify({ type: "token", content: event.delta.text })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: event.delta.text })}\n\n`
+      );
     }
   }
   const finalMessage = await stream.finalMessage();
@@ -1416,7 +1900,9 @@ async function streamPerplexityCollecting(
       const delta = chunk.choices[0]?.delta?.content;
       if (delta) {
         fullText += delta;
-        res.write(`data: ${JSON.stringify({ type: "token", content: delta })}\n\n`);
+        res.write(
+          `data: ${JSON.stringify({ type: "token", content: delta })}\n\n`
+        );
       }
       if (chunk.choices[0]?.finish_reason === "stop") break;
     }
@@ -1430,7 +1916,10 @@ async function streamPerplexityCollecting(
       success: true,
     }).catch(() => {});
   } catch (error: any) {
-    console.warn("[Perplexity Stream] Falling back to non-streaming:", error?.message);
+    console.warn(
+      "[Perplexity Stream] Falling back to non-streaming:",
+      error?.message
+    );
     const response = await perplexity.chat.completions.create({
       model: "sonar",
       messages: messages as any,
@@ -1441,7 +1930,9 @@ async function streamPerplexityCollecting(
     const words = fullText.split(" ");
     for (let i = 0; i < words.length; i += 3) {
       const chunk = words.slice(i, i + 3).join(" ") + " ";
-      res.write(`data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`);
+      res.write(
+        `data: ${JSON.stringify({ type: "token", content: chunk })}\n\n`
+      );
     }
     logApiCall({
       userId: 0,
@@ -1470,9 +1961,13 @@ async function streamForgeFallbackCollecting(
   });
   const usage = result.usage;
   logApiCall({
-    userId: 0, model: CAPTAIN_FORGE_MODEL, worker: "captain",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, success: true,
+    userId: 0,
+    model: CAPTAIN_FORGE_MODEL,
+    worker: "captain",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   const text = typeof content === "string" ? content : JSON.stringify(content);

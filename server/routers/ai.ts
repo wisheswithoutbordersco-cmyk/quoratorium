@@ -1,11 +1,10 @@
 /**
  * AI Orchestration Router
- * 
- * Captain: Routes tasks to appropriate external workers
- * Builder: OpenAI GPT-4o (code generation)
- * Validator: Anthropic Claude (code review & validation)
- * Research: Perplexity Sonar (research & intelligence)
- * 
+ *
+ * Captain routes work and Builder/Validator honor each user's validated model
+ * preferences. Research uses Perplexity when configured and the built-in proxy
+ * otherwise.
+ *
  * Each worker calls its respective external API directly.
  * Falls back to built-in Forge LLM if external keys are unavailable.
  */
@@ -30,6 +29,8 @@ import {
 import { getGlobalMemoryContext } from "../supabaseMemoryService";
 import { runToolLoop } from "../tools/index";
 import { CAPTAIN_OPENROUTER_MODEL } from "../assistantConfig";
+import { getUserSettings } from "./settings";
+import { canAffordRequest, calculateCost } from "../costService";
 
 // ─── Router ─────────────────────────────────────────────────────────────────
 
@@ -38,10 +39,12 @@ export const aiRouter = router({
    * Main chat endpoint — Captain routes to appropriate worker based on intent
    */
   chat: protectedProcedure
-    .input(z.object({
-      message: z.string().min(1),
-      projectId: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        message: z.string().min(1),
+        projectId: z.number().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
 
@@ -61,26 +64,35 @@ export const aiRouter = router({
       try {
         const globalMemory = await getGlobalMemoryContext(String(userId));
         if (globalMemory) {
-          messages.unshift({ role: "system", content: `User context from persistent memory:\n${globalMemory}` });
+          messages.unshift({
+            role: "system",
+            content: `User context from persistent memory:\n${globalMemory}`,
+          });
         }
       } catch {
         // Non-blocking: proceed without global memory
       }
 
       // Ensure current message is included
-      if (messages.length === 0 || messages[messages.length - 1].content !== input.message) {
+      if (
+        messages.length === 0 ||
+        messages[messages.length - 1].content !== input.message
+      ) {
         messages.push({ role: "user", content: input.message });
       }
 
       const assistantResult = await runToolLoop(
         messages,
         { userId: String(userId), projectId: input.projectId || null },
-        CAPTAIN_OPENROUTER_MODEL,
+        CAPTAIN_OPENROUTER_MODEL
       );
-      const response = assistantResult.response?.trim() || "I couldn't produce a useful response. Please try that again.";
-      const workerUsed = assistantResult.toolsUsed.length > 0
-        ? `Toríu · ${assistantResult.toolsUsed.join(", ")}`
-        : "Toríu";
+      const response =
+        assistantResult.response?.trim() ||
+        "I couldn't produce a useful response. Please try that again.";
+      const workerUsed =
+        assistantResult.toolsUsed.length > 0
+          ? `Toríu · ${assistantResult.toolsUsed.join(", ")}`
+          : "Toríu";
 
       // Save assistant response
       // Conversation persistence handled by frontend ConversationPanel
@@ -109,15 +121,33 @@ export const aiRouter = router({
    * Captain plans → Builder generates (OpenAI) → Validator reviews (Anthropic)
    */
   build: protectedProcedure
-    .input(z.object({
-      projectId: z.number(),
-      task: z.string().min(1),
-      context: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.number(),
+        task: z.string().min(1),
+        context: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
       const project = await getProject(input.projectId, userId);
       if (!project) throw new Error("Project not found");
+      const settings = await getUserSettings(userId);
+      const temperature = Number(settings["ai.temperature"]);
+      const maxTokens = Number(settings["ai.maxTokens"]);
+      const builderModel = settings["ai.defaultBuilderModel"];
+      const validatorModel = settings["ai.defaultValidatorModel"];
+      const preferences = {
+        temperature: Number.isFinite(temperature) ? temperature : 0.7,
+        maxTokens: Number.isInteger(maxTokens) ? maxTokens : 4096,
+      };
+      const estimatedCost =
+        calculateCost(builderModel, 2_000, preferences.maxTokens) +
+        calculateCost(validatorModel, 2_000, preferences.maxTokens);
+      const affordability = await canAffordRequest(userId, estimatedCost);
+      if (!affordability.allowed) {
+        throw new Error(`Budget limit reached: ${affordability.reason}`);
+      }
 
       // Phase 1: Captain analyzes and creates plan (OpenAI GPT-4o)
       await addOrchestrationEvent({
@@ -151,17 +181,23 @@ export const aiRouter = router({
         user_id: userId,
         project_id: input.projectId,
         event_type: "builder_start",
-        agent_name: "Builder (OpenAI GPT-4o)",
+        agent_name: `Builder (${builderModel})`,
         summary: `Generating code: ${input.task.slice(0, 100)}`,
       });
 
-      const builderOutput = await callBuilder(input.task, input.context || project.description || "");
+      const builderOutput = await callBuilder(
+        input.task,
+        input.context || project.description || "",
+        userId,
+        input.projectId,
+        { ...preferences, model: builderModel }
+      );
 
       await addOrchestrationEvent({
         user_id: userId,
         project_id: input.projectId,
         event_type: "builder_complete",
-        agent_name: "Builder (OpenAI GPT-4o)",
+        agent_name: `Builder (${builderModel})`,
         summary: "Code generation complete",
       });
 
@@ -185,17 +221,23 @@ export const aiRouter = router({
         user_id: userId,
         project_id: input.projectId,
         event_type: "validator_start",
-        agent_name: "Validator (Anthropic Claude)",
+        agent_name: `Validator (${validatorModel})`,
         summary: "Reviewing generated output for quality",
       });
 
-      const validationResult = await callValidator(builderOutput, input.task);
+      const validationResult = await callValidator(
+        builderOutput,
+        input.task,
+        userId,
+        input.projectId,
+        { ...preferences, model: validatorModel }
+      );
 
       await addOrchestrationEvent({
         user_id: userId,
         project_id: input.projectId,
         event_type: "validator_complete",
-        agent_name: "Validator (Anthropic Claude)",
+        agent_name: `Validator (${validatorModel})`,
         summary: validationResult.slice(0, 200),
       });
 
@@ -222,9 +264,9 @@ export const aiRouter = router({
         validation: validationResult,
         builderOutput,
         workersUsed: {
-          captain: "OpenAI GPT-4o",
-          builder: "OpenAI GPT-4o",
-          validator: "Anthropic Claude",
+          captain: CAPTAIN_OPENROUTER_MODEL,
+          builder: builderModel,
+          validator: validatorModel,
         },
       };
     }),
@@ -233,10 +275,12 @@ export const aiRouter = router({
    * Research endpoint — direct call to Perplexity Sonar
    */
   research: protectedProcedure
-    .input(z.object({
-      query: z.string().min(1),
-      projectId: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        query: z.string().min(1),
+        projectId: z.number().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
 
@@ -272,37 +316,70 @@ export const aiRouter = router({
    * Get conversation history
    */
   getHistory: protectedProcedure
-    .input(z.object({
-      projectId: z.number().optional(),
-      limit: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.number().optional(),
+        limit: z.number().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
-      return getConversationHistory(ctx.user.id, input.projectId, input.limit || 50);
+      return getConversationHistory(
+        ctx.user.id,
+        input.projectId,
+        input.limit || 50
+      );
     }),
 
   /**
    * Get orchestration events for a project
    */
   getOrchestrationEvents: protectedProcedure
-    .input(z.object({
-      projectId: z.number(),
-      limit: z.number().optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.number(),
+        limit: z.number().optional(),
+      })
+    )
     .query(async ({ ctx, input }) => {
       const { getProjectOrchestrationEvents } = await import("../db");
-      return getProjectOrchestrationEvents(input.projectId, ctx.user.id, input.limit || 30);
+      return getProjectOrchestrationEvents(
+        input.projectId,
+        ctx.user.id,
+        input.limit || 30
+      );
     }),
 
   /**
    * Health check — verify which external APIs are available
    */
-  status: protectedProcedure.query(async () => {
+  status: protectedProcedure.query(async ({ ctx }) => {
+    const settings = await getUserSettings(ctx.user.id);
+    const forgeAvailable = Boolean(
+      process.env.BUILT_IN_FORGE_API_URL && process.env.BUILT_IN_FORGE_API_KEY
+    );
+    const openAiAvailable = Boolean(process.env.OPENAI_API_KEY);
+    const researchAvailable =
+      Boolean(process.env.SONAR_API_KEY) || forgeAvailable;
     return {
-      captain: { provider: "OpenAI GPT-4o", available: !!process.env.OPENAI_API_KEY },
-      builder: { provider: "OpenAI GPT-4o", available: !!process.env.OPENAI_API_KEY },
-      validator: { provider: "Anthropic Claude", available: !!process.env.ANTHROPIC_API_KEY },
-      research: { provider: "Perplexity Sonar", available: !!process.env.SONAR_API_KEY },
-      fallback: { provider: "Forge LLM (Gemini 2.5 Flash)", available: true },
+      captain: {
+        provider: openAiAvailable ? "OpenAI" : "Manus built-in LLM",
+        available: openAiAvailable || forgeAvailable,
+      },
+      builder: {
+        provider: settings["ai.defaultBuilderModel"],
+        available: forgeAvailable,
+      },
+      validator: {
+        provider: settings["ai.defaultValidatorModel"],
+        available: forgeAvailable,
+      },
+      research: {
+        provider: process.env.SONAR_API_KEY
+          ? "Perplexity Sonar"
+          : "Manus built-in LLM",
+        available: researchAvailable,
+      },
+      fallback: { provider: "Manus built-in LLM", available: forgeAvailable },
     };
   }),
 });
@@ -315,7 +392,12 @@ function extractFilesFromMarkdown(markdown: string): Array<{
   content: string;
   language: string;
 }> {
-  const files: Array<{ filename: string; filepath: string; content: string; language: string }> = [];
+  const files: Array<{
+    filename: string;
+    filepath: string;
+    content: string;
+    language: string;
+  }> = [];
   // Match code blocks with language and optional file path comment
   const codeBlockRegex = /```(\w+)(?:\s*\/\/\s*(.+?)\s*)?[\r\n]([\s\S]*?)```/g;
   let match;
@@ -334,9 +416,18 @@ function extractFilesFromMarkdown(markdown: string): Array<{
 
 function getExtension(language: string): string {
   const map: Record<string, string> = {
-    typescript: "ts", tsx: "tsx", javascript: "js", jsx: "jsx",
-    html: "html", css: "css", json: "json", python: "py",
-    markdown: "md", yaml: "yml", sql: "sql", bash: "sh",
+    typescript: "ts",
+    tsx: "tsx",
+    javascript: "js",
+    jsx: "jsx",
+    html: "html",
+    css: "css",
+    json: "json",
+    python: "py",
+    markdown: "md",
+    yaml: "yml",
+    sql: "sql",
+    bash: "sh",
   };
   return map[language] || language;
 }

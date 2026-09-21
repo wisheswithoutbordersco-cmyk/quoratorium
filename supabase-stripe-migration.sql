@@ -59,6 +59,53 @@ CREATE TABLE IF NOT EXISTS credit_transactions (
 
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_user_id ON credit_transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_credit_transactions_created_at ON credit_transactions(created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_credit_transactions_stripe_payment_unique
+  ON credit_transactions(stripe_payment_intent_id)
+  WHERE stripe_payment_intent_id IS NOT NULL;
+
+-- Stripe retries webhook delivery. Claim the payment reference and update the
+-- balance in one database transaction so credits can only be granted once.
+CREATE OR REPLACE FUNCTION fulfill_credit_topup(
+  p_user_id INTEGER,
+  p_credits INTEGER,
+  p_source TEXT,
+  p_payment_reference TEXT
+) RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+DECLARE
+  inserted_transaction_id INTEGER;
+BEGIN
+  IF p_credits <= 0 OR p_payment_reference IS NULL OR length(trim(p_payment_reference)) = 0 THEN
+    RAISE EXCEPTION 'Invalid credit top-up parameters';
+  END IF;
+
+  INSERT INTO credit_transactions (
+    user_id, amount, type, reason, stripe_payment_intent_id, created_at
+  ) VALUES (
+    p_user_id, p_credits, 'topup', p_source, p_payment_reference, now()
+  )
+  ON CONFLICT (stripe_payment_intent_id) WHERE stripe_payment_intent_id IS NOT NULL DO NOTHING
+  RETURNING id INTO inserted_transaction_id;
+
+  IF inserted_transaction_id IS NULL THEN
+    RETURN FALSE;
+  END IF;
+
+  INSERT INTO credit_balances (user_id, bonus_credits, created_at, updated_at)
+  VALUES (p_user_id, p_credits, now(), now())
+  ON CONFLICT (user_id) DO UPDATE
+    SET bonus_credits = credit_balances.bonus_credits + EXCLUDED.bonus_credits,
+        updated_at = now();
+
+  RETURN TRUE;
+END;
+$$;
+
+REVOKE ALL ON FUNCTION fulfill_credit_topup(INTEGER, INTEGER, TEXT, TEXT) FROM PUBLIC;
+GRANT EXECUTE ON FUNCTION fulfill_credit_topup(INTEGER, INTEGER, TEXT, TEXT) TO service_role;
 
 -- ============================================================================
 -- ROW LEVEL SECURITY

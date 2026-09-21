@@ -1,6 +1,12 @@
 import { z } from "zod";
 import { notifyOwner } from "./notification";
-import { adminProcedure, publicProcedure, protectedProcedure, router } from "./trpc";
+import {
+  adminProcedure,
+  publicProcedure,
+  protectedProcedure,
+  router,
+} from "./trpc";
+import { getSystemHealth } from "../observability";
 
 export const systemRouter = router({
   /** Returns whether the current session is the platform owner (unlimited credits) */
@@ -14,9 +20,7 @@ export const systemRouter = router({
         timestamp: z.number().min(0, "timestamp cannot be negative"),
       })
     )
-    .query(() => ({
-      ok: true,
-    })),
+    .query(async () => getSystemHealth()),
 
   notifyOwner: adminProcedure
     .input(

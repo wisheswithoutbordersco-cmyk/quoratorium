@@ -26,7 +26,11 @@ function encrypt(text: string): string {
 function decrypt(encryptedText: string): string {
   const [ivHex, encrypted] = encryptedText.split(":");
   const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv("aes-256-cbc", getEncryptionKey(), iv);
+  const decipher = crypto.createDecipheriv(
+    "aes-256-cbc",
+    getEncryptionKey(),
+    iv
+  );
   let decrypted = decipher.update(encrypted, "hex", "utf8");
   decrypted += decipher.final("utf8");
   return decrypted;
@@ -34,8 +38,14 @@ function decrypt(encryptedText: string): string {
 
 // ─── GitHub API Helpers ───────────────────────────────────────────────────────
 
-async function githubFetch(token: string, endpoint: string, options: RequestInit = {}): Promise<any> {
-  const url = endpoint.startsWith("http") ? endpoint : `https://api.github.com${endpoint}`;
+async function githubFetch(
+  token: string,
+  endpoint: string,
+  options: RequestInit = {}
+): Promise<any> {
+  const url = endpoint.startsWith("http")
+    ? endpoint
+    : `https://api.github.com${endpoint}`;
   const res = await fetch(url, {
     ...options,
     headers: {
@@ -55,7 +65,10 @@ async function githubFetch(token: string, endpoint: string, options: RequestInit
 
 // ─── Connection Management ────────────────────────────────────────────────────
 
-export async function connectGitHub(userId: number, token: string): Promise<{ username: string }> {
+export async function connectGitHub(
+  userId: number,
+  token: string
+): Promise<{ username: string }> {
   const user = await githubFetch(token, "/user");
   const username = user.login;
 
@@ -69,7 +82,8 @@ export async function connectGitHub(userId: number, token: string): Promise<{ us
     .limit(1);
 
   if (existing && existing.length > 0) {
-    await db.from("github_connections")
+    await db
+      .from("github_connections")
       .update({ token_encrypted: encrypt(token), username })
       .eq("user_id", userId);
   } else {
@@ -105,11 +119,11 @@ export async function getGitHubConnection(userId: number) {
 async function getUserToken(userId: number): Promise<string> {
   const conn = await getGitHubConnection(userId);
   if (conn) return decrypt(conn.token_encrypted);
-  
+
   // Fallback: use system GitHub token from environment (owner's PAT)
   const systemToken = process.env.GITHUB_TOKEN;
   if (systemToken) return systemToken;
-  
+
   throw new Error("GitHub not connected. Please add your token in Settings.");
 }
 
@@ -127,11 +141,36 @@ export async function getSystemGitHubUsername(): Promise<string | null> {
   }
 }
 
+export async function getSystemGitHubDefaults(
+  userId: number
+): Promise<{ defaultRepo: string | null; defaultBranch: string }> {
+  const db = getDb();
+  if (!db) return { defaultRepo: null, defaultBranch: "main" };
+
+  const { data } = await db
+    .from("user_settings")
+    .select("key, value")
+    .eq("user_id", userId)
+    .in("key", ["github.defaultRepo", "github.defaultBranch"]);
+
+  const settings = Object.fromEntries(
+    (data || []).map(row => [row.key, row.value || ""])
+  );
+
+  return {
+    defaultRepo: settings["github.defaultRepo"] || null,
+    defaultBranch: settings["github.defaultBranch"] || "main",
+  };
+}
+
 // ─── Repository Operations ────────────────────────────────────────────────────
 
 export async function listRepos(userId: number): Promise<any[]> {
   const token = await getUserToken(userId);
-  const repos = await githubFetch(token, "/user/repos?sort=updated&per_page=30");
+  const repos = await githubFetch(
+    token,
+    "/user/repos?sort=updated&per_page=30"
+  );
   return repos.map((r: any) => ({
     id: r.id,
     name: r.name,
@@ -147,7 +186,12 @@ export async function listRepos(userId: number): Promise<any[]> {
   }));
 }
 
-export async function createRepo(userId: number, name: string, description?: string, isPrivate = true): Promise<any> {
+export async function createRepo(
+  userId: number,
+  name: string,
+  description?: string,
+  isPrivate = true
+): Promise<any> {
   const token = await getUserToken(userId);
   const repo = await githubFetch(token, "/user/repos", {
     method: "POST",
@@ -167,7 +211,11 @@ export async function createRepo(userId: number, name: string, description?: str
   };
 }
 
-export async function getCommits(userId: number, repo: string, branch?: string): Promise<any[]> {
+export async function getCommits(
+  userId: number,
+  repo: string,
+  branch?: string
+): Promise<any[]> {
   const token = await getUserToken(userId);
   const endpoint = `/repos/${repo}/commits?per_page=20${branch ? `&sha=${branch}` : ""}`;
   const commits = await githubFetch(token, endpoint);
@@ -181,7 +229,10 @@ export async function getCommits(userId: number, repo: string, branch?: string):
   }));
 }
 
-export async function listBranches(userId: number, repo: string): Promise<any[]> {
+export async function listBranches(
+  userId: number,
+  repo: string
+): Promise<any[]> {
   const token = await getUserToken(userId);
   const branches = await githubFetch(token, `/repos/${repo}/branches`);
   return branches.map((b: any) => ({
@@ -191,10 +242,18 @@ export async function listBranches(userId: number, repo: string): Promise<any[]>
   }));
 }
 
-export async function createBranch(userId: number, repo: string, branchName: string, fromBranch?: string): Promise<any> {
+export async function createBranch(
+  userId: number,
+  repo: string,
+  branchName: string,
+  fromBranch?: string
+): Promise<any> {
   const token = await getUserToken(userId);
   const source = fromBranch || "main";
-  const ref = await githubFetch(token, `/repos/${repo}/git/ref/heads/${source}`);
+  const ref = await githubFetch(
+    token,
+    `/repos/${repo}/git/ref/heads/${source}`
+  );
   const sha = ref.object.sha;
 
   await githubFetch(token, `/repos/${repo}/git/refs`, {
@@ -218,14 +277,20 @@ export async function pushFiles(
 ): Promise<{ commitSha: string; url: string }> {
   const token = await getUserToken(userId);
 
-  const refData = await githubFetch(token, `/repos/${repo}/git/ref/heads/${branch}`);
+  const refData = await githubFetch(
+    token,
+    `/repos/${repo}/git/ref/heads/${branch}`
+  );
   const latestCommitSha = refData.object.sha;
 
-  const commitData = await githubFetch(token, `/repos/${repo}/git/commits/${latestCommitSha}`);
+  const commitData = await githubFetch(
+    token,
+    `/repos/${repo}/git/commits/${latestCommitSha}`
+  );
   const baseTreeSha = commitData.tree.sha;
 
   const treeItems = await Promise.all(
-    files.map(async (file) => {
+    files.map(async file => {
       const blob = await githubFetch(token, `/repos/${repo}/git/blobs`, {
         method: "POST",
         body: JSON.stringify({
@@ -272,14 +337,27 @@ export async function pushFiles(
 
 // ─── Pull Code ────────────────────────────────────────────────────────────────
 
-export async function pullFiles(userId: number, repo: string, branch = "main"): Promise<{ path: string; content: string }[]> {
+export async function pullFiles(
+  userId: number,
+  repo: string,
+  branch = "main"
+): Promise<{ path: string; content: string }[]> {
   const token = await getUserToken(userId);
 
-  const refData = await githubFetch(token, `/repos/${repo}/git/ref/heads/${branch}`);
+  const refData = await githubFetch(
+    token,
+    `/repos/${repo}/git/ref/heads/${branch}`
+  );
   const commitSha = refData.object.sha;
-  const commitData = await githubFetch(token, `/repos/${repo}/git/commits/${commitSha}`);
+  const commitData = await githubFetch(
+    token,
+    `/repos/${repo}/git/commits/${commitSha}`
+  );
   const treeSha = commitData.tree.sha;
-  const tree = await githubFetch(token, `/repos/${repo}/git/trees/${treeSha}?recursive=1`);
+  const tree = await githubFetch(
+    token,
+    `/repos/${repo}/git/trees/${treeSha}?recursive=1`
+  );
 
   const files: { path: string; content: string }[] = [];
   const fileItems = tree.tree.filter(
@@ -294,7 +372,10 @@ export async function pullFiles(userId: number, repo: string, branch = "main"): 
   const toFetch = fileItems.slice(0, 50);
   for (const item of toFetch) {
     try {
-      const blob = await githubFetch(token, `/repos/${repo}/git/blobs/${item.sha}`);
+      const blob = await githubFetch(
+        token,
+        `/repos/${repo}/git/blobs/${item.sha}`
+      );
       const content = Buffer.from(blob.content, "base64").toString("utf8");
       files.push({ path: item.path, content });
     } catch {
@@ -307,13 +388,42 @@ export async function pullFiles(userId: number, repo: string, branch = "main"): 
 
 // ─── Update Default Repo/Branch ───────────────────────────────────────────────
 
-export async function updateDefaults(userId: number, defaultRepo?: string, defaultBranch?: string): Promise<boolean> {
+export async function updateDefaults(
+  userId: number,
+  defaultRepo?: string,
+  defaultBranch?: string
+): Promise<boolean> {
   const db = getDb();
   if (!db) return false;
   const updates: any = {};
   if (defaultRepo !== undefined) updates.default_repo = defaultRepo;
   if (defaultBranch !== undefined) updates.default_branch = defaultBranch;
   if (Object.keys(updates).length === 0) return false;
-  await db.from("github_connections").update(updates).eq("user_id", userId);
+
+  const connection = await getGitHubConnection(userId);
+  if (connection) {
+    const { error } = await db
+      .from("github_connections")
+      .update(updates)
+      .eq("user_id", userId);
+    if (error)
+      throw new Error(`Failed to save GitHub defaults: ${error.message}`);
+    return true;
+  }
+
+  if (!process.env.GITHUB_TOKEN) return false;
+
+  const rows = Object.entries({
+    ...(defaultRepo !== undefined ? { "github.defaultRepo": defaultRepo } : {}),
+    ...(defaultBranch !== undefined
+      ? { "github.defaultBranch": defaultBranch }
+      : {}),
+  }).map(([key, value]) => ({ user_id: userId, key, value }));
+
+  const { error } = await db
+    .from("user_settings")
+    .upsert(rows, { onConflict: "user_id,key" });
+  if (error)
+    throw new Error(`Failed to save GitHub defaults: ${error.message}`);
   return true;
 }

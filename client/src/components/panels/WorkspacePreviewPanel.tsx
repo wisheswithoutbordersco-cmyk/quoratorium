@@ -1,6 +1,6 @@
 /**
  * Workspace Preview Panel — Live preview iframe for generated code
- * 
+ *
  * Renders HTML/CSS/JS in a sandboxed iframe using srcdoc.
  * Hyper-black glass aesthetic with subtle dark gray borders.
  */
@@ -19,7 +19,9 @@ import {
   Minimize2,
   RefreshCw,
 } from "lucide-react";
-import { useUIStore } from "@/stores";
+import { DeployModal } from "@/components/DeployModal";
+import { trpc } from "@/lib/trpc";
+import { useProjectStore, useUIStore } from "@/stores";
 
 type Viewport = "desktop" | "tablet" | "mobile";
 
@@ -28,6 +30,14 @@ const VIEWPORT_SIZES: Record<Viewport, { width: string; label: string }> = {
   tablet: { width: "768px", label: "Tablet" },
   mobile: { width: "375px", label: "Mobile" },
 };
+
+function persistedProjectId(id: string | undefined): number | undefined {
+  if (!id || !/^\d+$/.test(id)) return undefined;
+  const projectId = Number(id);
+  return Number.isSafeInteger(projectId) && projectId > 0
+    ? projectId
+    : undefined;
+}
 
 /**
  * Wraps raw code in a full HTML document for iframe rendering.
@@ -66,7 +76,12 @@ function buildSrcdoc(code: string): string {
   }
 
   // Contains React/TSX component code — render as code display
-  if (code.includes("export") || code.includes("import") || code.includes("function") || code.includes("const")) {
+  if (
+    code.includes("export") ||
+    code.includes("import") ||
+    code.includes("function") ||
+    code.includes("const")
+  ) {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -102,12 +117,30 @@ function buildSrcdoc(code: string): string {
 
 export function WorkspacePreviewPanel() {
   const { previewCode, previewFileName, closePreview } = useUIStore();
+  const { activeProject } = useProjectStore();
   const [viewport, setViewport] = useState<Viewport>("desktop");
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [showDeployModal, setShowDeployModal] = useState(false);
   const [srcdoc, setSrcdoc] = useState("");
   const [refreshKey, setRefreshKey] = useState(0);
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const projectId = persistedProjectId(activeProject?.id);
+  const { data: savedFiles, isLoading: isCheckingSavedFiles } =
+    trpc.projects.getFiles.useQuery(
+      { projectId: projectId ?? 0 },
+      { enabled: projectId !== undefined }
+    );
+  const hasSavedFiles =
+    savedFiles?.some(
+      file => typeof file.content === "string" && file.content.trim().length > 0
+    ) ?? false;
+  const canDeploySavedProject = projectId !== undefined && hasSavedFiles;
+  const deployTitle = isCheckingSavedFiles
+    ? "Checking saved project files"
+    : canDeploySavedProject
+      ? "Deploy saved project files"
+      : "Save this project’s files before deployment";
 
   // Debounced update — prevents excessive iframe reloads during streaming
   useEffect(() => {
@@ -132,7 +165,7 @@ export function WorkspacePreviewPanel() {
     setTimeout(() => URL.revokeObjectURL(url), 2000);
   }, [srcdoc]);
 
-  const handleRefresh = () => setRefreshKey((k) => k + 1);
+  const handleRefresh = () => setRefreshKey(k => k + 1);
 
   if (!previewCode) return null;
 
@@ -208,7 +241,7 @@ export function WorkspacePreviewPanel() {
 
         {/* Viewport toggles */}
         <div className="flex items-center gap-0.5 bg-white/[0.02] border border-white/5 rounded-sm p-0.5">
-          {(["desktop", "tablet", "mobile"] as Viewport[]).map((vp) => (
+          {(["desktop", "tablet", "mobile"] as Viewport[]).map(vp => (
             <button
               key={vp}
               onClick={() => setViewport(vp)}
@@ -229,12 +262,13 @@ export function WorkspacePreviewPanel() {
         {/* Actions */}
         <div className="flex items-center gap-1">
           <button
-            onClick={() => {}}
-            className="flex items-center gap-1 px-2 py-1 rounded-sm bg-white/[0.03] border border-white/5 text-white/30 hover:text-white/60 hover:border-white/10 transition-all"
-            title="Deploy (coming soon)"
+            onClick={() => setShowDeployModal(true)}
+            disabled={!canDeploySavedProject}
+            className="flex items-center gap-1 px-2 py-1 rounded-sm bg-white/[0.03] border border-white/5 text-white/30 enabled:hover:text-white/60 enabled:hover:border-white/10 transition-all disabled:cursor-not-allowed disabled:opacity-50"
+            title={deployTitle}
           >
             <Rocket size={10} />
-            <span className="text-[9px] font-medium">Deploy</span>
+            <span className="text-[9px] font-medium">Deploy saved project</span>
           </button>
           <button
             onClick={handleRefresh}
@@ -288,6 +322,14 @@ export function WorkspacePreviewPanel() {
           />
         </div>
       </div>
+
+      {showDeployModal && projectId !== undefined && activeProject && (
+        <DeployModal
+          projectId={projectId}
+          projectName={activeProject.name}
+          onClose={() => setShowDeployModal(false)}
+        />
+      )}
     </div>
   );
 }

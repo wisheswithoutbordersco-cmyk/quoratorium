@@ -5,7 +5,16 @@
 import { useState } from "react";
 import { DeployModal } from "@/components/DeployModal";
 import { motion, AnimatePresence } from "framer-motion";
-import { Plus, FolderKanban, Clock, CheckCircle2, Loader2, FolderOpen, Play, Rocket } from "lucide-react";
+import {
+  Plus,
+  FolderKanban,
+  Clock,
+  CheckCircle2,
+  Loader2,
+  FolderOpen,
+  Play,
+  Rocket,
+} from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { trpc } from "@/lib/trpc";
 import { useProjectStore } from "@/stores";
@@ -14,12 +23,36 @@ import { duration, ease } from "@/lib/motion";
 import { toast } from "sonner";
 
 const PROJECT_TYPES = [
-  { value: "website", label: "Website", description: "Landing pages, portfolios, marketing sites" },
-  { value: "app", label: "Web App", description: "Interactive applications, dashboards" },
-  { value: "api", label: "API", description: "Backend services, REST/GraphQL endpoints" },
-  { value: "dashboard", label: "Dashboard", description: "Analytics, monitoring, data viz" },
-  { value: "automation", label: "Automation", description: "Workflows, integrations, bots" },
-  { value: "document", label: "Document", description: "Reports, specs, documentation" },
+  {
+    value: "website",
+    label: "Website",
+    description: "Landing pages, portfolios, marketing sites",
+  },
+  {
+    value: "app",
+    label: "Web App",
+    description: "Interactive applications, dashboards",
+  },
+  {
+    value: "api",
+    label: "API",
+    description: "Backend services, REST/GraphQL endpoints",
+  },
+  {
+    value: "dashboard",
+    label: "Dashboard",
+    description: "Analytics, monitoring, data viz",
+  },
+  {
+    value: "automation",
+    label: "Automation",
+    description: "Workflows, integrations, bots",
+  },
+  {
+    value: "document",
+    label: "Document",
+    description: "Reports, specs, documentation",
+  },
   { value: "other", label: "Other", description: "Custom project type" },
 ] as const;
 
@@ -28,64 +61,95 @@ export default function Projects() {
   const { setActiveProject } = useProjectStore();
   const [showWizard, setShowWizard] = useState(false);
   const [wizardStep, setWizardStep] = useState(1);
-  const [newProject, setNewProject] = useState({ name: "", description: "", projectType: "website" as string });
-  const [buildingProjectId, setBuildingProjectId] = useState<number | null>(null);
+  const [newProject, setNewProject] = useState({
+    name: "",
+    description: "",
+    projectType: "website" as string,
+  });
+  const [buildingProjectId, setBuildingProjectId] = useState<number | null>(
+    null
+  );
   const [buildProgress, setBuildProgress] = useState("");
-  const [deployModalProject, setDeployModalProject] = useState<{ id: number; name: string } | null>(null);
+  const [deployModalProject, setDeployModalProject] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const { data: projects, isLoading } = trpc.projects.list.useQuery();
   const utils = trpc.useUtils();
 
-  const createProject = trpc.projects.create.useMutation({
-    onSuccess: (result) => {
-      toast.success("Project created! Starting build pipeline...");
-      setShowWizard(false);
-      setWizardStep(1);
-      utils.projects.list.invalidate();
-      // Auto-trigger build if description provided
-      if (newProject.description.trim()) {
-        triggerBuild(result.id);
-      }
-      setNewProject({ name: "", description: "", projectType: "website" });
-    },
-    onError: (error) => {
-      toast.error("Failed: " + error.message);
-    },
-  });
+  const createProject = trpc.projects.create.useMutation();
+  const buildProject = trpc.ai.build.useMutation();
 
-  const buildProject = trpc.ai.build.useMutation({
-    onSuccess: (result) => {
-      toast.success("Build complete! " + result.filesGenerated + " files generated");
-      setBuildingProjectId(null);
-      setBuildProgress("");
-      utils.projects.list.invalidate();
-    },
-    onError: (error) => {
-      toast.error("Build failed: " + error.message);
-      setBuildingProjectId(null);
-      setBuildProgress("");
-    },
-  });
-
-  const triggerBuild = (projectId: number) => {
-    setBuildingProjectId(projectId);
-    setBuildProgress("Toríu is analyzing your project...");
-    buildProject.mutate({
-      projectId,
-      task: newProject.description || "Build a " + newProject.projectType + " project called " + newProject.name,
-    });
+  const buildTaskForProject = (project: {
+    name: string;
+    description?: string | null;
+    project_type?: string | null;
+  }) => {
+    const description = project.description?.trim();
+    return (
+      description ||
+      `Build a ${project.project_type || "project"} named ${project.name}.`
+    );
   };
 
-  const handleCreateProject = () => {
+  const triggerBuild = async (project: {
+    id: number;
+    name: string;
+    description?: string | null;
+    project_type?: string | null;
+  }) => {
+    setBuildingProjectId(project.id);
+    setBuildProgress("Build pipeline is running…");
+
+    try {
+      const result = await buildProject.mutateAsync({
+        projectId: project.id,
+        // Always derive a rebuild task from the saved project, not the current
+        // create-wizard draft (which may have already been reset).
+        task: buildTaskForProject(project),
+      });
+      toast.success(
+        `Build complete — ${result.filesGenerated} ${result.filesGenerated === 1 ? "file" : "files"} generated`
+      );
+      await utils.projects.list.invalidate();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Build failed: ${message}`);
+    } finally {
+      setBuildingProjectId(null);
+      setBuildProgress("");
+    }
+  };
+
+  const handleCreateProject = async () => {
     if (!newProject.name.trim()) {
       toast.error("Project name is required");
       return;
     }
-    createProject.mutate({
-      name: newProject.name.trim(),
-      description: newProject.description.trim() || undefined,
-      projectType: newProject.projectType as any,
-    });
+
+    const brief = newProject.description.trim();
+    if (!brief) {
+      toast.error("A build brief is required to Create & Build");
+      return;
+    }
+
+    try {
+      const created = await createProject.mutateAsync({
+        name: newProject.name.trim(),
+        description: brief,
+        projectType: newProject.projectType as any,
+      });
+      setShowWizard(false);
+      setWizardStep(1);
+      setNewProject({ name: "", description: "", projectType: "website" });
+      await utils.projects.list.invalidate();
+      toast.success("Project created. Starting its build pipeline…");
+      void triggerBuild(created);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Unknown error";
+      toast.error(`Could not create project: ${message}`);
+    }
   };
 
   const handleSelectProject = (project: any) => {
@@ -109,9 +173,12 @@ export default function Projects() {
         <div className="max-w-5xl mx-auto px-6 py-8">
           <div className="flex items-center justify-between mb-8">
             <div>
-              <h1 className="font-display text-xl text-foreground tracking-tight">Projects</h1>
+              <h1 className="font-display text-xl text-foreground tracking-tight">
+                Projects
+              </h1>
               <p className="text-[11px] text-muted-foreground/50 mt-1">
-                {projects?.length || 0} project{(projects?.length || 0) !== 1 ? "s" : ""}
+                {projects?.length || 0} project
+                {(projects?.length || 0) !== 1 ? "s" : ""}
               </p>
             </div>
             <motion.button
@@ -146,8 +213,12 @@ export default function Projects() {
                         <FolderKanban size={16} className="text-primary/70" />
                       </div>
                       <div>
-                        <h3 className="text-[13px] font-medium text-foreground">{project.name}</h3>
-                        <p className="text-[11px] text-muted-foreground/50 mt-0.5 line-clamp-1">{project.description}</p>
+                        <h3 className="text-[13px] font-medium text-foreground">
+                          {project.name}
+                        </h3>
+                        <p className="text-[11px] text-muted-foreground/50 mt-0.5 line-clamp-1">
+                          {project.description}
+                        </p>
                         <div className="flex items-center gap-3 mt-2">
                           <StatusBadge status={project.status} />
                           <span className="text-[9px] font-mono text-muted-foreground/30">
@@ -163,9 +234,16 @@ export default function Projects() {
 
                     <div className="flex items-center gap-2">
                       {/* Deploy button for completed projects */}
-                      {(project.status === "completed" || project.current_phase > 1) && (
+                      {(project.status === "completed" ||
+                        project.current_phase > 1) && (
                         <motion.button
-                          onClick={(e) => { e.stopPropagation(); setDeployModalProject({ id: project.id, name: project.name }); }}
+                          onClick={e => {
+                            e.stopPropagation();
+                            setDeployModalProject({
+                              id: project.id,
+                              name: project.name,
+                            });
+                          }}
                           className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 text-[10px] font-medium hover:bg-orange-500/20 transition-colors"
                           whileTap={{ scale: 0.95 }}
                         >
@@ -174,35 +252,44 @@ export default function Projects() {
                         </motion.button>
                       )}
                       {/* Build button for projects that haven't been built yet */}
-                      {project.status === "active" && project.current_phase <= 1 && (
-                        <motion.button
-                          onClick={(e) => { e.stopPropagation(); triggerBuild(project.id); }}
-                          disabled={buildingProjectId === project.id}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
-                          whileTap={{ scale: 0.95 }}
-                        >
-                          {buildingProjectId === project.id ? (
-                            <Loader2 size={10} className="animate-spin" />
-                          ) : (
-                            <Play size={10} />
-                          )}
-                          Build
-                        </motion.button>
-                      )}
+                      {project.status === "active" &&
+                        project.current_phase <= 1 && (
+                          <motion.button
+                            onClick={e => {
+                              e.stopPropagation();
+                              void triggerBuild(project);
+                            }}
+                            disabled={buildingProjectId === project.id}
+                            className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 text-[10px] font-medium hover:bg-emerald-500/20 transition-colors disabled:opacity-50"
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            {buildingProjectId === project.id ? (
+                              <Loader2 size={10} className="animate-spin" />
+                            ) : (
+                              <Play size={10} />
+                            )}
+                            Build
+                          </motion.button>
+                        )}
                       {/* Phase mini-bar */}
                       <div className="flex gap-[1.5px] h-3">
-                        {Array.from({ length: Math.min(project.total_phases || 16, 16) }, (_, i) => (
-                          <div
-                            key={i}
-                            className="w-[3px] rounded-full"
-                            style={{
-                              backgroundColor:
-                                i < (project.current_phase || 0)
-                                  ? project.status === "completed" ? "#10B981" : "#d86618"
-                                  : "rgba(255,255,255,0.08)",
-                            }}
-                          />
-                        ))}
+                        {Array.from(
+                          { length: Math.min(project.total_phases || 16, 16) },
+                          (_, i) => (
+                            <div
+                              key={i}
+                              className="w-[3px] rounded-full"
+                              style={{
+                                backgroundColor:
+                                  i < (project.current_phase || 0)
+                                    ? project.status === "completed"
+                                      ? "#10B981"
+                                      : "#d86618"
+                                    : "rgba(255,255,255,0.08)",
+                              }}
+                            />
+                          )
+                        )}
                       </div>
                     </div>
                   </div>
@@ -214,8 +301,13 @@ export default function Projects() {
                       initial={{ opacity: 0, height: 0 }}
                       animate={{ opacity: 1, height: "auto" }}
                     >
-                      <Loader2 size={12} className="animate-spin text-primary" />
-                      <span className="text-[10px] text-primary/80">{buildProgress || "Building..."}</span>
+                      <Loader2
+                        size={12}
+                        className="animate-spin text-primary"
+                      />
+                      <span className="text-[10px] text-primary/80">
+                        {buildProgress || "Building..."}
+                      </span>
                     </motion.div>
                   )}
                 </motion.div>
@@ -223,9 +315,16 @@ export default function Projects() {
             </div>
           ) : (
             <div className="text-center py-20">
-              <FolderOpen size={32} className="mx-auto text-muted-foreground/30 mb-3" />
-              <p className="text-sm text-muted-foreground/60">No projects yet</p>
-              <p className="text-xs text-muted-foreground/40 mt-1">Create your first project to get started</p>
+              <FolderOpen
+                size={32}
+                className="mx-auto text-muted-foreground/30 mb-3"
+              />
+              <p className="text-sm text-muted-foreground/60">
+                No projects yet
+              </p>
+              <p className="text-xs text-muted-foreground/40 mt-1">
+                Create your first project to get started
+              </p>
             </div>
           )}
         </div>
@@ -247,24 +346,39 @@ export default function Projects() {
               animate={{ opacity: 1, scale: 1, y: 0 }}
               exit={{ opacity: 0, scale: 0.95, y: 20 }}
               transition={{ duration: duration.normal, ease: ease.out }}
-              onClick={(e) => e.stopPropagation()}
+              onClick={e => e.stopPropagation()}
             >
               {wizardStep === 1 && (
                 <>
-                  <h2 className="text-base font-display text-foreground mb-1">What are you building?</h2>
-                  <p className="text-xs text-muted-foreground mb-4">Toríu will analyze your project and create a build plan</p>
+                  <h2 className="text-base font-display text-foreground mb-1">
+                    What are you building?
+                  </h2>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Toríu will analyze your project and create a build plan
+                  </p>
                   <div className="grid grid-cols-2 gap-2 mb-4">
-                    {PROJECT_TYPES.map((type) => (
+                    {PROJECT_TYPES.map(type => (
                       <button
                         key={type.value}
-                        onClick={() => setNewProject({ ...newProject, projectType: type.value })}
-                        className={"text-left p-3 rounded-lg border transition-all " +
+                        onClick={() =>
+                          setNewProject({
+                            ...newProject,
+                            projectType: type.value,
+                          })
+                        }
+                        className={
+                          "text-left p-3 rounded-lg border transition-all " +
                           (newProject.projectType === type.value
                             ? "border-primary bg-primary/5 text-foreground"
-                            : "border-border text-muted-foreground hover:border-primary/30")}
+                            : "border-border text-muted-foreground hover:border-primary/30")
+                        }
                       >
-                        <span className="text-xs font-medium block">{type.label}</span>
-                        <span className="text-[10px] text-muted-foreground/60">{type.description}</span>
+                        <span className="text-xs font-medium block">
+                          {type.label}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground/60">
+                          {type.description}
+                        </span>
                       </button>
                     ))}
                   </div>
@@ -279,8 +393,12 @@ export default function Projects() {
 
               {wizardStep === 2 && (
                 <>
-                  <h2 className="text-base font-display text-foreground mb-1">Project Details</h2>
-                  <p className="text-xs text-muted-foreground mb-4">Describe what you want - Toríu will break it into phases</p>
+                  <h2 className="text-base font-display text-foreground mb-1">
+                    Project Details
+                  </h2>
+                  <p className="text-xs text-muted-foreground mb-4">
+                    Describe what you want - Toríu will break it into phases
+                  </p>
                   <div className="space-y-3 mb-4">
                     <div>
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">
@@ -289,7 +407,9 @@ export default function Projects() {
                       <input
                         type="text"
                         value={newProject.name}
-                        onChange={(e) => setNewProject({ ...newProject, name: e.target.value })}
+                        onChange={e =>
+                          setNewProject({ ...newProject, name: e.target.value })
+                        }
                         placeholder="My Awesome Project"
                         className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 transition-colors"
                         autoFocus
@@ -301,7 +421,12 @@ export default function Projects() {
                       </label>
                       <textarea
                         value={newProject.description}
-                        onChange={(e) => setNewProject({ ...newProject, description: e.target.value })}
+                        onChange={e =>
+                          setNewProject({
+                            ...newProject,
+                            description: e.target.value,
+                          })
+                        }
                         placeholder="Describe your project in detail. E.g.: A modern portfolio website with dark theme, animated hero section, project gallery with filtering, contact form, and responsive design using React + Tailwind..."
                         className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50 transition-colors resize-none h-28"
                       />
@@ -316,7 +441,11 @@ export default function Projects() {
                     </button>
                     <button
                       onClick={handleCreateProject}
-                      disabled={!newProject.name.trim() || createProject.isPending}
+                      disabled={
+                        !newProject.name.trim() ||
+                        !newProject.description.trim() ||
+                        createProject.isPending
+                      }
                       className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium hover:bg-primary/90 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
                     >
                       {createProject.isPending ? (
@@ -330,7 +459,9 @@ export default function Projects() {
                     </button>
                   </div>
                   <p className="text-[9px] text-muted-foreground/40 mt-3 text-center">
-                    Toríu will route to Builder (OpenAI) for code generation and Validator (Claude) for review
+                    A build brief is required. Toríu will route to Builder
+                    (OpenAI) for code generation and Validator (Claude) for
+                    review.
                   </p>
                 </>
               )}
@@ -363,8 +494,14 @@ function StatusBadge({ status }: { status: string }) {
   const c = config[status] || { color: "#8A8A9A", label: status };
 
   return (
-    <span className="flex items-center gap-1 text-[9px] font-medium tracking-wider uppercase" style={{ color: c.color }}>
-      <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: c.color }} />
+    <span
+      className="flex items-center gap-1 text-[9px] font-medium tracking-wider uppercase"
+      style={{ color: c.color }}
+    >
+      <div
+        className="w-1.5 h-1.5 rounded-full"
+        style={{ backgroundColor: c.color }}
+      />
       {c.label}
     </span>
   );

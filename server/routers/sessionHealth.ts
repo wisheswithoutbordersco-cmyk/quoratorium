@@ -1,97 +1,253 @@
-/**
- * Session Health tRPC Router
- * 
- * Exposes session health monitoring and stabilization to the frontend.
- */
 import { z } from "zod";
 import { protectedProcedure, router } from "../_core/trpc";
-import { getSessionHealth, getOrCreateSession, recordMessage } from "../sessionHealth";
-import { stabilizeSession, type ConversationMessage, type StabilizationSnapshot } from "../sessionStabilizer";
-import { recallProtectedMemories } from "../twoTierMemory";
+import {
+  getSessionHealth,
+  recordMessage,
+  syncSessionFromConversation,
+  type ConversationHealthContext,
+  type PersistedConversationMessage,
+} from "../sessionHealth";
+import {
+  stabilizeSession,
+  type ConversationMessage,
+} from "../sessionStabilizer";
 import * as db from "../db";
 
+const contextMetadataKey = "sessionStabilization";
+const recentMessageLimit = 10;
+
+interface StoredStabilizationContext {
+  version: 1;
+  context: string;
+  tokenEstimate: number;
+  updatedAt: string;
+}
+
+async function getConversationMessages(
+  userId: number,
+  conversationId: number,
+  limit?: number
+) {
+  const conversation = await db.getConversationForUser(conversationId, userId);
+  if (!conversation) throw new Error("Conversation not found");
+
+  const supabase = (await import("../supabase")).getSupabaseAdmin();
+  if (!supabase) throw new Error("Conversation storage is unavailable");
+
+  let query = supabase
+    .from("messages")
+    .select("id, role, content, metadata, created_at")
+    .eq("conversation_id", conversationId)
+    .eq("user_id", userId)
+    .order("created_at", { ascending: true });
+  if (limit) query = query.limit(limit);
+
+  const { data, error } = await query;
+  if (error)
+    throw new Error(`Could not load conversation messages: ${error.message}`);
+  return data || [];
+}
+
+function readStoredContext(
+  messages: Array<{ metadata?: unknown }>
+): StoredStabilizationContext | null {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const metadata = messages[index]?.metadata;
+    if (!metadata || typeof metadata !== "object" || Array.isArray(metadata))
+      continue;
+    const candidate = (metadata as Record<string, unknown>)[contextMetadataKey];
+    if (!candidate || typeof candidate !== "object" || Array.isArray(candidate))
+      continue;
+    const stored = candidate as Partial<StoredStabilizationContext>;
+    if (
+      stored.version === 1 &&
+      typeof stored.context === "string" &&
+      typeof stored.tokenEstimate === "number" &&
+      Number.isFinite(stored.tokenEstimate)
+    ) {
+      return stored as StoredStabilizationContext;
+    }
+  }
+  return null;
+}
+
+function asHealthMessages(
+  messages: Array<{ role: string; content: string }>
+): PersistedConversationMessage[] {
+  return messages
+    .filter(
+      message =>
+        message.role === "user" ||
+        message.role === "assistant" ||
+        message.role === "system"
+    )
+    .map(message => ({
+      role: message.role as PersistedConversationMessage["role"],
+      content: message.content,
+    }));
+}
+
 export const sessionHealthRouter = router({
-  /**
-   * Get current session health report
-   */
   getHealth: protectedProcedure
-    .input(z.object({ conversationId: z.string() }))
+    .input(z.object({ conversationId: z.coerce.number().int().positive() }))
     .query(async ({ input, ctx }) => {
-      const sessionId = `${ctx.user!.id}_${input.conversationId}`;
-      const report = getSessionHealth(sessionId);
-      return report;
+      const messages = await getConversationMessages(
+        ctx.user.id,
+        input.conversationId
+      );
+      const storedContext = readStoredContext(messages);
+      const sessionId = `${ctx.user.id}_${input.conversationId}`;
+      const healthContext: ConversationHealthContext = {
+        compressedTokenEstimate: storedContext?.tokenEstimate,
+        recentMessageLimit,
+      };
+      syncSessionFromConversation(
+        sessionId,
+        asHealthMessages(messages),
+        healthContext
+      );
+      return getSessionHealth(sessionId);
     }),
 
-  /**
-   * Trigger manual session stabilization
-   */
   stabilize: protectedProcedure
-    .input(z.object({ conversationId: z.string() }))
+    .input(z.object({ conversationId: z.coerce.number().int().positive() }))
     .mutation(async ({ input, ctx }) => {
-      const userId = ctx.user!.id;
-      const sessionId = `${userId}_${input.conversationId}`;
-
-      // Get conversation messages from DB
-      let messages: ConversationMessage[] = [];
-      try {
-        const dbMessages = await db.getConversationHistory(userId, null, 200);
-        messages = dbMessages.map((m: any) => ({
-          role: m.role as "user" | "assistant" | "system",
-          content: typeof m.content === "string" ? m.content : JSON.stringify(m.content) || "",
-          timestamp: m.created_at ? new Date(m.created_at).getTime() : undefined,
-        }));
-      } catch {
-        // If we can't get messages from DB, use empty array
-      }
-
-      // Get protected memories
-      let protectedMemories: string[] = [];
-      try {
-        const memContext = await recallProtectedMemories(String(userId), "session stabilization");
-        if (memContext) {
-          protectedMemories = memContext.split("\n").filter((l: string) => l.trim().length > 0);
-        }
-      } catch {
-        // Non-blocking
-      }
-
-      // Build snapshot
-      const snapshot: StabilizationSnapshot = {
+      const messages = await getConversationMessages(
+        ctx.user.id,
+        input.conversationId
+      );
+      const sessionId = `${ctx.user.id}_${input.conversationId}`;
+      const snapshotMessages: ConversationMessage[] = asHealthMessages(
+        messages
+      ).map((message, index) => ({
+        ...message,
+        timestamp: messages[index]?.created_at
+          ? new Date(messages[index].created_at).getTime()
+          : undefined,
+      }));
+      const result = await stabilizeSession({
         sessionId,
-        userId: String(userId),
-        messages,
-        projectContext: null, // Could be enhanced to include active project
-        protectedMemories,
-        timestamp: Date.now(),
+        messages: snapshotMessages,
+      });
+
+      if (!result.success) {
+        return {
+          success: false,
+          summary: result.summary,
+          error: result.error || "Conversation stabilization did not complete.",
+          discardedCount: 0,
+          compressionSavedPercent: 0,
+          duration: result.duration,
+          originalTokens: result.originalTokenEstimate,
+          compressedTokens: result.compressedTokenEstimate,
+        };
+      }
+
+      const latestMessage = messages[messages.length - 1];
+      if (!latestMessage?.id) {
+        return {
+          success: false,
+          summary:
+            "Conversation stabilization could not be saved because no message is available to hold its context.",
+          error:
+            "No persisted message was available for the compressed context.",
+          discardedCount: 0,
+          compressionSavedPercent: 0,
+          duration: result.duration,
+          originalTokens: result.originalTokenEstimate,
+          compressedTokens: result.compressedTokenEstimate,
+        };
+      }
+
+      const existingMetadata =
+        latestMessage.metadata &&
+        typeof latestMessage.metadata === "object" &&
+        !Array.isArray(latestMessage.metadata)
+          ? (latestMessage.metadata as Record<string, unknown>)
+          : {};
+      const storedContext: StoredStabilizationContext = {
+        version: 1,
+        context: result.compressedContext,
+        tokenEstimate: result.compressedTokenEstimate,
+        updatedAt: new Date().toISOString(),
       };
 
-      // Run stabilization
-      const result = await stabilizeSession(snapshot);
+      try {
+        await db.updateConversationMessageMetadata({
+          messageId: latestMessage.id,
+          conversationId: input.conversationId,
+          userId: ctx.user.id,
+          metadata: {
+            ...existingMetadata,
+            [contextMetadataKey]: storedContext,
+          },
+        });
+      } catch (error) {
+        return {
+          success: false,
+          summary:
+            "Conversation was compressed but the context could not be saved, so it will not be used on the next response.",
+          error:
+            error instanceof Error
+              ? error.message
+              : "Unable to save compressed context.",
+          discardedCount: 0,
+          compressionSavedPercent: 0,
+          duration: result.duration,
+          originalTokens: result.originalTokenEstimate,
+          compressedTokens: result.compressedTokenEstimate,
+        };
+      }
+
+      syncSessionFromConversation(sessionId, asHealthMessages(messages), {
+        compressedTokenEstimate: storedContext.tokenEstimate,
+        recentMessageLimit,
+      });
 
       return {
-        success: result.success,
+        success: true,
         summary: result.summary,
+        error: null,
         discardedCount: result.discardedCount,
-        compressionRatio: Math.round((1 - result.compressionRatio) * 100),
+        compressionSavedPercent: Math.max(
+          0,
+          Math.round((1 - result.compressionRatio) * 100)
+        ),
         duration: result.duration,
         originalTokens: result.originalTokenEstimate,
         compressedTokens: result.compressedTokenEstimate,
       };
     }),
 
-  /**
-   * Record a message for health tracking (called by streaming endpoint)
-   */
   recordMessage: protectedProcedure
-    .input(z.object({
-      conversationId: z.string(),
-      tokenCount: z.number(),
-      responseContent: z.string(),
-      responseTimeMs: z.number(),
-    }))
+    .input(
+      z.object({
+        conversationId: z.coerce.number().int().positive(),
+        tokenCount: z.number().nonnegative(),
+        responseContent: z.string(),
+        responseTimeMs: z.number().nonnegative(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
-      const sessionId = `${ctx.user!.id}_${input.conversationId}`;
-      recordMessage(sessionId, input.tokenCount, input.responseContent, input.responseTimeMs);
+      const sessionId = `${ctx.user.id}_${input.conversationId}`;
+      recordMessage(
+        sessionId,
+        input.tokenCount,
+        input.responseContent,
+        input.responseTimeMs
+      );
       return { success: true };
     }),
 });
+
+export function getCompressedConversationContext(
+  messages: Array<{ metadata?: unknown }>
+): string {
+  return readStoredContext(messages)?.context || "";
+}
+
+export function getCompressedConversationTokenEstimate(
+  messages: Array<{ metadata?: unknown }>
+): number {
+  return readStoredContext(messages)?.tokenEstimate || 0;
+}

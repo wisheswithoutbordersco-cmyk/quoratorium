@@ -3,75 +3,111 @@ import { Link } from "wouter";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Zap, Crown, Rocket, Plus, CreditCard, ExternalLink, ArrowLeft } from "lucide-react";
+import {
+  Zap,
+  Crown,
+  Rocket,
+  Plus,
+  CreditCard,
+  ExternalLink,
+  ArrowLeft,
+} from "lucide-react";
 import { toast } from "sonner";
 
 export default function Billing() {
   const { user } = useAuth();
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
 
-  const { data: balance, isLoading: balanceLoading } = trpc.billing.getBalance.useQuery();
+  const { data: balance, isLoading: balanceLoading } =
+    trpc.billing.getBalance.useQuery();
   const { data: subscription } = trpc.billing.getSubscription.useQuery();
   const { data: pricing } = trpc.billing.getPricing.useQuery();
+  const { data: billingStatus } = trpc.billing.status.useQuery();
+  const billingAvailable = billingStatus?.available === true;
 
   const createCheckout = trpc.billing.createCheckout.useMutation({
-    onSuccess: (data) => {
+    onSuccess: data => {
       window.location.href = data.url;
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
       setCheckoutLoading(null);
     },
   });
 
   const createTopUpCheckout = trpc.billing.createTopUpCheckout.useMutation({
-    onSuccess: (data) => {
+    onSuccess: data => {
       window.location.href = data.url;
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
       setCheckoutLoading(null);
     },
   });
 
   const createPortal = trpc.billing.createPortalSession.useMutation({
-    onSuccess: (data) => {
+    onSuccess: data => {
       window.location.href = data.url;
     },
-    onError: (err) => {
+    onError: err => {
       toast.error(err.message);
     },
   });
 
   const handleSubscribe = (plan: "starter" | "pro") => {
+    if (!billingAvailable) {
+      toast.error(
+        "Checkout is unavailable until Stripe and its signed webhook are configured."
+      );
+      return;
+    }
     setCheckoutLoading(plan);
     createCheckout.mutate({
       plan,
-      successUrl: `${window.location.origin}/billing?success=true`,
-      cancelUrl: `${window.location.origin}/billing?canceled=true`,
+      successUrl: `${window.location.origin}/workspace/billing?success=true`,
+      cancelUrl: `${window.location.origin}/workspace/billing?canceled=true`,
     });
   };
 
   const handleTopUp = (topUpId: "small" | "medium" | "large") => {
+    if (!billingAvailable) {
+      toast.error(
+        "Top-ups are unavailable until Stripe and its signed webhook are configured."
+      );
+      return;
+    }
     setCheckoutLoading(topUpId);
     createTopUpCheckout.mutate({
       topUpId,
-      successUrl: `${window.location.origin}/billing?topup=success`,
-      cancelUrl: `${window.location.origin}/billing?topup=canceled`,
+      successUrl: `${window.location.origin}/workspace/billing?topup=success`,
+      cancelUrl: `${window.location.origin}/workspace/billing?topup=canceled`,
     });
   };
 
   const handleManageBilling = () => {
+    if (!billingAvailable) {
+      toast.error("The Stripe customer portal is not configured.");
+      return;
+    }
     createPortal.mutate({
-      returnUrl: `${window.location.origin}/billing`,
+      returnUrl: `${window.location.origin}/workspace/billing`,
     });
   };
 
   const currentPlan = balance?.plan || "free";
-  const dailyUsagePercent = balance ? (balance.dailyCreditsUsed / balance.dailyCreditsLimit) * 100 : 0;
+  const dailyUsagePercent = balance
+    ? (balance.dailyCreditsUsed / balance.dailyCreditsLimit) * 100
+    : 0;
 
   return (
     <div className="container max-w-6xl py-8 space-y-8">
@@ -88,6 +124,15 @@ export default function Billing() {
           </Button>
         </Link>
       </div>
+      {billingStatus && !billingAvailable && (
+        <Card className="border-amber-500/30 bg-amber-500/5">
+          <CardContent className="py-4 text-sm text-amber-100/80">
+            Billing is read-only because secure Stripe checkout and signed
+            webhook processing are not fully configured. No payment action will
+            be submitted.
+          </CardContent>
+        </Card>
+      )}
       {/* Credit Balance Card */}
       <Card className="border-emerald-500/20 bg-black/40 backdrop-blur">
         <CardHeader>
@@ -107,11 +152,13 @@ export default function Billing() {
                 currentPlan === "pro"
                   ? "border-amber-500/50 text-amber-400"
                   : currentPlan === "starter"
-                  ? "border-emerald-500/50 text-emerald-400"
-                  : "border-zinc-500/50 text-zinc-400"
+                    ? "border-emerald-500/50 text-emerald-400"
+                    : "border-zinc-500/50 text-zinc-400"
               }`}
             >
-              {currentPlan === "pro" ? <Crown className="w-3 h-3 mr-1" /> : null}
+              {currentPlan === "pro" ? (
+                <Crown className="w-3 h-3 mr-1" />
+              ) : null}
               {currentPlan.charAt(0).toUpperCase() + currentPlan.slice(1)} Plan
             </Badge>
           </div>
@@ -123,21 +170,34 @@ export default function Billing() {
             <>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-zinc-900/50 rounded-lg p-4 border border-zinc-800">
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider">Daily Credits</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                    Daily Credits
+                  </p>
                   <p className="text-2xl font-bold text-white mt-1">
                     {balance.dailyCreditsRemaining}
-                    <span className="text-sm text-zinc-500 font-normal"> / {balance.dailyCreditsLimit}</span>
+                    <span className="text-sm text-zinc-500 font-normal">
+                      {" "}
+                      / {balance.dailyCreditsLimit}
+                    </span>
                   </p>
                   <Progress value={dailyUsagePercent} className="mt-2 h-1.5" />
                 </div>
                 <div className="bg-zinc-900/50 rounded-lg p-4 border border-zinc-800">
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider">Bonus Credits</p>
-                  <p className="text-2xl font-bold text-emerald-400 mt-1">{balance.bonusCredits}</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                    Bonus Credits
+                  </p>
+                  <p className="text-2xl font-bold text-emerald-400 mt-1">
+                    {balance.bonusCredits}
+                  </p>
                   <p className="text-xs text-zinc-500 mt-2">Never expire</p>
                 </div>
                 <div className="bg-zinc-900/50 rounded-lg p-4 border border-zinc-800">
-                  <p className="text-xs text-zinc-500 uppercase tracking-wider">Total Available</p>
-                  <p className="text-2xl font-bold text-white mt-1">{balance.totalAvailable}</p>
+                  <p className="text-xs text-zinc-500 uppercase tracking-wider">
+                    Total Available
+                  </p>
+                  <p className="text-2xl font-bold text-white mt-1">
+                    {balance.totalAvailable}
+                  </p>
                   <p className="text-xs text-zinc-500 mt-2">
                     Resets: {new Date(balance.resetAt).toLocaleTimeString()}
                   </p>
@@ -152,6 +212,7 @@ export default function Billing() {
               variant="outline"
               size="sm"
               onClick={handleManageBilling}
+              disabled={!billingAvailable || createPortal.isPending}
               className="border-zinc-700 text-zinc-300 hover:text-white"
             >
               <CreditCard className="w-4 h-4 mr-2" />
@@ -164,16 +225,22 @@ export default function Billing() {
 
       {/* Subscription Plans */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-4">Subscription Plans</h2>
+        <h2 className="text-lg font-semibold text-white mb-4">
+          Subscription Plans
+        </h2>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Free Plan */}
-          <Card className={`border-zinc-700/50 bg-black/40 backdrop-blur ${currentPlan === "free" ? "ring-1 ring-zinc-500" : ""}`}>
+          <Card
+            className={`border-zinc-700/50 bg-black/40 backdrop-blur ${currentPlan === "free" ? "ring-1 ring-zinc-500" : ""}`}
+          >
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <Zap className="w-5 h-5 text-zinc-400" />
                 Free
               </CardTitle>
-              <CardDescription className="text-zinc-400">Get started with AI</CardDescription>
+              <CardDescription className="text-zinc-400">
+                Get started with AI
+              </CardDescription>
               <div className="pt-2">
                 <span className="text-3xl font-bold text-white">$0</span>
                 <span className="text-zinc-500">/month</span>
@@ -194,11 +261,19 @@ export default function Billing() {
             </CardContent>
             <CardFooter>
               {currentPlan === "free" ? (
-                <Badge variant="secondary" className="w-full justify-center py-2 bg-zinc-800 text-zinc-300">
+                <Badge
+                  variant="secondary"
+                  className="w-full justify-center py-2 bg-zinc-800 text-zinc-300"
+                >
                   Current Plan
                 </Badge>
               ) : (
-                <Button variant="outline" className="w-full border-zinc-700" disabled>
+                <Button
+                  variant="outline"
+                  className="w-full border-zinc-700"
+                  onClick={handleManageBilling}
+                  disabled={!billingAvailable || createPortal.isPending}
+                >
                   Downgrade via Portal
                 </Button>
               )}
@@ -206,13 +281,17 @@ export default function Billing() {
           </Card>
 
           {/* Starter Plan */}
-          <Card className={`border-emerald-500/30 bg-black/40 backdrop-blur ${currentPlan === "starter" ? "ring-1 ring-emerald-500" : ""}`}>
+          <Card
+            className={`border-emerald-500/30 bg-black/40 backdrop-blur ${currentPlan === "starter" ? "ring-1 ring-emerald-500" : ""}`}
+          >
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <Rocket className="w-5 h-5 text-emerald-400" />
                 Starter
               </CardTitle>
-              <CardDescription className="text-zinc-400">For regular builders</CardDescription>
+              <CardDescription className="text-zinc-400">
+                For regular builders
+              </CardDescription>
               <div className="pt-2">
                 <span className="text-3xl font-bold text-white">$29</span>
                 <span className="text-zinc-500">/month</span>
@@ -236,32 +315,45 @@ export default function Billing() {
             </CardContent>
             <CardFooter>
               {currentPlan === "starter" ? (
-                <Badge variant="secondary" className="w-full justify-center py-2 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30">
+                <Badge
+                  variant="secondary"
+                  className="w-full justify-center py-2 bg-emerald-900/30 text-emerald-400 border border-emerald-500/30"
+                >
                   Current Plan
                 </Badge>
               ) : (
                 <Button
                   className="w-full bg-emerald-600 hover:bg-emerald-700 text-white"
                   onClick={() => handleSubscribe("starter")}
-                  disabled={checkoutLoading === "starter"}
+                  disabled={!billingAvailable || checkoutLoading === "starter"}
                 >
-                  {checkoutLoading === "starter" ? "Loading..." : currentPlan === "pro" ? "Downgrade" : "Upgrade to Starter"}
+                  {checkoutLoading === "starter"
+                    ? "Loading..."
+                    : currentPlan === "pro"
+                      ? "Downgrade"
+                      : "Upgrade to Starter"}
                 </Button>
               )}
             </CardFooter>
           </Card>
 
           {/* Pro Plan */}
-          <Card className={`border-amber-500/30 bg-black/40 backdrop-blur relative ${currentPlan === "pro" ? "ring-1 ring-amber-500" : ""}`}>
+          <Card
+            className={`border-amber-500/30 bg-black/40 backdrop-blur relative ${currentPlan === "pro" ? "ring-1 ring-amber-500" : ""}`}
+          >
             <div className="absolute -top-3 left-1/2 -translate-x-1/2">
-              <Badge className="bg-amber-500 text-black font-semibold">Most Popular</Badge>
+              <Badge className="bg-amber-500 text-black font-semibold">
+                Most Popular
+              </Badge>
             </div>
             <CardHeader>
               <CardTitle className="text-white flex items-center gap-2">
                 <Crown className="w-5 h-5 text-amber-400" />
                 Pro
               </CardTitle>
-              <CardDescription className="text-zinc-400">For power users</CardDescription>
+              <CardDescription className="text-zinc-400">
+                For power users
+              </CardDescription>
               <div className="pt-2">
                 <span className="text-3xl font-bold text-white">$99</span>
                 <span className="text-zinc-500">/month</span>
@@ -288,14 +380,17 @@ export default function Billing() {
             </CardContent>
             <CardFooter>
               {currentPlan === "pro" ? (
-                <Badge variant="secondary" className="w-full justify-center py-2 bg-amber-900/30 text-amber-400 border border-amber-500/30">
+                <Badge
+                  variant="secondary"
+                  className="w-full justify-center py-2 bg-amber-900/30 text-amber-400 border border-amber-500/30"
+                >
                   Current Plan
                 </Badge>
               ) : (
                 <Button
                   className="w-full bg-amber-500 hover:bg-amber-600 text-black font-semibold"
                   onClick={() => handleSubscribe("pro")}
-                  disabled={checkoutLoading === "pro"}
+                  disabled={!billingAvailable || checkoutLoading === "pro"}
                 >
                   {checkoutLoading === "pro" ? "Loading..." : "Upgrade to Pro"}
                 </Button>
@@ -307,8 +402,13 @@ export default function Billing() {
 
       {/* Credit Top-Ups */}
       <div>
-        <h2 className="text-lg font-semibold text-white mb-2">Credit Top-Ups</h2>
-        <p className="text-sm text-zinc-400 mb-4">Need more credits today? Buy a one-time top-up. Bonus credits never expire.</p>
+        <h2 className="text-lg font-semibold text-white mb-2">
+          Credit Top-Ups
+        </h2>
+        <p className="text-sm text-zinc-400 mb-4">
+          Need more credits today? Buy a one-time top-up. Bonus credits never
+          expire.
+        </p>
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <Card className="border-zinc-700/50 bg-black/40 backdrop-blur hover:border-emerald-500/30 transition-colors">
             <CardHeader className="pb-2">
@@ -326,7 +426,7 @@ export default function Billing() {
                 variant="outline"
                 className="w-full border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                 onClick={() => handleTopUp("small")}
-                disabled={checkoutLoading === "small"}
+                disabled={!billingAvailable || checkoutLoading === "small"}
               >
                 {checkoutLoading === "small" ? "Loading..." : "Buy 200 Credits"}
               </Button>
@@ -340,7 +440,12 @@ export default function Billing() {
                   <Plus className="w-4 h-4 text-emerald-400" />
                   500 Credits
                 </CardTitle>
-                <Badge variant="outline" className="text-xs border-emerald-500/50 text-emerald-400">Best Value</Badge>
+                <Badge
+                  variant="outline"
+                  className="text-xs border-emerald-500/50 text-emerald-400"
+                >
+                  Best Value
+                </Badge>
               </div>
             </CardHeader>
             <CardContent>
@@ -352,9 +457,11 @@ export default function Billing() {
                 variant="outline"
                 className="w-full border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                 onClick={() => handleTopUp("medium")}
-                disabled={checkoutLoading === "medium"}
+                disabled={!billingAvailable || checkoutLoading === "medium"}
               >
-                {checkoutLoading === "medium" ? "Loading..." : "Buy 500 Credits"}
+                {checkoutLoading === "medium"
+                  ? "Loading..."
+                  : "Buy 500 Credits"}
               </Button>
             </CardFooter>
           </Card>
@@ -375,9 +482,11 @@ export default function Billing() {
                 variant="outline"
                 className="w-full border-emerald-500/30 text-emerald-400 hover:bg-emerald-500/10"
                 onClick={() => handleTopUp("large")}
-                disabled={checkoutLoading === "large"}
+                disabled={!billingAvailable || checkoutLoading === "large"}
               >
-                {checkoutLoading === "large" ? "Loading..." : "Buy 1,500 Credits"}
+                {checkoutLoading === "large"
+                  ? "Loading..."
+                  : "Buy 1,500 Credits"}
               </Button>
             </CardFooter>
           </Card>

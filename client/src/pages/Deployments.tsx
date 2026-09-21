@@ -1,12 +1,23 @@
 /**
  * Q Workspace - Deployments Page
- * Multi-platform deployment (Vercel, Netlify, Railway, Cloudflare) with history
+ * Persisted provider deployment history for supported source deployments.
  */
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
-  Rocket, Globe, CheckCircle2, Clock, AlertCircle, Download, Loader2,
-  FolderOpen, ExternalLink, Cloud, Zap, XCircle, History,
+  Rocket,
+  Globe,
+  CheckCircle2,
+  Clock,
+  AlertCircle,
+  Download,
+  Loader2,
+  FolderOpen,
+  ExternalLink,
+  Cloud,
+  Zap,
+  XCircle,
+  History,
 } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { trpc } from "@/lib/trpc";
@@ -16,22 +27,35 @@ import { DeployModal } from "@/components/DeployModal";
 export default function Deployments() {
   const { data: projects, isLoading } = trpc.projects.list.useQuery();
   const { data: deployStatus } = trpc.deploy.status.useQuery();
-  const { data: deployHistory } = trpc.deploy.history.useQuery({});
-  const [deployModalProject, setDeployModalProject] = useState<{ id: number; name: string } | null>(null);
+  const { data: deployHistory } = trpc.deploy.history.useQuery(
+    {},
+    {
+      refetchInterval: query =>
+        query.state.data?.some(deployment =>
+          ["queued", "building", "deploying"].includes(deployment.status)
+        )
+          ? 3000
+          : false,
+    }
+  );
+  const [deployModalProject, setDeployModalProject] = useState<{
+    id: number;
+    name: string;
+  } | null>(null);
 
   const downloadZip = trpc.projects.downloadZip.useMutation({
-    onSuccess: (result) => {
+    onSuccess: result => {
       toast.success("ZIP ready: " + result.fileCount + " files");
       window.open(result.url, "_blank");
     },
-    onError: (error) => {
+    onError: error => {
       toast.error(error.message || "Failed to generate ZIP");
     },
   });
 
-  const deployableProjects = projects?.filter(p =>
-    p.status === "completed" || p.current_phase > 1
-  ) || [];
+  const deployableProjects =
+    projects?.filter(p => p.status === "completed" || p.current_phase > 1) ||
+    [];
 
   const getStatusConfig = (status: string) => {
     switch (status) {
@@ -49,30 +73,73 @@ export default function Deployments() {
   const getDeployStatusBadge = (status: string) => {
     switch (status) {
       case "live":
-        return { label: "Live", color: "text-emerald-400", bg: "bg-emerald-500/10", icon: Globe };
+        return {
+          label: "Live",
+          color: "text-emerald-400",
+          bg: "bg-emerald-500/10",
+          icon: Globe,
+        };
+      case "queued":
+        return {
+          label: "Queued",
+          color: "text-amber-300",
+          bg: "bg-amber-500/10",
+          icon: Clock,
+        };
       case "building":
-        return { label: "Building", color: "text-blue-400", bg: "bg-blue-500/10", icon: Loader2 };
+        return {
+          label: "Building",
+          color: "text-blue-400",
+          bg: "bg-blue-500/10",
+          icon: Loader2,
+        };
       case "deploying":
-        return { label: "Deploying", color: "text-purple-400", bg: "bg-orange-500/10", icon: Rocket };
+        return {
+          label: "Deploying",
+          color: "text-purple-400",
+          bg: "bg-orange-500/10",
+          icon: Rocket,
+        };
       case "failed":
-        return { label: "Failed", color: "text-red-400", bg: "bg-red-500/10", icon: XCircle };
+        return {
+          label: "Failed",
+          color: "text-red-400",
+          bg: "bg-red-500/10",
+          icon: XCircle,
+        };
+      case "cancelled":
+        return {
+          label: "Cancelled",
+          color: "text-white/50",
+          bg: "bg-white/5",
+          icon: XCircle,
+        };
       default:
-        return { label: status, color: "text-white/40", bg: "bg-white/5", icon: Clock };
+        return {
+          label: status,
+          color: "text-white/40",
+          bg: "bg-white/5",
+          icon: Clock,
+        };
     }
   };
 
   const getPlatformLabel = (platform: string) => {
     switch (platform) {
-      case "vercel": return "Vercel";
-      case "netlify": return "Netlify";
-      case "railway": return "Railway";
-      case "cloudflare": return "Cloudflare";
-      default: return platform;
+      case "vercel":
+        return "Vercel";
+      case "netlify":
+        return "Netlify";
+      case "railway":
+        return "Railway";
+      default:
+        return platform;
     }
   };
 
   // Count connected platforms
-  const connectedCount = deployStatus?.platforms?.filter(p => p.connected).length || 0;
+  const connectedCount =
+    deployStatus?.platforms?.filter(p => p.connected).length || 0;
 
   return (
     <div className="h-screen flex flex-col surface-base">
@@ -87,15 +154,23 @@ export default function Deployments() {
                 Deployments
               </h1>
               <p className="text-[11px] text-muted-foreground/50 mt-1">
-                One-click deploy to Vercel, Netlify, Railway, or Cloudflare
+                Deploy saved project files to Vercel or Netlify
               </p>
             </div>
             <div className="flex items-center gap-2">
               {deployStatus && (
                 <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg surface-elevated border border-border">
-                  <Zap size={12} className={connectedCount > 0 ? "text-emerald-400" : "text-muted-foreground/40"} />
+                  <Zap
+                    size={12}
+                    className={
+                      connectedCount > 0
+                        ? "text-emerald-400"
+                        : "text-muted-foreground/40"
+                    }
+                  />
                   <span className="text-[10px] text-muted-foreground">
-                    {connectedCount} platform{connectedCount !== 1 ? "s" : ""} connected
+                    {connectedCount} platform{connectedCount !== 1 ? "s" : ""}{" "}
+                    connected
                   </span>
                 </div>
               )}
@@ -104,7 +179,9 @@ export default function Deployments() {
 
           {/* Projects Section */}
           <div className="mb-10">
-            <h2 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">Projects</h2>
+            <h2 className="text-xs font-medium text-white/50 uppercase tracking-wider mb-3">
+              Projects
+            </h2>
             {isLoading ? (
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="animate-spin text-primary" size={24} />
@@ -126,26 +203,41 @@ export default function Deployments() {
                       transition={{ delay: index * 0.05 }}
                     >
                       <div className="flex items-center gap-4 p-4">
-                        <StatusIcon size={18} style={{ color: statusConfig.color }} />
+                        <StatusIcon
+                          size={18}
+                          style={{ color: statusConfig.color }}
+                        />
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
-                            <h3 className="text-[13px] font-medium text-foreground">{project.name}</h3>
+                            <h3 className="text-[13px] font-medium text-foreground">
+                              {project.name}
+                            </h3>
                             <span className="text-[9px] font-mono text-muted-foreground/30 surface-overlay px-1.5 py-0.5 rounded border border-border">
                               {project.project_type}
                             </span>
                           </div>
                           <div className="flex items-center gap-3 mt-1">
-                            <span className="text-[10px] font-medium" style={{ color: statusConfig.color }}>
+                            <span
+                              className="text-[10px] font-medium"
+                              style={{ color: statusConfig.color }}
+                            >
                               {statusConfig.label}
                             </span>
-                            <span className="text-[10px] text-muted-foreground/25">|</span>
+                            <span className="text-[10px] text-muted-foreground/25">
+                              |
+                            </span>
                             <span className="text-[10px] text-muted-foreground/40 flex items-center gap-1">
                               <Clock size={9} />
-                              Phase {project.current_phase}/{project.total_phases}
+                              Phase {project.current_phase}/
+                              {project.total_phases}
                             </span>
-                            <span className="text-[10px] text-muted-foreground/25">|</span>
+                            <span className="text-[10px] text-muted-foreground/25">
+                              |
+                            </span>
                             <span className="text-[10px] text-muted-foreground/40">
-                              {new Date(project.updated_at).toLocaleDateString()}
+                              {new Date(
+                                project.updated_at
+                              ).toLocaleDateString()}
                             </span>
                           </div>
                           {deployUrl && (
@@ -165,18 +257,27 @@ export default function Deployments() {
                         <div className="flex items-center gap-2">
                           {/* Deploy button — opens multi-platform modal */}
                           <motion.button
-                            onClick={() => setDeployModalProject({ id: project.id, name: project.name })}
+                            onClick={() =>
+                              setDeployModalProject({
+                                id: project.id,
+                                name: project.name,
+                              })
+                            }
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 hover:bg-orange-500/20 transition-colors"
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.97 }}
                           >
                             <Rocket size={12} />
-                            <span className="text-[10px] font-medium">Deploy</span>
+                            <span className="text-[10px] font-medium">
+                              Deploy
+                            </span>
                           </motion.button>
 
                           {/* Download ZIP button */}
                           <motion.button
-                            onClick={() => downloadZip.mutate({ projectId: project.id })}
+                            onClick={() =>
+                              downloadZip.mutate({ projectId: project.id })
+                            }
                             disabled={downloadZip.isPending}
                             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors disabled:opacity-50"
                             whileHover={{ scale: 1.02 }}
@@ -192,24 +293,36 @@ export default function Deployments() {
                         </div>
                       </div>
 
-                      {project.status === "active" && project.current_phase < project.total_phases && (
-                        <div className="h-0.5 bg-border">
-                          <motion.div
-                            className="h-full bg-primary/60 rounded-full"
-                            initial={{ width: 0 }}
-                            animate={{ width: ((project.current_phase / project.total_phases) * 100) + "%" }}
-                            transition={{ duration: 0.5 }}
-                          />
-                        </div>
-                      )}
+                      {project.status === "active" &&
+                        project.current_phase < project.total_phases && (
+                          <div className="h-0.5 bg-border">
+                            <motion.div
+                              className="h-full bg-primary/60 rounded-full"
+                              initial={{ width: 0 }}
+                              animate={{
+                                width:
+                                  (project.current_phase /
+                                    project.total_phases) *
+                                    100 +
+                                  "%",
+                              }}
+                              transition={{ duration: 0.5 }}
+                            />
+                          </div>
+                        )}
                     </motion.div>
                   );
                 })}
               </div>
             ) : (
               <div className="text-center py-16">
-                <FolderOpen size={32} className="mx-auto text-muted-foreground/30 mb-3" />
-                <p className="text-sm text-muted-foreground/60">No deployable projects yet</p>
+                <FolderOpen
+                  size={32}
+                  className="mx-auto text-muted-foreground/30 mb-3"
+                />
+                <p className="text-sm text-muted-foreground/60">
+                  No deployable projects yet
+                </p>
                 <p className="text-xs text-muted-foreground/40 mt-1">
                   Build a project from the chat to see it here
                 </p>
@@ -237,19 +350,45 @@ export default function Deployments() {
                       animate={{ opacity: 1, y: 0 }}
                       transition={{ delay: index * 0.03 }}
                     >
-                      <div className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${badge.bg}`}>
-                        <BadgeIcon size={10} className={`${badge.color} ${dep.status === "building" ? "animate-spin" : ""}`} />
-                        <span className={`text-[9px] font-medium ${badge.color}`}>{badge.label}</span>
+                      <div
+                        className={`flex items-center gap-1.5 px-2 py-1 rounded-md ${badge.bg}`}
+                      >
+                        <BadgeIcon
+                          size={10}
+                          className={`${badge.color} ${dep.status === "building" ? "animate-spin" : ""}`}
+                        />
+                        <span
+                          className={`text-[9px] font-medium ${badge.color}`}
+                        >
+                          {badge.label}
+                        </span>
                       </div>
 
                       <div className="flex-1">
                         <div className="flex items-center gap-2">
-                          <span className="text-[11px] text-white/70 font-medium">{dep.projectName || "Unnamed"}</span>
+                          <span className="text-[11px] text-white/70 font-medium">
+                            {dep.projectName || "Unnamed"}
+                          </span>
                           <span className="text-[9px] text-white/20">→</span>
-                          <span className="text-[9px] text-white/40 font-mono">{getPlatformLabel(dep.platform)}</span>
+                          <span className="text-[9px] text-white/40 font-mono">
+                            {getPlatformLabel(dep.platform)}
+                          </span>
                         </div>
-                        {dep.commitMessage && (
-                          <p className="text-[10px] text-white/30 truncate max-w-xs mt-0.5">{dep.commitMessage}</p>
+                        {(dep.commitMessage || dep.error) && (
+                          <p
+                            className={
+                              dep.error
+                                ? "text-[10px] text-red-300/70 truncate max-w-xs mt-0.5"
+                                : "text-[10px] text-white/30 truncate max-w-xs mt-0.5"
+                            }
+                          >
+                            {dep.error || dep.commitMessage}
+                          </p>
+                        )}
+                        {dep.providerDeploymentId && (
+                          <p className="text-[9px] text-white/20 font-mono truncate max-w-xs mt-0.5">
+                            Provider ID: {dep.providerDeploymentId}
+                          </p>
                         )}
                       </div>
 
@@ -266,7 +405,7 @@ export default function Deployments() {
                       )}
 
                       <span className="text-[9px] text-white/20 font-mono">
-                        {new Date(dep.created_at).toLocaleDateString()}
+                        {new Date(dep.createdAt).toLocaleDateString()}
                       </span>
                     </motion.div>
                   );
@@ -274,8 +413,13 @@ export default function Deployments() {
               </div>
             ) : (
               <div className="text-center py-10 rounded-xl border border-border/50 surface-elevated">
-                <Rocket size={20} className="mx-auto text-muted-foreground/20 mb-2" />
-                <p className="text-[11px] text-muted-foreground/40">No deployments yet</p>
+                <Rocket
+                  size={20}
+                  className="mx-auto text-muted-foreground/20 mb-2"
+                />
+                <p className="text-[11px] text-muted-foreground/40">
+                  No deployments yet
+                </p>
               </div>
             )}
           </div>

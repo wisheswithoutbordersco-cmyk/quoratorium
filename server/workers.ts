@@ -1,6 +1,6 @@
 /**
  * External AI Workers — Direct API calls to OpenAI, Anthropic, and Perplexity
- * 
+ *
  * Builder Worker: OpenAI GPT-4o (code generation)
  * Validator Worker: Anthropic Claude (code review & validation)
  * Research Worker: Perplexity Sonar (research & intelligence)
@@ -20,6 +20,7 @@ import {
   CAPTAIN_OPENAI_MODEL,
   getCaptainReasoning,
 } from "./assistantConfig";
+import { VERIFIED_MANUS_MODELS } from "./routers/settings";
 
 // ─── Client Initialization ─────────────────────────────────────────────────
 
@@ -97,13 +98,52 @@ Format responses clearly with headers, bullet points, and citations where applic
 
 // ─── Worker Functions ───────────────────────────────────────────────────────
 
+export interface WorkerPreferences {
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+const supportedProxyModels = new Set<string>(
+  VERIFIED_MANUS_MODELS.map(model => model.id)
+);
+
+function resolveWorkerPreferences(
+  preferences: WorkerPreferences | undefined,
+  fallbackModel: string
+): Required<WorkerPreferences> {
+  const requestedModel = preferences?.model;
+  return {
+    model:
+      requestedModel && supportedProxyModels.has(requestedModel)
+        ? requestedModel
+        : fallbackModel,
+    temperature:
+      typeof preferences?.temperature === "number" &&
+      preferences.temperature >= 0 &&
+      preferences.temperature <= 2
+        ? preferences.temperature
+        : 0.3,
+    maxTokens:
+      Number.isInteger(preferences?.maxTokens) &&
+      (preferences?.maxTokens || 0) >= 256 &&
+      (preferences?.maxTokens || 0) <= 128000
+        ? preferences!.maxTokens!
+        : 4096,
+  };
+}
+
 /**
  * Toríu — Orchestrator (uses OpenAI GPT-4o, falls back to Forge)
  */
-export async function callCaptain(messages: Message[], userId: number = 1, projectId?: number): Promise<string> {
+export async function callCaptain(
+  messages: Message[],
+  userId: number = 1,
+  projectId?: number
+): Promise<string> {
   const openai = getOpenAIClient();
   const startTime = Date.now();
-  
+
   if (openai) {
     try {
       const response = await openai.chat.completions.create({
@@ -112,7 +152,10 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
           { role: "system", content: CAPTAIN_SYSTEM_PROMPT },
           ...messages.map(m => ({
             role: m.role as "user" | "assistant" | "system",
-            content: typeof m.content === "string" ? m.content : JSON.stringify(m.content),
+            content:
+              typeof m.content === "string"
+                ? m.content
+                : JSON.stringify(m.content),
           })),
         ],
         max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
@@ -120,11 +163,19 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
       } as any);
       const usage = response.usage;
       logApiCall({
-        userId, model: CAPTAIN_OPENAI_MODEL, worker: "captain",
-        inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-        durationMs: Date.now() - startTime, projectId, success: true,
+        userId,
+        model: CAPTAIN_OPENAI_MODEL,
+        worker: "captain",
+        inputTokens: usage?.prompt_tokens || 0,
+        outputTokens: usage?.completion_tokens || 0,
+        durationMs: Date.now() - startTime,
+        projectId,
+        success: true,
       }).catch(() => {});
-      return response.choices[0]?.message?.content || "I couldn't generate a response.";
+      return (
+        response.choices[0]?.message?.content ||
+        "I couldn't generate a response."
+      );
     } catch (error) {
       console.warn("[Captain] OpenAI failed, falling back to Forge:", error);
     }
@@ -133,148 +184,98 @@ export async function callCaptain(messages: Message[], userId: number = 1, proje
   // Fallback to the same current Captain model through Forge.
   const result = await invokeLLM({
     model: CAPTAIN_FORGE_MODEL,
-    messages: [
-      { role: "system", content: CAPTAIN_SYSTEM_PROMPT },
-      ...messages,
-    ],
+    messages: [{ role: "system", content: CAPTAIN_SYSTEM_PROMPT }, ...messages],
     max_completion_tokens: CAPTAIN_MAX_OUTPUT_TOKENS,
     reasoning: getCaptainReasoning(CAPTAIN_FORGE_MODEL) as any,
   });
   const usage = result.usage;
   logApiCall({
-    userId, model: CAPTAIN_FORGE_MODEL, worker: "captain",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, projectId, success: true,
+    userId,
+    model: CAPTAIN_FORGE_MODEL,
+    worker: "captain",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    projectId,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   return typeof content === "string" ? content : JSON.stringify(content);
 }
 
 /**
- * Builder Worker — OpenAI GPT-4o (code generation)
+ * Builder Worker — user-selected proxy model (code generation)
  */
-export async function callBuilder(task: string, context: string, userId: number = 1, projectId?: number): Promise<string> {
-  const openai = getOpenAIClient();
+export async function callBuilder(
+  task: string,
+  context: string,
+  userId: number = 1,
+  projectId?: number,
+  preferences?: WorkerPreferences
+): Promise<string> {
   const startTime = Date.now();
-  const complexity = analyzeComplexity(task);
-  const modelSelection = selectModel("builder", complexity);
-  const modelToUse = modelSelection.primary.startsWith("gpt") ? modelSelection.primary : "gpt-4o";
-  
-  if (openai) {
-    try {
-      const response = await openai.chat.completions.create({
-        model: modelToUse,
-        messages: [
-          { role: "system", content: BUILDER_SYSTEM_PROMPT },
-          { role: "user", content: `Task: ${task}\n\nContext: ${context}\n\nGenerate the complete implementation with all files.` },
-        ],
-        max_tokens: 16384,
-        temperature: 0.3,
-      });
-      const usage = response.usage;
-      logApiCall({
-        userId, model: modelToUse, worker: "builder",
-        inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-        durationMs: Date.now() - startTime, projectId, success: true,
-      }).catch(() => {});
-      return response.choices[0]?.message?.content || "Builder could not generate output.";
-    } catch (error) {
-      console.warn("[Builder] OpenAI failed, trying OpenRouter:", error);
-    }
-  }
-
-  // Fallback 1: OpenRouter (DeepSeek or GPT-4o)
-  const openRouterKey = process.env.OPENROUTER_API_KEY;
-  if (openRouterKey) {
-    try {
-      const openrouter = new OpenAI({
-        apiKey: openRouterKey,
-        baseURL: "https://openrouter.ai/api/v1",
-        defaultHeaders: {
-          "HTTP-Referer": "https://quoratorium.com",
-          "X-Title": "Quoratorium Builder",
-        },
-      });
-      const response = await openrouter.chat.completions.create({
-        model: "deepseek/deepseek-chat",
-        messages: [
-          { role: "system", content: BUILDER_SYSTEM_PROMPT },
-          { role: "user", content: `Task: ${task}\n\nContext: ${context}\n\nGenerate the complete implementation with all files.` },
-        ],
-        max_tokens: 16384,
-        temperature: 0.3,
-      });
-      const usage = response.usage;
-      logApiCall({
-        userId, model: "deepseek/deepseek-chat", worker: "builder",
-        inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-        durationMs: Date.now() - startTime, projectId, success: true,
-      }).catch(() => {});
-      return response.choices[0]?.message?.content || "Builder could not generate output.";
-    } catch (error) {
-      console.warn("[Builder] OpenRouter failed, falling back to Forge:", error);
-    }
-  }
-
-  // Fallback 2: Forge LLM
+  const options = resolveWorkerPreferences(preferences, "gpt-5-mini");
   const result = await invokeLLM({
+    model: options.model,
     messages: [
       { role: "system", content: BUILDER_SYSTEM_PROMPT },
-      { role: "user", content: `Task: ${task}\n\nContext: ${context}\n\nGenerate the complete implementation.` },
+      {
+        role: "user",
+        content: `Task: ${task}\n\nContext: ${context}\n\nGenerate the complete implementation with all files.`,
+      },
     ],
+    maxTokens: options.maxTokens,
+    temperature: options.temperature,
   });
   const usage = result.usage;
   logApiCall({
-    userId, model: "gemini-2.5-flash", worker: "builder",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, projectId, success: true,
+    userId,
+    model: options.model,
+    worker: "builder",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    projectId,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   return typeof content === "string" ? content : JSON.stringify(content);
 }
 
 /**
- * Validator Worker — Anthropic Claude (code review & validation)
+ * Validator Worker — user-selected proxy model (code review & validation)
  */
-export async function callValidator(code: string, requirements: string, userId: number = 1, projectId?: number): Promise<string> {
-  const anthropic = getAnthropicClient();
+export async function callValidator(
+  code: string,
+  requirements: string,
+  userId: number = 1,
+  projectId?: number,
+  preferences?: WorkerPreferences
+): Promise<string> {
   const startTime = Date.now();
-  
-  if (anthropic) {
-    try {
-      const response = await anthropic.messages.create({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        system: VALIDATOR_SYSTEM_PROMPT,
-        messages: [
-          { role: "user", content: `Requirements: ${requirements}\n\nGenerated Code:\n${code}\n\nPlease validate this output.` },
-        ],
-      });
-      const usage = response.usage;
-      logApiCall({
-        userId, model: "claude-sonnet-4-20250514", worker: "validator",
-        inputTokens: usage?.input_tokens || 0, outputTokens: usage?.output_tokens || 0,
-        durationMs: Date.now() - startTime, projectId, success: true,
-      }).catch(() => {});
-      const textBlock = response.content.find(b => b.type === "text");
-      return textBlock?.text || "Validation complete — no issues found.";
-    } catch (error) {
-      console.warn("[Validator] Anthropic failed, falling back to Forge:", error);
-    }
-  }
-
-  // Fallback to Forge LLM
+  const options = resolveWorkerPreferences(preferences, "gpt-5");
   const result = await invokeLLM({
+    model: options.model,
     messages: [
       { role: "system", content: VALIDATOR_SYSTEM_PROMPT },
-      { role: "user", content: `Requirements: ${requirements}\n\nGenerated Code:\n${code}\n\nPlease validate this output.` },
+      {
+        role: "user",
+        content: `Requirements: ${requirements}\n\nGenerated Code:\n${code}\n\nPlease validate this output.`,
+      },
     ],
+    maxTokens: options.maxTokens,
+    temperature: options.temperature,
   });
   const usage = result.usage;
   logApiCall({
-    userId, model: "gemini-2.5-flash", worker: "validator",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, projectId, success: true,
+    userId,
+    model: options.model,
+    worker: "validator",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    projectId,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   return typeof content === "string" ? content : JSON.stringify(content);
@@ -284,58 +285,93 @@ export async function callValidator(code: string, requirements: string, userId: 
  * Research Worker — Perplexity Sonar (research & intelligence)
  * Uses the Perplexity API which is OpenAI-compatible
  */
-export async function callResearch(query: string, userId: number = 1, projectId?: number): Promise<string> {
+export async function callResearch(
+  query: string,
+  userId: number = 1,
+  projectId?: number
+): Promise<string> {
   const apiKey = getPerplexityApiKey();
   const startTime = Date.now();
-  
+
   if (apiKey) {
     try {
-      const response = await fetch("https://api.perplexity.ai/chat/completions", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: "sonar",
-          messages: [
-            { role: "system", content: RESEARCH_SYSTEM_PROMPT },
-            { role: "user", content: query },
-          ],
-          max_tokens: 4096,
-          temperature: 0.2,
-        }),
-      });
+      const response = await fetch(
+        "https://api.perplexity.ai/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: "sonar",
+            messages: [
+              { role: "system", content: RESEARCH_SYSTEM_PROMPT },
+              { role: "user", content: query },
+            ],
+            max_tokens: 4096,
+            temperature: 0.2,
+          }),
+        }
+      );
 
       if (!response.ok) {
         const errorText = await response.text();
-        throw new Error(`Perplexity API error ${response.status}: ${errorText}`);
+        throw new Error(
+          `Perplexity API error ${response.status}: ${errorText}`
+        );
       }
 
-      const data = await response.json() as { choices: Array<{ message: { content: string } }>; usage?: { prompt_tokens: number; completion_tokens: number } };
+      const data = (await response.json()) as {
+        choices: Array<{ message: { content: string } }>;
+        usage?: { prompt_tokens: number; completion_tokens: number };
+      };
       logApiCall({
-        userId, model: "sonar", worker: "research",
-        inputTokens: data.usage?.prompt_tokens || 0, outputTokens: data.usage?.completion_tokens || 0,
-        durationMs: Date.now() - startTime, projectId, success: true,
+        userId,
+        model: "sonar",
+        worker: "research",
+        inputTokens: data.usage?.prompt_tokens || 0,
+        outputTokens: data.usage?.completion_tokens || 0,
+        durationMs: Date.now() - startTime,
+        projectId,
+        success: true,
       }).catch(() => {});
-      return data.choices[0]?.message?.content || "Research could not find relevant information.";
+      return (
+        data.choices[0]?.message?.content ||
+        "Research could not find relevant information."
+      );
     } catch (error) {
-      console.warn("[Research] Perplexity failed, falling back to Forge:", error);
+      console.warn(
+        "[Research] Perplexity failed, falling back to Forge:",
+        error
+      );
     }
   }
 
   // Fallback to Forge LLM (without real-time search capability)
+  const fallbackModel = "gpt-5-mini";
   const result = await invokeLLM({
+    model: fallbackModel,
     messages: [
-      { role: "system", content: RESEARCH_SYSTEM_PROMPT + "\n\nNote: Real-time search is unavailable. Provide the best answer from your training data." },
+      {
+        role: "system",
+        content:
+          RESEARCH_SYSTEM_PROMPT +
+          "\n\nNote: Real-time search is unavailable. Provide the best answer from your training data.",
+      },
       { role: "user", content: query },
     ],
   });
   const usage = result.usage;
   logApiCall({
-    userId, model: "gemini-2.5-flash", worker: "research",
-    inputTokens: usage?.prompt_tokens || 0, outputTokens: usage?.completion_tokens || 0,
-    durationMs: Date.now() - startTime, projectId, success: true,
+    userId,
+    model: fallbackModel,
+    worker: "research",
+    inputTokens: usage?.prompt_tokens || 0,
+    outputTokens: usage?.completion_tokens || 0,
+    durationMs: Date.now() - startTime,
+    projectId,
+    success: true,
   }).catch(() => {});
   const content = result.choices[0]?.message?.content;
   return typeof content === "string" ? content : JSON.stringify(content);
@@ -344,16 +380,23 @@ export async function callResearch(query: string, userId: number = 1, projectId?
 /**
  * Toríu's structured planning — uses OpenAI with JSON mode
  */
-export async function callCaptainPlan(task: string, projectDescription: string): Promise<{
+export async function callCaptainPlan(
+  task: string,
+  projectDescription: string
+): Promise<{
   phases: Array<{ name: string; description: string; worker: string }>;
   summary: string;
 }> {
   const openai = getOpenAIClient();
-  
+
   const defaultPlan = {
     phases: [
       { name: "Generate", description: task, worker: "builder" },
-      { name: "Validate", description: "Review output for quality", worker: "validator" },
+      {
+        name: "Validate",
+        description: "Review output for quality",
+        worker: "validator",
+      },
     ],
     summary: "Executing build task",
   };
@@ -363,8 +406,14 @@ export async function callCaptainPlan(task: string, projectDescription: string):
       const response = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: `${CAPTAIN_SYSTEM_PROMPT}\n\nYou must respond with a JSON object containing: { "phases": [{ "name": string, "description": string, "worker": "builder" | "validator" | "research" }], "summary": string }` },
-          { role: "user", content: `Create an execution plan for: ${task}\n\nProject context: ${projectDescription || "New project"}` },
+          {
+            role: "system",
+            content: `${CAPTAIN_SYSTEM_PROMPT}\n\nYou must respond with a JSON object containing: { "phases": [{ "name": string, "description": string, "worker": "builder" | "validator" | "research" }], "summary": string }`,
+          },
+          {
+            role: "user",
+            content: `Create an execution plan for: ${task}\n\nProject context: ${projectDescription || "New project"}`,
+          },
         ],
         response_format: { type: "json_object" },
         max_tokens: 2048,
@@ -388,7 +437,10 @@ export async function callCaptainPlan(task: string, projectDescription: string):
     const planResult = await invokeLLM({
       messages: [
         { role: "system", content: CAPTAIN_SYSTEM_PROMPT },
-        { role: "user", content: `Create an execution plan for: ${task}\n\nProject context: ${projectDescription || "New project"}\n\nRespond with a JSON object containing: { "phases": [{ "name": string, "description": string, "worker": "builder" | "validator" | "research" }], "summary": string }` },
+        {
+          role: "user",
+          content: `Create an execution plan for: ${task}\n\nProject context: ${projectDescription || "New project"}\n\nRespond with a JSON object containing: { "phases": [{ "name": string, "description": string, "worker": "builder" | "validator" | "research" }], "summary": string }`,
+        },
       ],
       response_format: {
         type: "json_schema",
@@ -421,7 +473,9 @@ export async function callCaptainPlan(task: string, projectDescription: string):
     });
 
     const planContent = planResult.choices[0]?.message?.content;
-    const parsed = JSON.parse(typeof planContent === "string" ? planContent : "{}");
+    const parsed = JSON.parse(
+      typeof planContent === "string" ? planContent : "{}"
+    );
     if (parsed.phases && Array.isArray(parsed.phases)) {
       return parsed;
     }
@@ -434,19 +488,39 @@ export async function callCaptainPlan(task: string, projectDescription: string):
 
 // ─── Intent Detection ───────────────────────────────────────────────────────
 
-export type WorkerIntent = "chat" | "build" | "research" | "validate" | "image_gen" | "social";
+export type WorkerIntent =
+  | "chat"
+  | "build"
+  | "research"
+  | "validate"
+  | "image_gen"
+  | "social";
 
 /**
  * Detect user intent to route to appropriate worker
  */
 export function detectIntent(message: string): WorkerIntent {
   const lower = message.toLowerCase();
-  
+
   // Research indicators (check first — most specific multi-word patterns)
   const researchKeywords = [
-    "research", "find out", "look up", "what is", "who is", "how does",
-    "market", "competitor", "trend", "latest", "news", "current",
-    "compare", "analysis", "statistics", "data on", "information about",
+    "research",
+    "find out",
+    "look up",
+    "what is",
+    "who is",
+    "how does",
+    "market",
+    "competitor",
+    "trend",
+    "latest",
+    "news",
+    "current",
+    "compare",
+    "analysis",
+    "statistics",
+    "data on",
+    "information about",
   ];
   if (researchKeywords.some(kw => lower.includes(kw))) {
     return "research";
@@ -454,8 +528,15 @@ export function detectIntent(message: string): WorkerIntent {
 
   // Validate indicators
   const validateKeywords = [
-    "review", "validate", "check my", "audit", "verify",
-    "quality", "security", "accessibility", "performance check",
+    "review",
+    "validate",
+    "check my",
+    "audit",
+    "verify",
+    "quality",
+    "security",
+    "accessibility",
+    "performance check",
   ];
   if (validateKeywords.some(kw => lower.includes(kw))) {
     return "validate";
@@ -468,9 +549,15 @@ export function detectIntent(message: string): WorkerIntent {
   }
   // Social media posting indicators
   const socialKeywords = [
-    "post to instagram", "post on instagram", "instagram post",
-    "post to facebook", "post on facebook", "social media post",
-    "queue post", "schedule post", "post this",
+    "post to instagram",
+    "post on instagram",
+    "instagram post",
+    "post to facebook",
+    "post on facebook",
+    "social media post",
+    "queue post",
+    "schedule post",
+    "post this",
   ];
   if (socialKeywords.some(kw => lower.includes(kw))) {
     return "social";
@@ -483,7 +570,7 @@ export function detectIntent(message: string): WorkerIntent {
     /\b(?:write|fix|debug|review|refactor|run|execute)\b[^.!?]{0,50}\b(?:code|script|function|component|api)\b/i,
     /\b(?:website|web app|dashboard|api|component)\b[^.!?]{0,50}\b(?:build|develop|implement|code)\b/i,
   ];
-  if (buildPatterns.some((pattern) => pattern.test(message))) {
+  if (buildPatterns.some(pattern => pattern.test(message))) {
     return "build";
   }
   return "chat";
