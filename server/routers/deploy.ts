@@ -1,10 +1,14 @@
 /**
- * Deploy Router — Multi-platform deployment (Vercel, Netlify, Railway, Cloudflare)
+ * Deploy Router — persisted source deployments for supported providers.
  */
 import { z } from "zod";
-import { router, protectedProcedure, publicProcedure } from "../_core/trpc";
-import { getProject, getProjectFiles, addOrchestrationEvent, updateProject } from "../db";
-import { deployToCloudflare, isCloudflareConfigured } from "../deployer";
+import { router, protectedProcedure } from "../_core/trpc";
+import {
+  getProject,
+  getProjectFiles,
+  addOrchestrationEvent,
+  updateProject,
+} from "../db";
 import {
   deployToExternalPlatform,
   connectPlatform,
@@ -12,7 +16,6 @@ import {
   getPlatformStatuses,
   getDeploymentHistory,
   getDeploymentStatus,
-  type Platform,
 } from "../platformDeployService";
 
 export const deployRouter = router({
@@ -21,22 +24,25 @@ export const deployRouter = router({
    */
   status: protectedProcedure.query(async ({ ctx }) => {
     const platforms = await getPlatformStatuses(ctx.user.id);
-    return {
-      cloudflare: { available: isCloudflareConfigured(), provider: "Cloudflare Pages" },
-      platforms,
-    };
+    return { platforms };
   }),
 
   /**
    * Connect a platform (store encrypted token)
    */
   connectPlatform: protectedProcedure
-    .input(z.object({
-      platform: z.enum(["vercel", "netlify", "railway"]),
-      token: z.string().min(1),
-    }))
+    .input(
+      z.object({
+        platform: z.enum(["vercel", "netlify", "railway"]),
+        token: z.string().min(1),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
-      const result = await connectPlatform(ctx.user.id, input.platform, input.token);
+      const result = await connectPlatform(
+        ctx.user.id,
+        input.platform,
+        input.token
+      );
       if (!result.success) {
         throw new Error(result.error || "Failed to connect platform");
       }
@@ -47,9 +53,11 @@ export const deployRouter = router({
    * Disconnect a platform
    */
   disconnectPlatform: protectedProcedure
-    .input(z.object({
-      platform: z.enum(["vercel", "netlify", "railway"]),
-    }))
+    .input(
+      z.object({
+        platform: z.enum(["vercel", "netlify", "railway"]),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       await disconnectPlatform(ctx.user.id, input.platform);
       return { success: true };
@@ -59,18 +67,21 @@ export const deployRouter = router({
    * Deploy a project to an external platform
    */
   deployToPlatform: protectedProcedure
-    .input(z.object({
-      projectId: z.number(),
-      platform: z.enum(["vercel", "netlify", "railway"]),
-      commitMessage: z.string().optional(),
-    }))
+    .input(
+      z.object({
+        projectId: z.number(),
+        platform: z.enum(["vercel", "netlify", "railway"]),
+        commitMessage: z.string().optional(),
+      })
+    )
     .mutation(async ({ ctx, input }) => {
       const userId = ctx.user.id;
       const project = await getProject(input.projectId, userId);
       if (!project) throw new Error("Project not found");
 
       const files = await getProjectFiles(input.projectId, userId);
-      if (files.length === 0) throw new Error("No files to deploy. Build the project first.");
+      if (files.length === 0)
+        throw new Error("No files to deploy. Build the project first.");
 
       // Log orchestration event
       await addOrchestrationEvent({
@@ -84,6 +95,11 @@ export const deployRouter = router({
       const deployableFiles = files
         .filter(f => f.content)
         .map(f => ({ filepath: f.filepath, content: f.content! }));
+      if (deployableFiles.length === 0) {
+        throw new Error(
+          "No saved file contents to deploy. Save project files first."
+        );
+      }
 
       const result = await deployToExternalPlatform({
         projectId: input.projectId,
@@ -95,90 +111,48 @@ export const deployRouter = router({
       });
 
       if (result.success) {
+        const isLive = result.status === "live";
         await addOrchestrationEvent({
           user_id: userId,
           project_id: input.projectId,
-          event_type: "deploy_complete",
+          event_type: isLive ? "deploy_complete" : "deploy_queued",
           agent_name: `Deployer (${input.platform})`,
-          summary: `Deployed to ${result.url}`,
-          payload: { url: result.url, platform: input.platform, deploymentId: result.deploymentId },
+          summary: isLive
+            ? `Deployment is live at ${result.url}`
+            : `Deployment ${result.status || "queued"} with ${input.platform}.`,
+          payload: {
+            url: result.url,
+            platform: input.platform,
+            deploymentDbId: result.deploymentDbId,
+            providerDeploymentId: result.deploymentId,
+            status: result.status,
+          },
         });
 
-        // Update project metadata
-        await updateProject(input.projectId, userId, {
-          metadata: {
-            deployUrl: result.url,
-            deployPlatform: input.platform,
-            deployedAt: Date.now(),
-          } as any,
-        });
+        // A project has a public deploy URL only after the provider confirms it is live.
+        if (isLive && result.url) {
+          await updateProject(input.projectId, userId, {
+            metadata: {
+              deployUrl: result.url,
+              deployPlatform: input.platform,
+              deployedAt: Date.now(),
+            } as any,
+          });
+        }
 
-        return { success: true, url: result.url, deploymentId: result.deploymentId };
+        return {
+          success: true,
+          deploymentDbId: result.deploymentDbId,
+          providerDeploymentId: result.deploymentId,
+          status: result.status || "queued",
+          url: result.url,
+        };
       } else {
         await addOrchestrationEvent({
           user_id: userId,
           project_id: input.projectId,
           event_type: "deploy_failed",
           agent_name: `Deployer (${input.platform})`,
-          summary: `Deployment failed: ${result.error}`,
-        });
-
-        throw new Error(result.error || "Deployment failed");
-      }
-    }),
-
-  /**
-   * Deploy to Cloudflare Pages (legacy)
-   */
-  deploy: protectedProcedure
-    .input(z.object({ projectId: z.number() }))
-    .mutation(async ({ ctx, input }) => {
-      const userId = ctx.user.id;
-      const project = await getProject(input.projectId, userId);
-      if (!project) throw new Error("Project not found");
-
-      const files = await getProjectFiles(input.projectId, userId);
-      if (files.length === 0) throw new Error("No files to deploy. Build the project first.");
-
-      if (!isCloudflareConfigured()) {
-        throw new Error("Cloudflare credentials not configured");
-      }
-
-      await addOrchestrationEvent({
-        user_id: userId,
-        project_id: input.projectId,
-        event_type: "deploy_start",
-        agent_name: "Deployer (Cloudflare Pages)",
-        summary: `Deploying ${project.name} to Cloudflare Pages...`,
-      });
-
-      const deployableFiles = files
-        .filter(f => f.content)
-        .map(f => ({ filepath: f.filepath, content: f.content! }));
-
-      const result = await deployToCloudflare(project.name, deployableFiles);
-
-      if (result.success) {
-        await addOrchestrationEvent({
-          user_id: userId,
-          project_id: input.projectId,
-          event_type: "deploy_complete",
-          agent_name: "Deployer (Cloudflare Pages)",
-          summary: `Deployed to ${result.url}`,
-          payload: { url: result.url, projectName: result.projectName },
-        });
-
-        await updateProject(input.projectId, userId, {
-          metadata: { deployUrl: result.url, deployedAt: Date.now() } as any,
-        });
-
-        return { success: true, url: result.url, projectName: result.projectName };
-      } else {
-        await addOrchestrationEvent({
-          user_id: userId,
-          project_id: input.projectId,
-          event_type: "deploy_failed",
-          agent_name: "Deployer (Cloudflare Pages)",
           summary: `Deployment failed: ${result.error}`,
         });
 

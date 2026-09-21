@@ -20,6 +20,7 @@ import {
   ExternalLink,
   Download,
   Maximize2,
+  Rocket,
 } from "lucide-react";
 import { PushToGitHub } from "@/components/PushToGitHub";
 import { Streamdown } from "streamdown";
@@ -29,32 +30,43 @@ import { HolographicCode } from "@/components/HolographicCode";
 import { LivePreview } from "@/components/LivePreview";
 import { DeployModal } from "@/components/DeployModal";
 import { ToriuAvatar } from "@/components/ToriuAvatar";
-import { useConversationStore, useOrchestrationStore, type Message } from "@/stores";
+import {
+  useConversationStore,
+  useOrchestrationStore,
+  type Message,
+} from "@/stores";
 import { duration, ease } from "@/lib/motion";
 import { nanoid } from "nanoid";
 import { useProjectStore, useUIStore } from "@/stores";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { getGuestMessagesRemaining, incrementGuestMessages, isGuestLimitReached, getGuestMessagesUsed, setOwnerFlag } from "@/hooks/useGuestLimit";
-import { SignUpWall } from "@/components/SignUpWall";
-import { GuestCreditsIndicator } from "@/components/GuestCreditsIndicator";
 import { CreditExhaustedBanner } from "@/components/CreditExhaustedBanner";
 import { BusinessActionPanel } from "@/components/BusinessActionPanel";
-import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   MAX_CHAT_ATTACHMENTS,
   MAX_CHAT_IMAGE_BYTES,
   MAX_CHAT_TOTAL_IMAGE_BYTES,
 } from "@shared/chatLimits";
 
-// Safe parseInt: returns undefined if result is NaN (avoids tRPC z.number() validation errors)
-// This prevents errors when activeProject.id is a non-numeric string like "proj-1"
+// Only database-issued numeric IDs may be sent to tRPC project endpoints.
+// This prevents local placeholder IDs such as "proj-1" from being treated as persisted projects.
 const safeParseInt = (val: string | null | undefined): number | undefined => {
-  if (!val) return undefined;
-  const n = parseInt(val, 10);
-  return isNaN(n) ? undefined : n;
+  if (!val || !/^\d+$/.test(val)) return undefined;
+  const n = Number(val);
+  return Number.isSafeInteger(n) && n > 0 ? n : undefined;
 };
 
-const SUPPORTED_CHAT_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+const SUPPORTED_CHAT_IMAGE_TYPES = new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+]);
 
 let activeVoiceAudio: HTMLAudioElement | null = null;
 let activeVoiceUrl: string | null = null;
@@ -81,7 +93,8 @@ function readFileAsDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
-    reader.onerror = () => reject(reader.error || new Error("Unable to read file"));
+    reader.onerror = () =>
+      reject(reader.error || new Error("Unable to read file"));
     reader.readAsDataURL(file);
   });
 }
@@ -91,21 +104,41 @@ interface ConversationPanelProps {
   onMobileSidebarOpen?: () => void;
 }
 
-export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProps = {}) {
-  const { messages, isTyping, pendingUploads, addMessage, updateMessage, setTyping, addUpload, removeUpload, clearUploads, activeConversationId, setActiveConversationId } =
-    useConversationStore();
+export function ConversationPanel({
+  onMobileSidebarOpen,
+}: ConversationPanelProps = {}) {
+  const {
+    messages,
+    isTyping,
+    pendingUploads,
+    addMessage,
+    updateMessage,
+    setTyping,
+    addUpload,
+    removeUpload,
+    clearUploads,
+    activeConversationId,
+    setActiveConversationId,
+  } = useConversationStore();
   const { addEvent } = useOrchestrationStore();
   const { activeProject } = useProjectStore();
-  const { isAuthenticated } = useAuth();
+  const { getToken } = useAuth();
   const [input, setInput] = useState("");
   const [isDragging, setIsDragging] = useState(false);
-  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(null);
-  const [autoPlayMessageId, setAutoPlayMessageId] = useState<string | null>(null);
+  const [streamingMessageId, setStreamingMessageId] = useState<string | null>(
+    null
+  );
+  const [autoPlayMessageId, setAutoPlayMessageId] = useState<string | null>(
+    null
+  );
   const [activeMemoryCount, setActiveMemoryCount] = useState(0);
-  const [activeKnowledgeSources, setActiveKnowledgeSources] = useState<string[]>([]);
-  const [showSignUpWall, setShowSignUpWall] = useState(false);
-  const [guestRemaining, setGuestRemaining] = useState(getGuestMessagesRemaining());
-  const [creditExhausted, setCreditExhausted] = useState<{ plan: string; dailyLimit: number } | null>(null);
+  const [activeKnowledgeSources, setActiveKnowledgeSources] = useState<
+    string[]
+  >([]);
+  const [creditExhausted, setCreditExhausted] = useState<{
+    plan: string;
+    dailyLimit: number;
+  } | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -118,20 +151,20 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   const [showDeployModal, setShowDeployModal] = useState(false);
   const handleVoiceStarted = useCallback(() => setAutoPlayMessageId(null), []);
   const utils = trpc.useUtils();
-
-  // Owner status: when isOwner=true, bypass all guest limits and sign-up wall
-  const { data: ownerStatus } = trpc.system.ownerStatus.useQuery();
-  const isOwner = ownerStatus?.isOwner ?? false;
-
-  // Persist owner flag to localStorage so limit functions work synchronously
-  useEffect(() => {
-    if (ownerStatus !== undefined) {
-      setOwnerFlag(ownerStatus.isOwner);
-      if (ownerStatus.isOwner) {
-        setGuestRemaining(999999);
-      }
-    }
-  }, [ownerStatus?.isOwner]);
+  const persistedProjectId = safeParseInt(activeProject?.id);
+  const {
+    data: persistedProjectFiles,
+    isLoading: isCheckingSavedProjectFiles,
+  } = trpc.projects.getFiles.useQuery(
+    { projectId: persistedProjectId ?? 0 },
+    { enabled: persistedProjectId !== undefined }
+  );
+  const hasSavedProjectFiles =
+    persistedProjectFiles?.some(
+      file => typeof file.content === "string" && file.content.trim().length > 0
+    ) ?? false;
+  const canDeploySavedProject =
+    persistedProjectId !== undefined && hasSavedProjectFiles;
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
@@ -154,14 +187,20 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   useEffect(() => {
     if (textareaRef.current) {
       textareaRef.current.style.height = "auto";
-      textareaRef.current.style.height = Math.min(textareaRef.current.scrollHeight, 120) + "px";
+      textareaRef.current.style.height =
+        Math.min(textareaRef.current.scrollHeight, 120) + "px";
     }
   }, [input]);
 
   useEffect(() => {
     if (messages.length === 0 && !activeConversationId) {
       const hour = new Date().getHours();
-      const greeting = hour < 12 ? "Morning, Lee." : hour < 17 ? "What's up, Lee." : "Evening, Lee.";
+      const greeting =
+        hour < 12
+          ? "Morning, Lee."
+          : hour < 17
+            ? "What's up, Lee."
+            : "Evening, Lee.";
       addMessage({
         id: nanoid(),
         role: "assistant",
@@ -176,17 +215,6 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
     setAutoPlayMessageId(null);
     stopActiveVoiceAudio();
-
-    // Guest limit check (client-side enforcement)
-    // Owner is always exempt from guest limits
-    if (!isAuthenticated && !isOwner) {
-      if (isGuestLimitReached()) {
-        setShowSignUpWall(true);
-        return;
-      }
-      const remaining = incrementGuestMessages();
-      setGuestRemaining(remaining);
-    }
 
     // Clear credit exhaustion banner when user sends a new message
     setCreditExhausted(null);
@@ -217,10 +245,18 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     // The streaming endpoint is the single source of truth for persistence.
     // Send the current conversation when present; for a new chat the server
     // creates it and returns its authoritative ID in an SSE event.
-    streamResponse(messageText, safeParseInt(activeConversationIdRef.current), userMessage.attachments);
+    streamResponse(
+      messageText,
+      safeParseInt(activeConversationIdRef.current),
+      userMessage.attachments
+    );
   }, [input, pendingUploads, activeProject]);
 
-  const streamResponse = async (messageText: string, conversationId?: number, attachments = pendingUploads) => {
+  const streamResponse = async (
+    messageText: string,
+    conversationId?: number,
+    attachments = pendingUploads
+  ) => {
     const assistantId = nanoid();
     addMessage({
       id: assistantId,
@@ -241,15 +277,26 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         .filter(m => m.role === "user" || m.role === "assistant")
         .slice(-10)
         .map(m => {
-          const imageAttachments = m.attachments?.filter((attachment) => (attachment.dataUrl || attachment.url) && attachment.type.startsWith("image/")) || [];
+          const imageAttachments =
+            m.attachments?.filter(
+              attachment =>
+                (attachment.dataUrl || attachment.url) &&
+                attachment.type.startsWith("image/")
+            ) || [];
           if (m.role === "user" && imageAttachments.length > 0) {
             return {
               role: m.role,
               content: [
-                { type: "text", text: m.content || "Please describe the attached image." },
-                ...imageAttachments.map((attachment) => ({
+                {
+                  type: "text",
+                  text: m.content || "Please describe the attached image.",
+                },
+                ...imageAttachments.map(attachment => ({
                   type: "image_url",
-                  image_url: { url: attachment.dataUrl || attachment.url!, detail: "high" },
+                  image_url: {
+                    url: attachment.dataUrl || attachment.url!,
+                    detail: "high",
+                  },
                 })),
               ],
             };
@@ -261,9 +308,13 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         ? `/api/stream/chat?conversationId=${encodeURIComponent(String(conversationId))}`
         : "/api/stream/chat";
 
+      const token = await getToken();
       const response = await fetch(streamUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
         credentials: "include",
         signal: controller.signal,
         body: JSON.stringify({
@@ -305,7 +356,9 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
           try {
             const event = JSON.parse(data);
             if (event.type === "conversation_id") {
-              const serverConversationId = safeParseInt(String(event.conversationId));
+              const serverConversationId = safeParseInt(
+                String(event.conversationId)
+              );
               if (serverConversationId !== undefined) {
                 activeConversationIdRef.current = String(serverConversationId);
                 setActiveConversationId(String(serverConversationId));
@@ -327,7 +380,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 id: nanoid(),
                 projectId: activeProject?.id || "general",
                 eventType: "agent_spawned",
-                payload: { agentType: "memory", summary: `Checking memory... found ${event.count} relevant entries` },
+                payload: {
+                  agentType: "memory",
+                  summary: `Checking memory... found ${event.count} relevant entries`,
+                },
                 timestamp: new Date(),
               });
             } else if (event.type === "knowledge_active") {
@@ -336,7 +392,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 id: nanoid(),
                 projectId: activeProject?.id || "general",
                 eventType: "agent_spawned",
-                payload: { agentType: "knowledge", summary: `Using knowledge from: ${(event.sources || []).join(", ")}` },
+                payload: {
+                  agentType: "knowledge",
+                  summary: `Using knowledge from: ${(event.sources || []).join(", ")}`,
+                },
                 timestamp: new Date(),
               });
             } else if (event.type === "token") {
@@ -346,8 +405,14 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
               // Keep image payloads structured. Markdown renderers commonly reject
               // data URLs, and embedding base64 in text exposes the raw payload.
               if (typeof event.url === "string" && event.url) {
-                accumulatedImages = [...accumulatedImages, { url: event.url, title: event.title || "Generated image" }];
-                updateMessage(assistantId, { content: accumulated, images: accumulatedImages });
+                accumulatedImages = [
+                  ...accumulatedImages,
+                  { url: event.url, title: event.title || "Generated image" },
+                ];
+                updateMessage(assistantId, {
+                  content: accumulated,
+                  images: accumulatedImages,
+                });
               }
             } else if (event.type === "execution") {
               // Code execution result
@@ -361,7 +426,12 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 id: nanoid(),
                 projectId: activeProject?.id || "general",
                 eventType: "agent_spawned",
-                payload: { step: event.step, total: event.total, name: event.name, status: event.status },
+                payload: {
+                  step: event.step,
+                  total: event.total,
+                  name: event.name,
+                  status: event.status,
+                },
                 timestamp: new Date(),
               });
             } else if (event.type === "tool_mode") {
@@ -388,7 +458,11 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
                 id: nanoid(),
                 projectId: activeProject?.id || "general",
                 eventType: "agent_spawned",
-                payload: { agentType: "tool", tool: event.tool, summary: label },
+                payload: {
+                  agentType: "tool",
+                  tool: event.tool,
+                  summary: label,
+                },
                 timestamp: new Date(),
               });
             } else if (event.type === "tool_result") {
@@ -398,30 +472,45 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
               // Tool completed. Image artifacts are transported separately from
               // prose so they render reliably even when their source is a data URL.
               const imageArtifacts = Array.isArray(event.artifacts)
-                ? event.artifacts.filter((artifact: any) => artifact?.type === "image" && typeof artifact.url === "string")
+                ? event.artifacts.filter(
+                    (artifact: any) =>
+                      artifact?.type === "image" &&
+                      typeof artifact.url === "string"
+                  )
                 : [];
               if (imageArtifacts.length > 0) {
                 accumulatedImages = [
                   ...accumulatedImages,
-                  ...imageArtifacts.map((artifact: any) => ({ url: artifact.url, title: artifact.name || "Generated image" })),
+                  ...imageArtifacts.map((artifact: any) => ({
+                    url: artifact.url,
+                    title: artifact.name || "Generated image",
+                  })),
                 ];
               }
               const icon = event.success ? "✅" : "❌";
               accumulated += `${icon} Done\n`;
-              updateMessage(assistantId, { content: accumulated, images: accumulatedImages });
+              updateMessage(assistantId, {
+                content: accumulated,
+                images: accumulatedImages,
+              });
             } else if (event.type === "sandbox_url") {
               // A live sandbox URL was produced — open it in preview
               accumulated += `\n\n🌐 **Live Preview:** [${event.name || "View Project"}](${event.url})\n`;
               updateMessage(assistantId, { content: accumulated });
               // Open the sandbox URL in the workspace preview panel
-              useUIStore.getState().openPreview(
-                `<iframe src="${event.url}" style="width:100%;height:100%;border:none;"></iframe>`,
-                event.name || "Live Preview"
-              );
+              useUIStore
+                .getState()
+                .openPreview(
+                  `<iframe src="${event.url}" style="width:100%;height:100%;border:none;"></iframe>`,
+                  event.name || "Live Preview"
+                );
             } else if (event.type === "error") {
               // Check for credit exhaustion
               if (event.credit_exhausted) {
-                setCreditExhausted({ plan: event.plan || "free", dailyLimit: 25 });
+                setCreditExhausted({
+                  plan: event.plan || "free",
+                  dailyLimit: 25,
+                });
                 updateMessage(assistantId, { content: "" }); // Clear the empty assistant message
               } else {
                 accumulated = event.content;
@@ -438,7 +527,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         id: nanoid(),
         projectId: activeProject?.id || "general",
         eventType: "agent_completed",
-        payload: { agentType: "coordinator", summary: accumulated.slice(0, 100) },
+        payload: {
+          agentType: "coordinator",
+          summary: accumulated.slice(0, 100),
+        },
         timestamp: new Date(),
       });
 
@@ -448,7 +540,8 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
 
       // Detect code blocks for live preview panel
       // Extracts the first substantial HTML/TSX/JSX code block and opens the workspace preview
-      const codeBlockRegex = /```(?:html|htm|tsx|jsx)(?:\s+([^\n]+))?\n([\s\S]*?)```/;
+      const codeBlockRegex =
+        /```(?:html|htm|tsx|jsx)(?:\s+([^\n]+))?\n([\s\S]*?)```/;
       const codeMatch = accumulated.match(codeBlockRegex);
       if (codeMatch) {
         const fileName = codeMatch[1]?.trim() || "preview.html";
@@ -465,7 +558,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
       }
     } catch (error: any) {
       if (error.name === "AbortError") return;
-      updateMessage(assistantId, { content: "I encountered an issue: " + (error.message || "Please try again.") });
+      updateMessage(assistantId, {
+        content:
+          "I encountered an issue: " + (error.message || "Please try again."),
+      });
     } finally {
       setTyping(false);
       setStreamingMessageId(null);
@@ -480,43 +576,79 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
     }
   };
 
-  const queueFiles = useCallback(async (files: File[]) => {
-    let queuedImageBytes = pendingUploads
-      .filter((attachment) => attachment.type.startsWith("image/"))
-      .reduce((total, attachment) => total + attachment.size, 0);
-    const remainingSlots = Math.max(0, MAX_CHAT_ATTACHMENTS - pendingUploads.length);
-    if (files.length > remainingSlots) {
-      toast.error(`Toríu accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`);
-    }
-    for (const file of files.slice(0, remainingSlots)) {
-      if (file.type.startsWith("image/") && !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)) {
-        toast.error("That image type is not supported. Please use PNG, JPG, WEBP, or GIF.");
-        continue;
+  const queueFiles = useCallback(
+    async (files: File[]) => {
+      let queuedImageBytes = pendingUploads
+        .filter(attachment => attachment.type.startsWith("image/"))
+        .reduce((total, attachment) => total + attachment.size, 0);
+      const remainingSlots = Math.max(
+        0,
+        MAX_CHAT_ATTACHMENTS - pendingUploads.length
+      );
+      if (files.length > remainingSlots) {
+        toast.error(
+          `Toríu accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`
+        );
       }
-      if (file.type.startsWith("image/") && file.size > MAX_CHAT_IMAGE_BYTES) {
-        toast.error("That image is too large. Please choose one under 10 MB.");
-        continue;
-      }
-      if (file.type.startsWith("image/") && queuedImageBytes + file.size > MAX_CHAT_TOTAL_IMAGE_BYTES) {
-        toast.error("Those images are too large together. Please keep attachments under 20 MB total.");
-        continue;
-      }
+      for (const file of files.slice(0, remainingSlots)) {
+        if (
+          file.type.startsWith("image/") &&
+          !SUPPORTED_CHAT_IMAGE_TYPES.has(file.type)
+        ) {
+          toast.error(
+            "That image type is not supported. Please use PNG, JPG, WEBP, or GIF."
+          );
+          continue;
+        }
+        if (
+          file.type.startsWith("image/") &&
+          file.size > MAX_CHAT_IMAGE_BYTES
+        ) {
+          toast.error(
+            "That image is too large. Please choose one under 10 MB."
+          );
+          continue;
+        }
+        if (
+          file.type.startsWith("image/") &&
+          queuedImageBytes + file.size > MAX_CHAT_TOTAL_IMAGE_BYTES
+        ) {
+          toast.error(
+            "Those images are too large together. Please keep attachments under 20 MB total."
+          );
+          continue;
+        }
 
-      try {
-        const dataUrl = file.type.startsWith("image/") ? await readFileAsDataUrl(file) : undefined;
-        addUpload({ id: nanoid(), name: file.name, type: file.type, size: file.size, dataUrl });
-        if (file.type.startsWith("image/")) queuedImageBytes += file.size;
-      } catch {
-        toast.error(`I couldn't read ${file.name}. Please try attaching it again.`);
+        try {
+          const dataUrl = file.type.startsWith("image/")
+            ? await readFileAsDataUrl(file)
+            : undefined;
+          addUpload({
+            id: nanoid(),
+            name: file.name,
+            type: file.type,
+            size: file.size,
+            dataUrl,
+          });
+          if (file.type.startsWith("image/")) queuedImageBytes += file.size;
+        } catch {
+          toast.error(
+            `I couldn't read ${file.name}. Please try attaching it again.`
+          );
+        }
       }
-    }
-  }, [addUpload, pendingUploads]);
+    },
+    [addUpload, pendingUploads]
+  );
 
-  const handleDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setIsDragging(false);
-    void queueFiles(Array.from(e.dataTransfer.files));
-  }, [queueFiles]);
+  const handleDrop = useCallback(
+    (e: React.DragEvent) => {
+      e.preventDefault();
+      setIsDragging(false);
+      void queueFiles(Array.from(e.dataTransfer.files));
+    },
+    [queueFiles]
+  );
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     void queueFiles(Array.from(e.target.files || []));
@@ -526,7 +658,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
   return (
     <div
       className="flex flex-col h-full"
-      onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+      onDragOver={e => {
+        e.preventDefault();
+        setIsDragging(true);
+      }}
       onDragLeave={() => setIsDragging(false)}
       onDrop={handleDrop}
     >
@@ -555,7 +690,8 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             >
               <span className="text-[11px]">🧠</span>
               <span className="text-[10px] text-primary/70 font-medium">
-                Using {activeMemoryCount} {activeMemoryCount === 1 ? "memory" : "memories"}
+                Using {activeMemoryCount}{" "}
+                {activeMemoryCount === 1 ? "memory" : "memories"}
               </span>
             </motion.div>
           )}
@@ -578,7 +714,7 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
         </AnimatePresence>
 
         <AnimatePresence mode="popLayout">
-          {messages.map((msg) => (
+          {messages.map(msg => (
             <MessageBubble
               key={msg.id}
               message={msg}
@@ -607,23 +743,31 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             </div>
             <div className="flex items-center gap-2">
               <div className="flex gap-1">
-                {[0, 1, 2].map((i) => (
+                {[0, 1, 2].map(i => (
                   <motion.div
                     key={i}
                     className="w-1.5 h-1.5 rounded-full bg-white/40"
                     animate={{ opacity: [0.2, 1, 0.2], scale: [0.8, 1.1, 0.8] }}
-                    transition={{ duration: 0.9, repeat: Infinity, delay: i * 0.2 }}
+                    transition={{
+                      duration: 0.9,
+                      repeat: Infinity,
+                      delay: i * 0.2,
+                    }}
                   />
                 ))}
               </div>
-              <span className="text-[10px] text-white/30 font-medium tracking-wider">PROCESSING</span>
+              <span className="text-[10px] text-white/30 font-medium tracking-wider">
+                PROCESSING
+              </span>
             </div>
           </motion.div>
         )}
         <div ref={messagesEndRef} />
       </div>
 
-      <BusinessActionPanel conversationId={safeParseInt(activeConversationId) ?? null} />
+      <BusinessActionPanel
+        conversationId={safeParseInt(activeConversationId) ?? null}
+      />
 
       <AnimatePresence>
         {pendingUploads.length > 0 && (
@@ -633,11 +777,19 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
           >
-            {pendingUploads.map((upload) => (
-              <div key={upload.id} className="flex items-center gap-1.5 px-2 py-1 rounded-md surface-elevated border border-border text-[10px]">
+            {pendingUploads.map(upload => (
+              <div
+                key={upload.id}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-md surface-elevated border border-border text-[10px]"
+              >
                 <FileIcon type={upload.type} />
-                <span className="text-foreground/70 max-w-[100px] truncate">{upload.name}</span>
-                <button onClick={() => removeUpload(upload.id)} className="text-muted-foreground hover:text-foreground">
+                <span className="text-foreground/70 max-w-[100px] truncate">
+                  {upload.name}
+                </span>
+                <button
+                  onClick={() => removeUpload(upload.id)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
                   <X size={10} />
                 </button>
               </div>
@@ -659,27 +811,49 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
             <LivePreview
               code={livePreviewCode}
               onClose={() => setShowPreview(false)}
-              onDeploy={activeProject ? () => setShowDeployModal(true) : undefined}
             />
-            {showDeployModal && activeProject && (
-              <DeployModal
-                projectId={activeProject.id}
-                projectName={activeProject.name}
-                onClose={() => setShowDeployModal(false)}
-              />
-            )}
+            <div className="px-3 py-2 border-t border-border flex items-center justify-between gap-3">
+              <p className="text-[10px] text-muted-foreground/50">
+                {canDeploySavedProject
+                  ? "This inline preview is local; deployment uses saved project files."
+                  : isCheckingSavedProjectFiles
+                    ? "Checking whether this project has saved files…"
+                    : "This inline preview is local. Save project files before deployment is available."}
+              </p>
+              {canDeploySavedProject && (
+                <button
+                  onClick={() => setShowDeployModal(true)}
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-[10px] text-purple-400 hover:bg-orange-500/20 transition-colors"
+                  title="Deploy saved project files"
+                >
+                  <Rocket size={11} />
+                  Deploy saved project
+                </button>
+              )}
+            </div>
+            {showDeployModal &&
+              canDeploySavedProject &&
+              activeProject &&
+              persistedProjectId !== undefined && (
+                <DeployModal
+                  projectId={persistedProjectId}
+                  projectName={activeProject.name}
+                  onClose={() => setShowDeployModal(false)}
+                />
+              )}
           </motion.div>
         )}
       </AnimatePresence>
 
       {/* Credit Exhaustion Banner */}
       {creditExhausted && (
-        <CreditExhaustedBanner plan={creditExhausted.plan} dailyLimit={creditExhausted.dailyLimit} />
+        <CreditExhaustedBanner
+          plan={creditExhausted.plan}
+          dailyLimit={creditExhausted.dailyLimit}
+        />
       )}
 
       <div className="px-3 sm:px-4 py-3 border-t border-border">
-        {/* Guest credits indicator — hidden for owner */}
-        {!isAuthenticated && !isOwner && <GuestCreditsIndicator remaining={guestRemaining} />}
         <div className="flex items-end gap-2 surface-elevated rounded-xl px-3 py-2 border border-border focus-within:border-primary/30 transition-colors">
           {/* Mobile: sidebar button to open conversation list */}
           {onMobileSidebarOpen && (
@@ -691,23 +865,32 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
               <PanelLeft size={16} className="sm:w-3.5 sm:h-3.5" />
             </button>
           )}
-          <button onClick={() => fileInputRef.current?.click()} className="p-2 sm:p-1.5 text-muted-foreground hover:text-primary transition-colors">
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            className="p-2 sm:p-1.5 text-muted-foreground hover:text-primary transition-colors"
+          >
             <Paperclip size={16} className="sm:w-3.5 sm:h-3.5" />
           </button>
-          <input ref={fileInputRef} type="file" multiple accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleFileSelect} />
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleFileSelect}
+          />
           <textarea
             ref={textareaRef}
             value={input}
-            onChange={(e) => setInput(e.target.value)}
+            onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={!isAuthenticated && !isOwner && isGuestLimitReached() ? "Sign up to continue chatting..." : "Ask Toríu to build, research, or validate..."}
+            placeholder="Ask Toríu to build, research, or validate..."
             className="flex-1 bg-transparent text-base sm:text-sm text-foreground placeholder:text-muted-foreground/40 resize-none outline-none max-h-[120px] min-h-[44px] sm:min-h-0 py-2 sm:py-0"
             rows={1}
-            disabled={!isAuthenticated && !isOwner && isGuestLimitReached()}
           />
           <motion.button
             onClick={handleSend}
-            disabled={(!input.trim() && pendingUploads.length === 0) || (!isAuthenticated && !isOwner && isGuestLimitReached())}
+            disabled={!input.trim() && pendingUploads.length === 0}
             className="p-2 sm:p-1.5 text-primary disabled:text-muted-foreground/30 transition-colors"
             whileTap={{ scale: 0.9 }}
           >
@@ -715,16 +898,10 @@ export function ConversationPanel({ onMobileSidebarOpen }: ConversationPanelProp
           </motion.button>
         </div>
         <p className="text-[9px] text-muted-foreground/30 mt-1.5 text-center">
-          Powered by: DeepSeek · Gemini · ChatGPT · Perplexity
+          Provider and model are selected for each request based on availability
+          and task fit.
         </p>
       </div>
-
-      {/* Sign-up Wall Modal */}
-      <SignUpWall
-        open={showSignUpWall}
-        onClose={() => setShowSignUpWall(false)}
-        messagesUsed={getGuestMessagesUsed()}
-      />
     </div>
   );
 }
@@ -742,7 +919,9 @@ function MessageBubble({
 }) {
   const isUser = message.role === "user";
   const [showPushDialog, setShowPushDialog] = useState(false);
-  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(null);
+  const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
+    null
+  );
 
   // Extract code blocks from assistant messages for push-to-github
   const codeFiles = useMemo(() => {
@@ -752,7 +931,8 @@ function MessageBubble({
     let match;
     while ((match = regex.exec(message.content)) !== null) {
       const lang = match[1] || "text";
-      const filename = match[2] || `file${blocks.length + 1}.${langToExt(lang)}`;
+      const filename =
+        match[2] || `file${blocks.length + 1}.${langToExt(lang)}`;
       blocks.push({ path: filename, content: match[3] });
     }
     return blocks;
@@ -760,7 +940,8 @@ function MessageBubble({
 
   const hasCode = codeFiles.length > 0;
   const generatedImages = message.images || [];
-  const selectedImage = selectedImageIndex === null ? null : generatedImages[selectedImageIndex];
+  const selectedImage =
+    selectedImageIndex === null ? null : generatedImages[selectedImageIndex];
 
   return (
     <motion.div
@@ -770,28 +951,41 @@ function MessageBubble({
       transition={{ duration: duration.fast }}
       layout
     >
-      <div className={"max-w-[90%] sm:max-w-[85%] " + (isUser ? "order-2" : "order-1")}>
+      <div
+        className={
+          "max-w-[90%] sm:max-w-[85%] " + (isUser ? "order-2" : "order-1")
+        }
+      >
         {!isUser && (
           <div className="flex items-center gap-1.5 mb-1">
             <ToriuAvatar size={18} />
-            <span className="text-[9px] text-primary/60 font-medium tracking-wider uppercase">Toríu</span>
+            <span className="text-[9px] text-primary/60 font-medium tracking-wider uppercase">
+              Toríu
+            </span>
           </div>
         )}
         <div
-          className={"rounded-xl px-3.5 py-2.5 text-sm sm:text-[13px] leading-relaxed " +
+          className={
+            "rounded-xl px-3.5 py-2.5 text-sm sm:text-[13px] leading-relaxed " +
             (isUser
               ? "bg-primary text-primary-foreground"
-              : "surface-elevated border border-border text-foreground")}
+              : "surface-elevated border border-border text-foreground")
+          }
         >
           {isUser ? (
             <p className="whitespace-pre-wrap">{message.content}</p>
           ) : (
             <div className="prose prose-invert prose-sm max-w-none">
               {isStreaming && message.content.includes("```") ? (
-                <HolographicCode code={message.content} isStreaming={isStreaming} />
+                <HolographicCode
+                  code={message.content}
+                  isStreaming={isStreaming}
+                />
               ) : (
                 <>
-                  <Streamdown>{message.content || (isStreaming ? " " : "")}</Streamdown>
+                  <Streamdown>
+                    {message.content || (isStreaming ? " " : "")}
+                  </Streamdown>
                   {generatedImages.length > 0 && (
                     <div
                       className={`mt-3 grid gap-2 not-prose ${
@@ -819,7 +1013,9 @@ function MessageBubble({
                             loading="lazy"
                           />
                           <span className="absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/85 via-black/55 to-transparent px-3 pb-2 pt-8 text-xs text-white opacity-90 transition-opacity group-hover:opacity-100">
-                            <span className="truncate">{image.title || `Image ${index + 1}`}</span>
+                            <span className="truncate">
+                              {image.title || `Image ${index + 1}`}
+                            </span>
                             <span className="flex shrink-0 items-center gap-1 font-medium">
                               <Maximize2 className="h-3.5 w-3.5" />
                               View full
@@ -843,10 +1039,18 @@ function MessageBubble({
           {message.attachments && message.attachments.length > 0 && (
             <div className="mt-2 flex flex-wrap gap-1.5">
               {message.attachments.map((att: any) => (
-                <div key={att.id} className="overflow-hidden rounded bg-white/10 text-[10px]">
-                  {(att.dataUrl || att.url) && att.type?.startsWith("image/") && (
-                    <img src={att.dataUrl || att.url} alt={att.name} className="block max-h-48 w-auto max-w-full object-contain" />
-                  )}
+                <div
+                  key={att.id}
+                  className="overflow-hidden rounded bg-white/10 text-[10px]"
+                >
+                  {(att.dataUrl || att.url) &&
+                    att.type?.startsWith("image/") && (
+                      <img
+                        src={att.dataUrl || att.url}
+                        alt={att.name}
+                        className="block max-h-48 w-auto max-w-full object-contain"
+                      />
+                    )}
                   <div className="flex items-center gap-1 px-2 py-1">
                     <FileIcon type={att.type} />
                     <span className="truncate max-w-[120px]">{att.name}</span>
@@ -857,7 +1061,11 @@ function MessageBubble({
           )}
           {/* Voice TTS button - shown on assistant messages */}
           {!isUser && !isStreaming && message.content && (
-            <VoiceButton text={message.content} autoPlay={autoPlayVoice} onAutoPlayStarted={onVoiceStarted} />
+            <VoiceButton
+              text={message.content}
+              autoPlay={autoPlayVoice}
+              onAutoPlayStarted={onVoiceStarted}
+            />
           )}
           {/* Push to GitHub button - shown after code generation */}
           {hasCode && !isStreaming && (
@@ -868,7 +1076,9 @@ function MessageBubble({
               >
                 <Github className="w-3.5 h-3.5" />
                 Push to GitHub
-                <span className="text-[10px] text-white/30 ml-1">({codeFiles.length} file{codeFiles.length !== 1 ? "s" : ""})</span>
+                <span className="text-[10px] text-white/30 ml-1">
+                  ({codeFiles.length} file{codeFiles.length !== 1 ? "s" : ""})
+                </span>
               </button>
             </div>
           )}
@@ -882,22 +1092,30 @@ function MessageBubble({
           />
         )}
         <p className="text-[9px] text-muted-foreground/30 mt-0.5 px-1">
-          {new Date(message.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+          {new Date(message.timestamp).toLocaleTimeString([], {
+            hour: "2-digit",
+            minute: "2-digit",
+          })}
         </p>
       </div>
 
-      <Dialog open={selectedImageIndex !== null} onOpenChange={(open) => !open && setSelectedImageIndex(null)}>
+      <Dialog
+        open={selectedImageIndex !== null}
+        onOpenChange={open => !open && setSelectedImageIndex(null)}
+      >
         <DialogContent className="grid h-[94vh] w-[96vw] max-w-[96vw] grid-rows-[auto_minmax(0,1fr)_auto] gap-3 overflow-hidden bg-black/95 p-3 sm:max-w-[96vw] sm:p-4">
           <div className="min-w-0 pr-10">
             <DialogTitle className="truncate text-base text-white">
               {selectedImage?.title || "Generated image"}
             </DialogTitle>
             <DialogDescription className="sr-only">
-              Complete generated image preview. Use the controls below to move between images, open the original, or download it.
+              Complete generated image preview. Use the controls below to move
+              between images, open the original, or download it.
             </DialogDescription>
             {generatedImages.length > 1 && (
               <p className="mt-1 text-xs text-white/55">
-                Image {(selectedImageIndex ?? 0) + 1} of {generatedImages.length}
+                Image {(selectedImageIndex ?? 0) + 1} of{" "}
+                {generatedImages.length}
               </p>
             )}
           </div>
@@ -906,7 +1124,10 @@ function MessageBubble({
             {selectedImage && (
               <img
                 src={selectedImage.url}
-                alt={selectedImage.title || `Generated image ${(selectedImageIndex ?? 0) + 1}`}
+                alt={
+                  selectedImage.title ||
+                  `Generated image ${(selectedImageIndex ?? 0) + 1}`
+                }
                 className="max-h-full max-w-full object-contain"
               />
             )}
@@ -915,7 +1136,14 @@ function MessageBubble({
               <>
                 <button
                   type="button"
-                  onClick={() => setSelectedImageIndex((current) => current === null ? 0 : (current - 1 + generatedImages.length) % generatedImages.length)}
+                  onClick={() =>
+                    setSelectedImageIndex(current =>
+                      current === null
+                        ? 0
+                        : (current - 1 + generatedImages.length) %
+                          generatedImages.length
+                    )
+                  }
                   className="absolute left-2 rounded-full border border-white/15 bg-black/70 p-2 text-white transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Previous image"
                 >
@@ -923,7 +1151,13 @@ function MessageBubble({
                 </button>
                 <button
                   type="button"
-                  onClick={() => setSelectedImageIndex((current) => current === null ? 0 : (current + 1) % generatedImages.length)}
+                  onClick={() =>
+                    setSelectedImageIndex(current =>
+                      current === null
+                        ? 0
+                        : (current + 1) % generatedImages.length
+                    )
+                  }
                   className="absolute right-2 rounded-full border border-white/15 bg-black/70 p-2 text-white transition-colors hover:bg-black/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   aria-label="Next image"
                 >
@@ -991,30 +1225,30 @@ function VoiceButton({
     try {
       // Strip markdown AND tool status messages for cleaner speech
       const cleanText = text
-        .replace(/```[\s\S]*?```/g, 'code block omitted')
-        .replace(/🛠️\s*Using tools autonomously\.\.\.?\n?/g, '')
-        .replace(/🔍\s*Researching\.\.\.?\s*✅?\s*Done\s*/g, '')
-        .replace(/🔧\s*\w+\.\.\.?\s*✅?\s*Done\s*/g, '')
-        .replace(/✅\s*Tools used:.*$/gm, '')
-        .replace(/🎨\s*Generating image:.*?\.\.\.\n?/g, '')
-        .replace(/✅\s*Image generated successfully\.\n?/g, '')
-        .replace(/\*\*Prompt used:\*\*.*$/gm, '')
-        .replace(/\*\*Storage:\*\*.*$/gm, '')
-        .replace(/\*\*Image:\*\*.*$/gm, '')
-        .replace(/https?:\/\/[^\s]+/g, '')
-        .replace(/\*\*/g, '')
-        .replace(/[#*_~`]/g, '')
-        .replace(/\[([^\]]+)\]\([^)]+\)/g, '$1')
-        .replace(/\n{3,}/g, '\n')
+        .replace(/```[\s\S]*?```/g, "code block omitted")
+        .replace(/🛠️\s*Using tools autonomously\.\.\.?\n?/g, "")
+        .replace(/🔍\s*Researching\.\.\.?\s*✅?\s*Done\s*/g, "")
+        .replace(/🔧\s*\w+\.\.\.?\s*✅?\s*Done\s*/g, "")
+        .replace(/✅\s*Tools used:.*$/gm, "")
+        .replace(/🎨\s*Generating image:.*?\.\.\.\n?/g, "")
+        .replace(/✅\s*Image generated successfully\.\n?/g, "")
+        .replace(/\*\*Prompt used:\*\*.*$/gm, "")
+        .replace(/\*\*Storage:\*\*.*$/gm, "")
+        .replace(/\*\*Image:\*\*.*$/gm, "")
+        .replace(/https?:\/\/[^\s]+/g, "")
+        .replace(/\*\*/g, "")
+        .replace(/[#*_~`]/g, "")
+        .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+        .replace(/\n{3,}/g, "\n")
         .trim()
         .slice(0, 4000);
-      const res = await fetch('/api/tts', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: cleanText, voice: 'nova' }),
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: cleanText, voice: "nova" }),
         signal: controller.signal,
       });
-      if (!res.ok) throw new Error('TTS failed');
+      if (!res.ok) throw new Error("TTS failed");
       const blob = await res.blob();
       if (controller.signal.aborted) return;
       const url = URL.createObjectURL(blob);
@@ -1031,7 +1265,7 @@ function VoiceButton({
       await audio.play();
       setPlaying(true);
     } catch (e) {
-      if ((e as Error).name !== 'AbortError') console.error('[TTS]', e);
+      if ((e as Error).name !== "AbortError") console.error("[TTS]", e);
     } finally {
       if (requestControllerRef.current === controller) {
         requestControllerRef.current = null;
@@ -1078,8 +1312,12 @@ function VoiceButton({
         disabled={loading}
         className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all disabled:opacity-50"
       >
-        {playing ? <Square className="w-3 h-3" /> : <Volume2 className="w-3.5 h-3.5" />}
-        {loading ? 'Generating...' : playing ? 'Stop' : 'Listen'}
+        {playing ? (
+          <Square className="w-3 h-3" />
+        ) : (
+          <Volume2 className="w-3.5 h-3.5" />
+        )}
+        {loading ? "Generating..." : playing ? "Stop" : "Listen"}
       </button>
     </div>
   );
@@ -1087,17 +1325,34 @@ function VoiceButton({
 
 function langToExt(lang: string): string {
   const map: Record<string, string> = {
-    javascript: "js", typescript: "ts", python: "py", html: "html",
-    css: "css", json: "json", jsx: "jsx", tsx: "tsx",
-    rust: "rs", go: "go", java: "java", ruby: "rb",
-    php: "php", swift: "swift", kotlin: "kt", sql: "sql",
-    bash: "sh", shell: "sh", yaml: "yml", markdown: "md",
+    javascript: "js",
+    typescript: "ts",
+    python: "py",
+    html: "html",
+    css: "css",
+    json: "json",
+    jsx: "jsx",
+    tsx: "tsx",
+    rust: "rs",
+    go: "go",
+    java: "java",
+    ruby: "rb",
+    php: "php",
+    swift: "swift",
+    kotlin: "kt",
+    sql: "sql",
+    bash: "sh",
+    shell: "sh",
+    yaml: "yml",
+    markdown: "md",
   };
   return map[lang.toLowerCase()] || lang;
 }
 
 function FileIcon({ type }: { type: string }) {
-  if (type.startsWith("image/")) return <Image size={10} className="text-blue-400" />;
-  if (type.includes("pdf") || type.includes("document")) return <FileText size={10} className="text-orange-400" />;
+  if (type.startsWith("image/"))
+    return <Image size={10} className="text-blue-400" />;
+  if (type.includes("pdf") || type.includes("document"))
+    return <FileText size={10} className="text-orange-400" />;
   return <File size={10} className="text-muted-foreground" />;
 }

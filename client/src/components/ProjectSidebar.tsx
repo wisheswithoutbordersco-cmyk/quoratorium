@@ -8,11 +8,21 @@ import { trpc } from "@/lib/trpc";
 import { useProjectStore, useConversationStore } from "@/stores";
 import { useLocation } from "wouter";
 import {
-  Plus, Search, FolderKanban, MessageSquare, Clock,
-  CheckCircle2, AlertCircle, Loader2, ChevronRight,
-  PanelLeftClose, PanelLeftOpen, Trash2,
+  Plus,
+  Search,
+  FolderKanban,
+  MessageSquare,
+  Clock,
+  CheckCircle2,
+  AlertCircle,
+  Loader2,
+  ChevronRight,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Trash2,
 } from "lucide-react";
 import { duration, ease } from "@/lib/motion";
+import { SystemHealthStatus } from "./TopNav";
 
 type SidebarTab = "conversations" | "projects";
 
@@ -23,14 +33,21 @@ interface ProjectSidebarProps {
   onConversationSelect?: () => void;
 }
 
-export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: ProjectSidebarProps) {
+export function ProjectSidebar({
+  collapsed,
+  onToggle,
+  onConversationSelect,
+}: ProjectSidebarProps) {
   const [, setLocation] = useLocation();
   const [search, setSearch] = useState("");
   const [tab, setTab] = useState<SidebarTab>("conversations");
   const { setActiveProject } = useProjectStore();
-  const { setActiveConversationId, setMessages, activeConversationId } = useConversationStore();
-  const { data: projects, isLoading: projectsLoading } = trpc.projects.list.useQuery();
-  const { data: conversations, isLoading: convsLoading } = trpc.conversations.list.useQuery(undefined, { refetchInterval: 5000 });
+  const { setActiveConversationId, setMessages, activeConversationId } =
+    useConversationStore();
+  const { data: projects, isLoading: projectsLoading } =
+    trpc.projects.list.useQuery();
+  const { data: conversations, isLoading: convsLoading } =
+    trpc.conversations.list.useQuery(undefined, { refetchInterval: 5000 });
   const utils = trpc.useUtils();
   const deleteConversation = trpc.conversations.delete.useMutation({
     onSuccess: () => {
@@ -43,7 +60,9 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
     if (!search.trim()) return projects;
     const q = search.toLowerCase();
     return projects.filter(
-      (p: any) => p.name.toLowerCase().includes(q) || (p.description || "").toLowerCase().includes(q)
+      (p: any) =>
+        p.name.toLowerCase().includes(q) ||
+        (p.description || "").toLowerCase().includes(q)
     );
   }, [projects, search]);
 
@@ -51,8 +70,8 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
     if (!conversations) return [];
     if (!search.trim()) return conversations;
     const q = search.toLowerCase();
-    return conversations.filter(
-      (c: any) => (c.title || "").toLowerCase().includes(q)
+    return conversations.filter((c: any) =>
+      (c.title || "").toLowerCase().includes(q)
     );
   }, [conversations, search]);
 
@@ -101,17 +120,27 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
 
       // Ignore a stale response if the user selected a different conversation
       // before this request completed.
-      if (useConversationStore.getState().activeConversationId !== selectedIdString) return;
+      if (
+        useConversationStore.getState().activeConversationId !==
+        selectedIdString
+      )
+        return;
 
-      const msgs = (data?.messages ?? []).map((message) => {
-        const metadata = message.metadata && typeof message.metadata === "object"
-          ? message.metadata as Record<string, unknown>
-          : {};
+      const msgs = (data?.messages ?? []).map(message => {
+        const metadata =
+          message.metadata && typeof message.metadata === "object"
+            ? (message.metadata as Record<string, unknown>)
+            : {};
         const images = Array.isArray(metadata.images)
-          ? metadata.images.filter((image: any) => image && typeof image.url === "string")
+          ? metadata.images.filter(
+              (image: any) => image && typeof image.url === "string"
+            )
           : undefined;
         const attachments = Array.isArray(metadata.attachments)
-          ? metadata.attachments.filter((attachment: any) => attachment && typeof attachment.name === "string")
+          ? metadata.attachments.filter(
+              (attachment: any) =>
+                attachment && typeof attachment.name === "string"
+            )
           : undefined;
 
         return {
@@ -125,8 +154,14 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
       });
       setMessages(msgs);
     } catch (error) {
-      console.error("[Conversations] Failed to load conversation history:", error);
-      if (useConversationStore.getState().activeConversationId === selectedIdString) {
+      console.error(
+        "[Conversations] Failed to load conversation history:",
+        error
+      );
+      if (
+        useConversationStore.getState().activeConversationId ===
+        selectedIdString
+      ) {
         setMessages([]);
       }
     }
@@ -146,19 +181,27 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case "completed": return <CheckCircle2 size={10} className="text-emerald-400" />;
-      case "active": return <Loader2 size={10} className="text-primary animate-spin" />;
-      case "failed": return <AlertCircle size={10} className="text-red-400" />;
-      default: return <Clock size={10} className="text-muted-foreground/50" />;
+      case "completed":
+        return <CheckCircle2 size={10} className="text-emerald-400" />;
+      case "active":
+        return <Loader2 size={10} className="text-primary animate-spin" />;
+      case "failed":
+        return <AlertCircle size={10} className="text-red-400" />;
+      default:
+        return <Clock size={10} className="text-muted-foreground/50" />;
     }
   };
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case "completed": return "#10B981";
-      case "active": return "#d86618";
-      case "failed": return "#EF4444";
-      default: return "#8A8A9A";
+      case "completed":
+        return "#10B981";
+      case "active":
+        return "#d86618";
+      case "failed":
+        return "#EF4444";
+      default:
+        return "#8A8A9A";
     }
   };
 
@@ -194,7 +237,9 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
               key={conv.id}
               onClick={() => void handleSelectConversation(conv)}
               className={`w-8 h-8 rounded-lg surface-elevated border flex items-center justify-center hover:border-primary/30 transition-colors ${
-                activeConversationId === conv.id.toString() ? "border-primary/50 bg-primary/10" : "border-border"
+                activeConversationId === conv.id.toString()
+                  ? "border-primary/50 bg-primary/10"
+                  : "border-border"
               }`}
               whileTap={{ scale: 0.9 }}
               title={conv.title || "Untitled"}
@@ -211,7 +256,10 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
               whileTap={{ scale: 0.9 }}
               title={project.name}
             >
-              <div className="w-2 h-2 rounded-full" style={{ backgroundColor: getStatusColor(project.status) }} />
+              <div
+                className="w-2 h-2 rounded-full"
+                style={{ backgroundColor: getStatusColor(project.status) }}
+              />
             </motion.button>
           ))}
         </div>
@@ -263,8 +311,12 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
               <input
                 type="text"
                 value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder={tab === "conversations" ? "Search conversations..." : "Search projects..."}
+                onChange={e => setSearch(e.target.value)}
+                placeholder={
+                  tab === "conversations"
+                    ? "Search conversations..."
+                    : "Search projects..."
+                }
                 className="flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/40 outline-none"
               />
             </div>
@@ -279,7 +331,10 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                 </div>
               ) : filteredConversations.length === 0 ? (
                 <div className="text-center py-8">
-                  <MessageSquare size={20} className="mx-auto text-muted-foreground/20 mb-2" />
+                  <MessageSquare
+                    size={20}
+                    className="mx-auto text-muted-foreground/20 mb-2"
+                  />
                   <p className="text-[10px] text-muted-foreground/40">
                     {search ? "No matches" : "No conversations yet"}
                   </p>
@@ -303,12 +358,15 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                       transition={{ delay: i * 0.03 }}
                     >
                       <div className="flex items-center gap-2">
-                        <MessageSquare size={10} className="text-primary/50 shrink-0" />
+                        <MessageSquare
+                          size={10}
+                          className="text-primary/50 shrink-0"
+                        />
                         <span className="text-[11px] text-foreground/80 font-medium truncate flex-1 group-hover:text-foreground transition-colors">
                           {conv.title || "Untitled Chat"}
                         </span>
                         <button
-                          onClick={(e) => handleDeleteConversation(e, conv.id)}
+                          onClick={e => handleDeleteConversation(e, conv.id)}
                           className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/40 hover:text-red-400 transition-all"
                         >
                           <Trash2 size={10} />
@@ -316,7 +374,9 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                       </div>
                       <div className="flex items-center gap-2 mt-1 pl-5">
                         <span className="text-[9px] text-muted-foreground/40">
-                          {formatTimeAgo(new Date(conv.updatedAt || conv.createdAt))}
+                          {formatTimeAgo(
+                            new Date(conv.updatedAt || conv.createdAt)
+                          )}
                         </span>
                         {conv.messageCount && (
                           <span className="text-[9px] text-muted-foreground/30">
@@ -328,50 +388,54 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                   ))}
                 </div>
               )
+            ) : projectsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <Loader2 size={16} className="animate-spin text-primary/50" />
+              </div>
+            ) : filteredProjects.length === 0 ? (
+              <div className="text-center py-8">
+                <FolderKanban
+                  size={20}
+                  className="mx-auto text-muted-foreground/20 mb-2"
+                />
+                <p className="text-[10px] text-muted-foreground/40">
+                  {search ? "No matches" : "No projects yet"}
+                </p>
+              </div>
             ) : (
-              projectsLoading ? (
-                <div className="flex items-center justify-center py-8">
-                  <Loader2 size={16} className="animate-spin text-primary/50" />
-                </div>
-              ) : filteredProjects.length === 0 ? (
-                <div className="text-center py-8">
-                  <FolderKanban size={20} className="mx-auto text-muted-foreground/20 mb-2" />
-                  <p className="text-[10px] text-muted-foreground/40">
-                    {search ? "No matches" : "No projects yet"}
-                  </p>
-                </div>
-              ) : (
-                <div className="space-y-0.5">
-                  {filteredProjects.map((project: any, i: number) => (
-                    <motion.button
-                      key={project.id}
-                      onClick={() => handleSelectProject(project)}
-                      className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/60 transition-colors group"
-                      initial={{ opacity: 0, x: -8 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.03 }}
-                    >
-                      <div className="flex items-center gap-2">
-                        {getStatusIcon(project.status)}
-                        <span className="text-[11px] text-foreground/80 font-medium truncate flex-1 group-hover:text-foreground transition-colors">
-                          {project.name}
+              <div className="space-y-0.5">
+                {filteredProjects.map((project: any, i: number) => (
+                  <motion.button
+                    key={project.id}
+                    onClick={() => handleSelectProject(project)}
+                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/60 transition-colors group"
+                    initial={{ opacity: 0, x: -8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    transition={{ delay: i * 0.03 }}
+                  >
+                    <div className="flex items-center gap-2">
+                      {getStatusIcon(project.status)}
+                      <span className="text-[11px] text-foreground/80 font-medium truncate flex-1 group-hover:text-foreground transition-colors">
+                        {project.name}
+                      </span>
+                      <ChevronRight
+                        size={10}
+                        className="text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 mt-1 pl-5">
+                      <span className="text-[9px] text-muted-foreground/40">
+                        {formatTimeAgo(new Date(project.createdAt))}
+                      </span>
+                      {project.description && (
+                        <span className="text-[9px] text-muted-foreground/30 truncate max-w-[120px]">
+                          {project.description}
                         </span>
-                        <ChevronRight size={10} className="text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </div>
-                      <div className="flex items-center gap-2 mt-1 pl-5">
-                        <span className="text-[9px] text-muted-foreground/40">
-                          {formatTimeAgo(new Date(project.createdAt))}
-                        </span>
-                        {project.description && (
-                          <span className="text-[9px] text-muted-foreground/30 truncate max-w-[120px]">
-                            {project.description}
-                          </span>
-                        )}
-                      </div>
-                    </motion.button>
-                  ))}
-                </div>
-              )
+                      )}
+                    </div>
+                  </motion.button>
+                ))}
+              </div>
             )}
           </div>
 
@@ -386,10 +450,7 @@ export function ProjectSidebar({ collapsed, onToggle, onConversationSelect }: Pr
                 <Plus size={9} />
                 New Project
               </motion.button>
-              <span className="flex items-center gap-1 text-[9px] text-muted-foreground/30">
-                <div className="w-1.5 h-1.5 rounded-full bg-emerald-400/60" />
-                Online
-              </span>
+              <SystemHealthStatus compact />
             </div>
           </div>
         </>

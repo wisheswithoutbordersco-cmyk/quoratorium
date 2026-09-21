@@ -16,7 +16,9 @@ vi.mock("openai", () => {
 // Mock Anthropic
 vi.mock("@anthropic-ai/sdk", () => {
   const mockCreate = vi.fn().mockResolvedValue({
-    content: [{ type: "text", text: "Validation report from Claude: Score 9/10" }],
+    content: [
+      { type: "text", text: "Validation report from Claude: Score 9/10" },
+    ],
   });
   return {
     default: class Anthropic {
@@ -35,9 +37,13 @@ vi.mock("./_core/llm", () => ({
 describe("detectIntent", () => {
   it("detects research intent", () => {
     expect(detectIntent("Research the latest trends in AI")).toBe("research");
-    expect(detectIntent("What is the current market cap of Apple?")).toBe("research");
+    expect(detectIntent("What is the current market cap of Apple?")).toBe(
+      "research"
+    );
     expect(detectIntent("Find out who the competitors are")).toBe("research");
-    expect(detectIntent("Look up the latest news about React")).toBe("research");
+    expect(detectIntent("Look up the latest news about React")).toBe(
+      "research"
+    );
   });
 
   it("detects build intent", () => {
@@ -74,16 +80,16 @@ describe("workers with external APIs", () => {
     expect(result).toBe("Generated code output from GPT-4o");
   });
 
-  it("callBuilder uses OpenAI GPT-4o", async () => {
+  it("callBuilder uses the configured built-in model", async () => {
     const { callBuilder } = await import("./workers");
     const result = await callBuilder("Build a landing page", "Startup website");
-    expect(result).toBe("Generated code output from GPT-4o");
+    expect(result).toBe("Forge fallback response");
   });
 
-  it("callValidator uses Anthropic Claude", async () => {
+  it("callValidator uses the configured built-in model", async () => {
     const { callValidator } = await import("./workers");
     const result = await callValidator("<div>Hello</div>", "Build a page");
-    expect(result).toBe("Validation report from Claude: Score 9/10");
+    expect(result).toBe("Forge fallback response");
   });
 
   it("callResearch uses Perplexity Sonar", async () => {
@@ -91,9 +97,12 @@ describe("workers with external APIs", () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = vi.fn().mockResolvedValue({
       ok: true,
-      json: () => Promise.resolve({
-        choices: [{ message: { content: "Research results from Perplexity Sonar" } }],
-      }),
+      json: () =>
+        Promise.resolve({
+          choices: [
+            { message: { content: "Research results from Perplexity Sonar" } },
+          ],
+        }),
     }) as any;
 
     const { callResearch } = await import("./workers");
@@ -109,6 +118,8 @@ describe("AI router integration", () => {
     process.env.OPENAI_API_KEY = "test-openai-key";
     process.env.ANTHROPIC_API_KEY = "test-anthropic-key";
     process.env.SONAR_API_KEY = "test-sonar-key";
+    process.env.BUILT_IN_FORGE_API_URL = "https://forge.example.test";
+    process.env.BUILT_IN_FORGE_API_KEY = "test-forge-key";
   });
 
   it("status endpoint reports all workers available", async () => {
@@ -144,11 +155,10 @@ describe("AI router integration", () => {
 
     const status = await caller.ai.status();
     expect(status.captain.available).toBe(true);
-    expect(status.captain.provider).toBe("OpenAI GPT-4o");
+    expect(status.captain.provider).toBe("OpenAI");
     expect(status.builder.available).toBe(true);
-    expect(status.builder.provider).toBe("OpenAI GPT-4o");
-    expect(status.validator.available).toBe(true);
-    expect(status.validator.provider).toBe("Anthropic Claude");
+    expect(status.builder.provider).toBe("gpt-5-mini");
+    expect(status.validator.provider).toBe("gpt-5");
     expect(status.research.available).toBe(true);
     expect(status.research.provider).toBe("Perplexity Sonar");
     expect(status.fallback.available).toBe(true);

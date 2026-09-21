@@ -1,57 +1,39 @@
 import type { CreateExpressContextOptions } from "@trpc/server/adapters/express";
 import type { User } from "../db";
-import { clerkClient } from "@clerk/express";
+import { clerkClient, getAuth } from "@clerk/express";
 import * as db from "../db";
 import { ENV, OWNER_EMAILS } from "./env";
 
 export type TrpcContext = {
   req: CreateExpressContextOptions["req"];
   res: CreateExpressContextOptions["res"];
+  /** A database user resolved from a verified Clerk session; never an anonymous fallback. */
   user: User | null;
-  /** True when this request is operating in Anthony's owner workspace. */
+  /** True only when the verified Clerk identity is the configured owner. */
   isOwner: boolean;
-  /** Optional database user resolved from Clerk when Clerk is available. */
+  /** Retained for compatibility; always mirrors `user` for production contexts. */
   authenticatedUser?: User | null;
-  /** Optional Clerk owner signal retained for non-business compatibility only. */
+  /** Retained for compatibility; only derived from a verified Clerk identity. */
   isVerifiedOwner?: boolean;
 };
 
-let ownerUserCache: User | null | undefined;
-
+/**
+ * Legacy compatibility export for routes that have not yet been migrated to
+ * Clerk-aware request handling. It intentionally never resolves an owner:
+ * callers must authenticate the request and use resolveAuthenticatedUser
+ * instead. Keeping this fail-closed prevents anonymous owner impersonation.
+ */
 export async function getOwnerUser(): Promise<User | null> {
-  if (ownerUserCache !== undefined) return ownerUserCache;
-  const ownerOpenId = ENV.ownerOpenId;
-  if (!ownerOpenId) {
-    ownerUserCache = null;
-    return null;
-  }
-
-  try {
-    let ownerUser = await db.getUserByClerkId(ownerOpenId);
-    if (!ownerUser) {
-      await db.upsertUser({
-        clerkId: ownerOpenId,
-        name: process.env.OWNER_NAME || "Owner",
-        email: null,
-        loginMethod: "owner_bypass",
-        lastSignedIn: new Date(),
-        role: "admin",
-      });
-      ownerUser = await db.getUserByClerkId(ownerOpenId);
-    }
-    ownerUserCache = ownerUser ?? null;
-    return ownerUserCache;
-  } catch (error) {
-    console.error("[Auth] Failed to resolve owner workspace:", error);
-    return null;
-  }
+  return null;
 }
 
 function isOwnerIdentity(user: User | null): boolean {
   if (!user) return false;
-  const isOwnerByOpenId = Boolean(ENV.ownerOpenId && user.clerk_id === ENV.ownerOpenId);
+  const isOwnerByOpenId = Boolean(
+    ENV.ownerOpenId && user.clerk_id === ENV.ownerOpenId
+  );
   const isOwnerByEmail = Boolean(
-    user.email && OWNER_EMAILS.includes(user.email.toLowerCase()),
+    user.email && OWNER_EMAILS.includes(user.email.toLowerCase())
   );
   return isOwnerByOpenId || isOwnerByEmail;
 }
@@ -62,11 +44,18 @@ function isOwnerIdentity(user: User | null): boolean {
  * must always be tied to a verified session.
  */
 export async function resolveAuthenticatedUser(
-  req: CreateExpressContextOptions["req"],
+  req: CreateExpressContextOptions["req"]
 ): Promise<User | null> {
-  const clerkAuth = (req as any).auth;
-  const clerkUserId = clerkAuth?.userId;
-  if (!clerkUserId) return null;
+  let clerkUserId: string | null = null;
+  try {
+    const auth = getAuth(req);
+    // Browser workspace access must come from a verified Clerk session token.
+    if (!auth.userId || !auth.sessionId) return null;
+    clerkUserId = auth.userId;
+  } catch {
+    // clerkMiddleware is intentionally absent when Clerk is not configured.
+    return null;
+  }
 
   try {
     let dbUser = await db.getUserByClerkId(clerkUserId);
@@ -85,7 +74,10 @@ export async function resolveAuthenticatedUser(
         email,
         loginMethod: "clerk",
         lastSignedIn: new Date(),
-        role: email && OWNER_EMAILS.includes(email.toLowerCase()) ? "admin" : undefined,
+        role:
+          email && OWNER_EMAILS.includes(email.toLowerCase())
+            ? "admin"
+            : undefined,
       });
       dbUser = await db.getUserByClerkId(clerkUserId);
     } else {
@@ -102,29 +94,16 @@ export async function resolveAuthenticatedUser(
 }
 
 export async function createContext(
-  opts: CreateExpressContextOptions,
+  opts: CreateExpressContextOptions
 ): Promise<TrpcContext> {
   const authenticatedUser = await resolveAuthenticatedUser(opts.req);
   const isVerifiedOwner = isOwnerIdentity(authenticatedUser);
 
-  // Preserve Anthony's existing private-workspace behavior for ordinary Q chat.
-  // External business mutations require a separate short-lived action session.
-  let user = authenticatedUser;
-  let isOwner = isVerifiedOwner;
-  if (!user) {
-    try {
-      user = await getOwnerUser();
-      isOwner = Boolean(user);
-    } catch (error) {
-      console.error("[Auth] Failed to resolve workspace owner:", error);
-    }
-  }
-
   return {
     req: opts.req,
     res: opts.res,
-    user,
-    isOwner,
+    user: authenticatedUser,
+    isOwner: isVerifiedOwner,
     authenticatedUser,
     isVerifiedOwner,
   };

@@ -2,12 +2,13 @@
  * PWA Icon Route
  * GET /api/pwa-icon — serves the custom PWA icon from Supabase app_settings,
  * or falls back to the default static icon.
- * 
+ *
  * POST /api/settings/pwa-icon — saves a base64-encoded PNG icon to app_settings.
  */
 import { Router, Request, Response } from "express";
 import path from "path";
 import { getSupabaseAdmin } from "./supabase";
+import { resolveAuthenticatedUser } from "./_core/context";
 
 export const pwaIconRouter = Router();
 
@@ -38,7 +39,10 @@ pwaIconRouter.get("/api/pwa-icon", async (_req: Request, res: Response) => {
         }
 
         // Strip the data URL prefix if present
-        const base64Content = base64Data.replace(/^data:image\/png;base64,/, "");
+        const base64Content = base64Data.replace(
+          /^data:image\/png;base64,/,
+          ""
+        );
         const buffer = Buffer.from(base64Content, "base64");
 
         res.set("Content-Type", "image/png");
@@ -60,27 +64,40 @@ pwaIconRouter.get("/api/pwa-icon", async (_req: Request, res: Response) => {
  * Saves a base64 PNG icon to the app_settings table.
  * Body: { "icon": "data:image/png;base64,..." }
  */
-pwaIconRouter.post("/api/settings/pwa-icon", async (req: Request, res: Response) => {
-  try {
-    const { icon } = req.body;
-    if (!icon || typeof icon !== "string") {
-      return res.status(400).json({ error: "Missing 'icon' field (base64 PNG string)" });
-    }
+pwaIconRouter.post(
+  "/api/settings/pwa-icon",
+  async (req: Request, res: Response) => {
+    try {
+      const user = await resolveAuthenticatedUser(req);
+      if (!user)
+        return res.status(401).json({ error: "Authentication required" });
+      if (user.role !== "admin")
+        return res.status(403).json({ error: "Administrator access required" });
 
-    // Validate it looks like a base64 PNG
-    if (!icon.startsWith("data:image/png;base64,") && !icon.match(/^[A-Za-z0-9+/]+=*$/)) {
-      return res.status(400).json({ error: "Icon must be a base64-encoded PNG" });
-    }
+      const { icon } = req.body;
+      if (!icon || typeof icon !== "string") {
+        return res
+          .status(400)
+          .json({ error: "Missing 'icon' field (base64 PNG string)" });
+      }
 
-    const db = getSupabaseAdmin();
-    if (!db) {
-      return res.status(503).json({ error: "Database not available" });
-    }
+      // Validate it looks like a base64 PNG
+      if (
+        !icon.startsWith("data:image/png;base64,") &&
+        !icon.match(/^[A-Za-z0-9+/]+=*$/)
+      ) {
+        return res
+          .status(400)
+          .json({ error: "Icon must be a base64-encoded PNG" });
+      }
 
-    // Upsert into app_settings
-    const { error } = await db
-      .from("app_settings")
-      .upsert(
+      const db = getSupabaseAdmin();
+      if (!db) {
+        return res.status(503).json({ error: "Database not available" });
+      }
+
+      // Upsert into app_settings
+      const { error } = await db.from("app_settings").upsert(
         {
           key: "pwa_icon",
           value: { base64: icon },
@@ -89,17 +106,18 @@ pwaIconRouter.post("/api/settings/pwa-icon", async (req: Request, res: Response)
         { onConflict: "key" }
       );
 
-    if (error) {
-      console.error("[PWA Icon] Supabase upsert error:", error);
-      return res.status(500).json({ error: "Failed to save icon" });
-    }
+      if (error) {
+        console.error("[PWA Icon] Supabase upsert error:", error);
+        return res.status(500).json({ error: "Failed to save icon" });
+      }
 
-    return res.json({ success: true, message: "PWA icon saved" });
-  } catch (err) {
-    console.error("[PWA Icon] Error saving icon:", err);
-    return res.status(500).json({ error: "Internal server error" });
+      return res.json({ success: true, message: "PWA icon saved" });
+    } catch (err) {
+      console.error("[PWA Icon] Error saving icon:", err);
+      return res.status(500).json({ error: "Internal server error" });
+    }
   }
-});
+);
 
 function serveDefaultIcon(res: Response) {
   const defaultIconPath = path.resolve(
@@ -107,7 +125,7 @@ function serveDefaultIcon(res: Response) {
       ? path.join(__dirname, "public", "icon-512x512.png")
       : path.join(__dirname, "..", "client", "public", "icon-512x512.png")
   );
-  return res.sendFile(defaultIconPath, (err) => {
+  return res.sendFile(defaultIconPath, err => {
     if (err) {
       console.error("[PWA Icon] Failed to serve default icon:", err);
       res.status(404).end();

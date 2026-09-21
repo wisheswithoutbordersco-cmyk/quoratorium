@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
@@ -6,13 +6,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { TopNav } from "@/components/TopNav";
-import { useSettingsStore } from "@/stores/settingsStore";
+import { DEFAULT_SETTINGS, useSettingsStore } from "@/stores/settingsStore";
 import {
   ExternalLink,
   GitBranch,
   Github,
   Loader2,
   RefreshCw,
+  Download,
 } from "lucide-react";
 
 type SettingsMap = Record<string, string>;
@@ -22,22 +23,35 @@ export default function Settings() {
 
   const [settings, setSettings] = useState<SettingsMap>({});
   const [activeSection, setActiveSection] = useState("ai");
-  const [saveTimeout, setSaveTimeout] = useState<ReturnType<
-    typeof setTimeout
-  > | null>(null);
+  const [pwaIconVersion, setPwaIconVersion] = useState(0);
+  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const settingsQuery = trpc.settings.getAll.useQuery(undefined, {
     enabled: !!user,
   });
-  const updateMutation = trpc.settings.update.useMutation({
-    onSuccess: () => toast.success("Settings updated"),
-    onError: err => toast.error(err.message),
+  const runtimeHealthQuery = trpc.settings.runtimeHealth.useQuery(undefined, {
+    enabled: !!user,
+    refetchInterval: 60_000,
   });
-  const resetMutation = trpc.settings.reset.useMutation({
-    onSuccess: () => {
-      toast.success("All settings restored to defaults");
-      settingsQuery.refetch();
+  const updateBudgetMutation = trpc.costs.updateBudget.useMutation({
+    onError: err => toast.error(`Budget was not saved: ${err.message}`),
+  });
+  const exportMutation = trpc.settings.exportData.useMutation({
+    onSuccess: data => {
+      const blob = new Blob([JSON.stringify(data, null, 2)], {
+        type: "application/json",
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `quoratorium-data-${new Date().toISOString().slice(0, 10)}.json`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      URL.revokeObjectURL(url);
+      toast.success("Your JSON export has downloaded.");
     },
+    onError: err => toast.error(`Export failed: ${err.message}`),
   });
 
   useEffect(() => {
@@ -47,20 +61,54 @@ export default function Settings() {
   }, [settingsQuery.data]);
 
   const globalUpdateSetting = useSettingsStore(s => s.updateSetting);
+  const resetGlobalSettings = useSettingsStore(s => s.resetSettings);
 
   const updateSetting = useCallback(
     (key: string, value: string) => {
       setSettings(prev => ({ ...prev, [key]: value }));
       // Update global store immediately (optimistic)
       globalUpdateSetting(key, value);
-      if (saveTimeout) clearTimeout(saveTimeout);
-      const timeout = setTimeout(() => {
-        updateMutation.mutate({ settings: { [key]: value } });
-      }, 800);
-      setSaveTimeout(timeout);
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+      if (key.startsWith("budget.")) {
+        saveTimeout.current = setTimeout(() => {
+          updateBudgetMutation.mutate({
+            dailyLimit: key === "budget.dailyLimit" ? Number(value) : undefined,
+            monthlyLimit:
+              key === "budget.monthlyLimit" ? Number(value) : undefined,
+            warningThreshold:
+              key === "budget.warningThreshold" ? Number(value) : undefined,
+            autoPause:
+              key === "budget.autoPause" ? value === "true" : undefined,
+          });
+        }, 800);
+      }
     },
-    [saveTimeout, updateMutation, globalUpdateSetting]
+    [globalUpdateSetting, updateBudgetMutation]
   );
+
+  useEffect(
+    () => () => {
+      if (saveTimeout.current) clearTimeout(saveTimeout.current);
+    },
+    []
+  );
+
+  const resetAllSettings = async () => {
+    if (!confirm("Reset all settings to defaults?")) return;
+    if (saveTimeout.current) {
+      clearTimeout(saveTimeout.current);
+      saveTimeout.current = null;
+    }
+    setSettings({ ...DEFAULT_SETTINGS });
+    await resetGlobalSettings();
+    await settingsQuery.refetch();
+    toast.success("All settings restored to defaults");
+  };
+
+  const models = (runtimeHealthQuery.data?.models || []).map(model => ({
+    value: model.id,
+    label: model.label,
+  }));
 
   const sections = [
     { id: "ai", label: "AI Preferences", icon: "🧠" },
@@ -248,28 +296,18 @@ export default function Settings() {
                       <Select
                         settingKey="ai.defaultBuilderModel"
                         label="Default Builder Model"
-                        description="Model used for code generation tasks"
-                        options={[
-                          { value: "gpt-4o", label: "GPT-4o (Quality)" },
-                          { value: "gpt-4o-mini", label: "GPT-4o-mini (Fast)" },
-                          { value: "claude-sonnet", label: "Claude Sonnet" },
-                        ]}
+                        description={
+                          runtimeHealthQuery.isLoading
+                            ? "Checking the configured Manus model catalog…"
+                            : "Model used for code generation tasks. Only models reported by the configured Manus proxy are offered."
+                        }
+                        options={models}
                       />
                       <Select
                         settingKey="ai.defaultValidatorModel"
                         label="Default Validator Model"
                         description="Model used for code review and validation"
-                        options={[
-                          {
-                            value: "claude-sonnet",
-                            label: "Claude Sonnet (Thorough)",
-                          },
-                          {
-                            value: "claude-haiku",
-                            label: "Claude Haiku (Fast)",
-                          },
-                          { value: "gpt-4o-mini", label: "GPT-4o-mini" },
-                        ]}
+                        options={models}
                       />
                       <Slider
                         settingKey="ai.temperature"
@@ -346,80 +384,82 @@ export default function Settings() {
                           { value: "hidden", label: "Hidden" },
                         ]}
                       />
-                      <Card className="mt-4">
-                        <CardHeader>
-                          <CardTitle className="text-sm">
-                            App Icon (PWA)
-                          </CardTitle>
-                        </CardHeader>
-                        <CardContent>
-                          <p className="text-xs text-muted-foreground mb-3">
-                            Upload a 512x512 PNG to use as the home screen icon
-                            when installed as an app.
-                          </p>
-                          <div className="flex items-center gap-4">
-                            {settings["appearance.pwaIcon"] && (
+                      {user?.role === "admin" && (
+                        <Card className="mt-4">
+                          <CardHeader>
+                            <CardTitle className="text-sm">
+                              Global App Icon (PWA)
+                            </CardTitle>
+                          </CardHeader>
+                          <CardContent>
+                            <p className="text-xs text-muted-foreground mb-3">
+                              Administrators can upload the 512x512 PNG served
+                              to every installed copy of this workspace.
+                            </p>
+                            <div className="flex items-center gap-4">
                               <img
-                                src={settings["appearance.pwaIcon"]}
-                                alt="Current icon"
+                                src={`/api/pwa-icon?v=${pwaIconVersion}`}
+                                alt="Current global app icon"
                                 className="w-16 h-16 rounded-lg border border-border"
                               />
-                            )}
-                            <label className="cursor-pointer">
-                              <div className="px-4 py-2 rounded-md bg-primary/10 border border-primary/30 text-primary text-sm hover:bg-primary/20 transition-colors">
-                                Upload Icon
-                              </div>
-                              <input
-                                type="file"
-                                accept="image/png"
-                                className="hidden"
-                                onChange={async e => {
-                                  const file = e.target.files?.[0];
-                                  if (!file) return;
-                                  if (file.size > 1024 * 1024) {
-                                    toast.error("Icon must be under 1MB");
-                                    return;
-                                  }
-                                  const reader = new FileReader();
-                                  reader.onload = async () => {
-                                    const base64 = reader.result as string;
-                                    updateSetting("appearance.pwaIcon", base64);
-                                    // Also save to app_settings table so /api/pwa-icon serves it
-                                    try {
-                                      const resp = await fetch(
-                                        "/api/settings/pwa-icon",
-                                        {
-                                          method: "POST",
-                                          headers: {
-                                            "Content-Type": "application/json",
-                                          },
-                                          body: JSON.stringify({
-                                            icon: base64,
-                                          }),
-                                        }
-                                      );
-                                      if (resp.ok) {
-                                        toast.success(
-                                          "PWA icon saved! Reinstall the app to see changes."
+                              <label className="cursor-pointer">
+                                <div className="px-4 py-2 rounded-md bg-primary/10 border border-primary/30 text-primary text-sm hover:bg-primary/20 transition-colors">
+                                  Upload Icon
+                                </div>
+                                <input
+                                  type="file"
+                                  accept="image/png"
+                                  className="hidden"
+                                  onChange={async e => {
+                                    const file = e.target.files?.[0];
+                                    if (!file) return;
+                                    if (file.size > 1024 * 1024) {
+                                      toast.error("Icon must be under 1MB");
+                                      return;
+                                    }
+                                    const reader = new FileReader();
+                                    reader.onload = async () => {
+                                      const base64 = reader.result as string;
+                                      try {
+                                        const resp = await fetch(
+                                          "/api/settings/pwa-icon",
+                                          {
+                                            method: "POST",
+                                            headers: {
+                                              "Content-Type":
+                                                "application/json",
+                                            },
+                                            body: JSON.stringify({
+                                              icon: base64,
+                                            }),
+                                          }
                                         );
-                                      } else {
+                                        if (resp.ok) {
+                                          setPwaIconVersion(
+                                            version => version + 1
+                                          );
+                                          toast.success(
+                                            "PWA icon saved! Reinstall the app to see changes."
+                                          );
+                                        } else {
+                                          toast.error(
+                                            "Icon preview updated but failed to save to server."
+                                          );
+                                        }
+                                      } catch {
                                         toast.error(
                                           "Icon preview updated but failed to save to server."
                                         );
                                       }
-                                    } catch {
-                                      toast.error(
-                                        "Icon preview updated but failed to save to server."
-                                      );
-                                    }
-                                  };
-                                  reader.readAsDataURL(file);
-                                }}
-                              />
-                            </label>
-                          </div>
-                        </CardContent>
-                      </Card>
+                                    };
+                                    reader.readAsDataURL(file);
+                                  }}
+                                />
+                              </label>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      )}
                     </>
                   )}
 
@@ -450,29 +490,67 @@ export default function Settings() {
                   {activeSection === "apikeys" && (
                     <div className="space-y-4 py-3">
                       <p className="text-sm text-muted-foreground">
-                        These services are pre-configured. Status shows whether
-                        the platform connection is active.
+                        Status is a non-secret configuration and reachability
+                        check. It does not expose API keys or claim access to
+                        unconfigured providers.
                       </p>
-                      {[
-                        { name: "OpenAI", status: "connected" },
-                        { name: "Anthropic", status: "connected" },
-                        { name: "Perplexity", status: "connected" },
-                        { name: "Cloudflare", status: "connected" },
-                        { name: "Sprites.dev", status: "connected" },
-                      ].map(service => (
-                        <div
-                          key={service.name}
-                          className="flex items-center justify-between py-2"
-                        >
-                          <span className="text-sm font-medium">
-                            {service.name}
-                          </span>
-                          <span className="flex items-center gap-2 text-xs">
-                            <span className="w-2 h-2 rounded-full bg-emerald-400" />
-                            Connected
-                          </span>
+                      {runtimeHealthQuery.isLoading && (
+                        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                          <Loader2 className="size-4 animate-spin" /> Checking
+                          runtime configuration…
                         </div>
-                      ))}
+                      )}
+                      {runtimeHealthQuery.isError && (
+                        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-500/20 bg-red-500/5 p-3 text-sm text-red-300">
+                          <span>Runtime health could not be loaded.</span>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => runtimeHealthQuery.refetch()}
+                          >
+                            Retry
+                          </Button>
+                        </div>
+                      )}
+                      {runtimeHealthQuery.data?.services.map(service => {
+                        const state = service.state as
+                          | "configured"
+                          | "unavailable"
+                          | "degraded";
+                        const label =
+                          state === "configured"
+                            ? "Configured"
+                            : state === "degraded"
+                              ? "Degraded"
+                              : "Unavailable";
+                        const color =
+                          state === "configured"
+                            ? "bg-emerald-400"
+                            : state === "degraded"
+                              ? "bg-amber-400"
+                              : "bg-zinc-500";
+                        return (
+                          <div
+                            key={service.id}
+                            className="flex items-start justify-between gap-4 py-2"
+                          >
+                            <div>
+                              <span className="text-sm font-medium">
+                                {service.name}
+                              </span>
+                              <p className="mt-0.5 text-xs text-muted-foreground">
+                                {service.detail}
+                              </p>
+                            </div>
+                            <span className="flex shrink-0 items-center gap-2 text-xs">
+                              <span
+                                className={`w-2 h-2 rounded-full ${color}`}
+                              />
+                              {label}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
 
@@ -497,11 +575,7 @@ export default function Settings() {
                             variant="outline"
                             size="sm"
                             className="text-red-400 border-red-400/30 hover:bg-red-400/10"
-                            onClick={() => {
-                              if (confirm("Reset all settings to defaults?")) {
-                                resetMutation.mutate();
-                              }
-                            }}
+                            onClick={resetAllSettings}
                           >
                             Reset
                           </Button>
@@ -518,11 +592,15 @@ export default function Settings() {
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() =>
-                              toast.info("This feature is not yet available")
-                            }
+                            onClick={() => exportMutation.mutate()}
+                            disabled={exportMutation.isPending}
                           >
-                            Export
+                            {exportMutation.isPending ? (
+                              <Loader2 className="animate-spin" />
+                            ) : (
+                              <Download />
+                            )}
+                            {exportMutation.isPending ? "Preparing…" : "Export"}
                           </Button>
                         </div>
                       </div>

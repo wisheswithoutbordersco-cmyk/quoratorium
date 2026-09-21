@@ -1,6 +1,6 @@
 /**
  * Session Stabilization Engine — Health Monitoring
- * 
+ *
  * Continuously monitors session health metrics:
  * - Token/context pressure
  * - Repetitive outputs
@@ -10,7 +10,7 @@
  * - Failed executions
  * - Loop indicators
  * - Excessive context growth
- * 
+ *
  * Computes a session health state:
  * - Stable: everything flowing well
  * - Elevated Load: context growing, minor repetition
@@ -20,10 +20,10 @@
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type SessionHealthState = 
-  | "stable" 
-  | "elevated" 
-  | "high_pressure" 
+export type SessionHealthState =
+  | "stable"
+  | "elevated"
+  | "high_pressure"
   | "stabilization_recommended";
 
 export interface SessionMetrics {
@@ -73,6 +73,18 @@ interface SessionState {
   responseTimestamps: number[]; // For avg response time calculation
 }
 
+export interface PersistedConversationMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export interface ConversationHealthContext {
+  /** Durable compressed context retained after a successful stabilization. */
+  compressedTokenEstimate?: number;
+  /** Number of recent persisted messages that will accompany the context. */
+  recentMessageLimit?: number;
+}
+
 const sessions = new Map<string, SessionState>();
 
 // ─── Public API ─────────────────────────────────────────────────────────────
@@ -119,13 +131,19 @@ export function recordMessage(
 
   m.messageCount += 1;
   m.totalTokens += tokenCount;
-  m.contextWindowUsed = Math.min(100, (m.totalTokens / MAX_CONTEXT_TOKENS) * 100);
+  m.contextWindowUsed = Math.min(
+    100,
+    (m.totalTokens / MAX_CONTEXT_TOKENS) * 100
+  );
   m.lastUpdated = Date.now();
 
   // Track response time
   session.responseTimestamps.push(responseTimeMs);
-  if (session.responseTimestamps.length > 20) session.responseTimestamps.shift();
-  m.avgResponseTime = session.responseTimestamps.reduce((a, b) => a + b, 0) / session.responseTimestamps.length;
+  if (session.responseTimestamps.length > 20)
+    session.responseTimestamps.shift();
+  m.avgResponseTime =
+    session.responseTimestamps.reduce((a, b) => a + b, 0) /
+    session.responseTimestamps.length;
 
   // Track output for repetition detection
   const trimmed = responseContent.slice(0, 500).toLowerCase().trim();
@@ -142,11 +160,54 @@ export function recordMessage(
 }
 
 /**
+ * Reconcile in-memory operational counters with the conversation that is
+ * actually persisted for this session. Health is scoped to a conversation ID,
+ * never a project or a user's most recent conversation.
+ */
+export function syncSessionFromConversation(
+  sessionId: string,
+  messages: PersistedConversationMessage[],
+  context: ConversationHealthContext = {}
+): void {
+  const session = getOrCreateSession(sessionId);
+  const metrics = session.metrics;
+  const conversationMessages = messages.filter(
+    message => message.role === "user" || message.role === "assistant"
+  );
+  const recentLimit = context.recentMessageLimit ?? 10;
+  const recentMessages = conversationMessages.slice(-recentLimit);
+  const compressedTokens = Math.max(
+    0,
+    Math.round(context.compressedTokenEstimate || 0)
+  );
+
+  // After stabilization, only the durable context and a bounded recent window
+  // are sent to the model. Reporting the entire database transcript would make
+  // health pressure inaccurate.
+  metrics.messageCount = conversationMessages.length;
+  metrics.totalTokens =
+    compressedTokens + estimateMessageTokens(recentMessages);
+  metrics.contextWindowUsed = Math.min(
+    100,
+    (metrics.totalTokens / MAX_CONTEXT_TOKENS) * 100
+  );
+  metrics.lastUpdated = Date.now();
+
+  session.recentOutputs = recentMessages
+    .filter(message => message.role === "assistant")
+    .map(message => message.content.slice(0, 500).toLowerCase().trim())
+    .filter(Boolean)
+    .slice(-10);
+  metrics.repetitionScore = calculateRepetition(session.recentOutputs);
+}
+
+/**
  * Record a tool call
  */
 export function recordToolCall(sessionId: string, toolName: string): void {
   const session = getOrCreateSession(sessionId);
   session.metrics.toolCallCount += 1;
+  session.metrics.lastUpdated = Date.now();
   session.recentToolCalls.push(toolName);
   if (session.recentToolCalls.length > 20) session.recentToolCalls.shift();
 
@@ -163,6 +224,7 @@ export function recordToolCall(sessionId: string, toolName: string): void {
 export function recordFailure(sessionId: string): void {
   const session = getOrCreateSession(sessionId);
   session.metrics.failedExecutions += 1;
+  session.metrics.lastUpdated = Date.now();
 }
 
 /**
@@ -215,26 +277,39 @@ export function getSessionHealth(sessionId: string): SessionHealthReport {
   else state = "stabilization_recommended";
 
   // Override: force critical if specific thresholds are hit
-  if (m.loopIndicators >= MAX_LOOP_INDICATORS_BEFORE_CRITICAL) state = "stabilization_recommended";
-  if (m.contextWindowUsed >= CRITICAL_THRESHOLD) state = "stabilization_recommended";
-  if (m.repetitionScore >= REPETITION_CRITICAL && m.messageCount > 5) state = "stabilization_recommended";
+  if (m.loopIndicators >= MAX_LOOP_INDICATORS_BEFORE_CRITICAL)
+    state = "stabilization_recommended";
+  if (m.contextWindowUsed >= CRITICAL_THRESHOLD)
+    state = "stabilization_recommended";
+  if (m.repetitionScore >= REPETITION_CRITICAL && m.messageCount > 5)
+    state = "stabilization_recommended";
 
   // Generate recommendations
   const recommendations: string[] = [];
   if (m.contextWindowUsed > HIGH_PRESSURE_THRESHOLD) {
-    recommendations.push("Context window is nearly full. Stabilization will compress conversation history.");
+    recommendations.push(
+      "The context sent with this conversation is close to its available limit."
+    );
   }
   if (m.repetitionScore > REPETITION_HIGH) {
-    recommendations.push("High repetition detected. The AI may be looping on similar outputs.");
+    recommendations.push(
+      "High repetition detected. The AI may be looping on similar outputs."
+    );
   }
   if (m.failedExecutions > MAX_FAILURES_BEFORE_WARNING) {
-    recommendations.push("Multiple execution failures. Stabilization will clear stale retry state.");
+    recommendations.push(
+      "Multiple executions for this conversation have failed."
+    );
   }
   if (m.retryCount > MAX_RETRIES_BEFORE_WARNING) {
-    recommendations.push("Retry storm detected. The same tool is being called repeatedly.");
+    recommendations.push(
+      "Retry storm detected. The same tool is being called repeatedly."
+    );
   }
   if (m.loopIndicators > 1) {
-    recommendations.push("Loop patterns detected in responses. Context may be polluted.");
+    recommendations.push(
+      "Loop patterns detected in responses. Context may be polluted."
+    );
   }
 
   const canStabilize = state !== "stable" || m.messageCount > 20;
@@ -245,12 +320,18 @@ export function getSessionHealth(sessionId: string): SessionHealthReport {
 /**
  * Reset session metrics after stabilization
  */
-export function resetSessionAfterStabilization(sessionId: string, preservedTokenCount: number): void {
+export function resetSessionAfterStabilization(
+  sessionId: string,
+  preservedTokenCount: number
+): void {
   const session = getOrCreateSession(sessionId);
   session.metrics = {
     totalTokens: preservedTokenCount,
     messageCount: 0,
-    contextWindowUsed: Math.min(100, (preservedTokenCount / MAX_CONTEXT_TOKENS) * 100),
+    contextWindowUsed: Math.min(
+      100,
+      (preservedTokenCount / MAX_CONTEXT_TOKENS) * 100
+    ),
     repetitionScore: 0,
     failedExecutions: 0,
     toolCallCount: 0,
@@ -292,7 +373,7 @@ function calculateRepetition(outputs: string[]): number {
   const jaccardSimilarity = (a: Set<string>, b: Set<string>): number => {
     if (a.size === 0 && b.size === 0) return 0;
     let intersection = 0;
-    Array.from(a).forEach((item) => {
+    Array.from(a).forEach(item => {
       if (b.has(item)) intersection++;
     });
     return intersection / (a.size + b.size - intersection);
@@ -325,8 +406,16 @@ function detectLoopPatterns(content: string): boolean {
   }
 
   // Pattern 2: Self-referential loops ("as I mentioned", "as stated above" repeated)
-  const selfRefPatterns = ["as i mentioned", "as stated above", "as previously", "like i said"];
-  const selfRefCount = selfRefPatterns.reduce((count, p) => count + (lower.split(p).length - 1), 0);
+  const selfRefPatterns = [
+    "as i mentioned",
+    "as stated above",
+    "as previously",
+    "like i said",
+  ];
+  const selfRefCount = selfRefPatterns.reduce(
+    (count, p) => count + (lower.split(p).length - 1),
+    0
+  );
   if (selfRefCount >= 3) return true;
 
   // Pattern 3: Structural repetition (same markdown headers repeated)
@@ -337,4 +426,12 @@ function detectLoopPatterns(content: string): boolean {
   }
 
   return false;
+}
+
+function estimateMessageTokens(
+  messages: PersistedConversationMessage[]
+): number {
+  return Math.ceil(
+    messages.reduce((total, message) => total + message.content.length, 0) / 4
+  );
 }

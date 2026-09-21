@@ -11,7 +11,9 @@ export default function Sharing() {
 
   const [activeTab, setActiveTab] = useState<"shared" | "export">("shared");
 
-  const sharedQuery = trpc.sharing.listShared.useQuery(undefined, { enabled: !!user });
+  const sharedQuery = trpc.sharing.listShared.useQuery(undefined, {
+    enabled: !!user,
+  });
   const revokeMutation = trpc.sharing.revokeShareLink.useMutation({
     onSuccess: () => {
       toast.success("Share link has been revoked");
@@ -43,7 +45,9 @@ export default function Sharing() {
             <button
               onClick={() => setActiveTab("shared")}
               className={`px-4 py-2 rounded-md text-sm transition-colors ${
-                activeTab === "shared" ? "bg-zinc-700 text-white" : "text-muted-foreground hover:text-white"
+                activeTab === "shared"
+                  ? "bg-zinc-700 text-white"
+                  : "text-muted-foreground hover:text-white"
               }`}
             >
               Shared Links
@@ -51,7 +55,9 @@ export default function Sharing() {
             <button
               onClick={() => setActiveTab("export")}
               className={`px-4 py-2 rounded-md text-sm transition-colors ${
-                activeTab === "export" ? "bg-zinc-700 text-white" : "text-muted-foreground hover:text-white"
+                activeTab === "export"
+                  ? "bg-zinc-700 text-white"
+                  : "text-muted-foreground hover:text-white"
               }`}
             >
               Export
@@ -63,11 +69,16 @@ export default function Sharing() {
             <div className="space-y-4">
               {sharedQuery.data && sharedQuery.data.length > 0 ? (
                 sharedQuery.data.map((shared: any) => (
-                  <Card key={shared.id} className="border-border/50 bg-card/50 backdrop-blur">
+                  <Card
+                    key={shared.id}
+                    className="border-border/50 bg-card/50 backdrop-blur"
+                  >
                     <CardContent className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="flex-1 min-w-0">
-                          <h3 className="text-sm font-medium truncate">{shared.title || "Untitled"}</h3>
+                          <h3 className="text-sm font-medium truncate">
+                            {shared.title || "Untitled"}
+                          </h3>
                           {shared.description && (
                             <p className="text-xs text-muted-foreground mt-0.5 truncate">
                               {shared.description}
@@ -75,22 +86,25 @@ export default function Sharing() {
                           )}
                           <div className="flex items-center gap-4 mt-2">
                             <span className="text-xs text-muted-foreground">
-                              {shared.viewCount} views
+                              {shared.view_count} views
                             </span>
                             <span className="text-xs text-muted-foreground">
-                              Created {new Date(shared.createdAt).toLocaleDateString()}
+                              Created{" "}
+                              {new Date(shared.created_at).toLocaleDateString()}
                             </span>
-                            <span className={`text-xs px-2 py-0.5 rounded-full ${
-                              shared.isActive
-                                ? "bg-emerald-500/20 text-emerald-400"
-                                : "bg-red-500/20 text-red-400"
-                            }`}>
-                              {shared.isActive ? "Active" : "Revoked"}
+                            <span
+                              className={`text-xs px-2 py-0.5 rounded-full ${
+                                shared.is_active
+                                  ? "bg-emerald-500/20 text-emerald-400"
+                                  : "bg-red-500/20 text-red-400"
+                              }`}
+                            >
+                              {shared.is_active ? "Active" : "Revoked"}
                             </span>
                           </div>
                         </div>
                         <div className="flex gap-2 ml-4">
-                          {shared.isActive && (
+                          {shared.is_active && (
                             <>
                               <Button
                                 size="sm"
@@ -103,7 +117,9 @@ export default function Sharing() {
                                 size="sm"
                                 variant="outline"
                                 className="text-red-400 border-red-400/30 hover:bg-red-400/10"
-                                onClick={() => revokeMutation.mutate({ id: shared.id })}
+                                onClick={() =>
+                                  revokeMutation.mutate({ id: shared.id })
+                                }
                               >
                                 Revoke
                               </Button>
@@ -117,9 +133,12 @@ export default function Sharing() {
               ) : (
                 <Card className="border-border/50 bg-card/50 backdrop-blur">
                   <CardContent className="py-12 text-center">
-                    <p className="text-muted-foreground text-sm">No shared projects yet</p>
+                    <p className="text-muted-foreground text-sm">
+                      No shared projects yet
+                    </p>
                     <p className="text-xs text-muted-foreground mt-1">
-                      Share a project from the Projects page to create a public link
+                      Share a project from the Projects page to create a public
+                      link
                     </p>
                   </CardContent>
                 </Card>
@@ -132,12 +151,15 @@ export default function Sharing() {
             <div className="space-y-4">
               <Card className="border-border/50 bg-card/50 backdrop-blur">
                 <CardHeader>
-                  <CardTitle className="text-base">Export Conversations</CardTitle>
+                  <CardTitle className="text-base">
+                    Export Conversations
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Export your conversations as Markdown files. Use the export button in the conversation header
-                    or select a conversation below.
+                    Export your conversations as Markdown files. Use the export
+                    button in the conversation header or select a conversation
+                    below.
                   </p>
                   <ExportConversationList />
                 </CardContent>
@@ -149,8 +171,8 @@ export default function Sharing() {
                 </CardHeader>
                 <CardContent>
                   <p className="text-sm text-muted-foreground mb-4">
-                    Download project code as a ZIP file. Use the download button on each project card
-                    or from the project view.
+                    Download project code as a ZIP file. Use the download button
+                    on each project card or from the project view.
                   </p>
                   <ExportProjectList />
                 </CardContent>
@@ -164,13 +186,14 @@ export default function Sharing() {
 }
 
 function ExportConversationList() {
-
   const conversationsQuery = trpc.conversations.list.useQuery(undefined);
 
   const handleExport = async (conversationId: number, title: string) => {
     try {
       // We'll use a direct fetch to get the markdown
-      const res = await fetch(`/api/trpc/sharing.exportConversation?input=${encodeURIComponent(JSON.stringify({ conversationId }))}`);
+      const res = await fetch(
+        `/api/trpc/sharing.exportConversation?input=${encodeURIComponent(JSON.stringify({ conversationId }))}`
+      );
       const data = await res.json();
       const markdown = data?.result?.data?.markdown;
       if (!markdown) {
@@ -192,7 +215,11 @@ function ExportConversationList() {
   };
 
   if (!conversationsQuery.data || conversationsQuery.data.length === 0) {
-    return <p className="text-xs text-muted-foreground">No conversations to export</p>;
+    return (
+      <p className="text-xs text-muted-foreground">
+        No conversations to export
+      </p>
+    );
   }
 
   return (
@@ -205,7 +232,9 @@ function ExportConversationList() {
           <div className="flex-1 min-w-0">
             <p className="text-sm truncate">{convo.title || "Untitled"}</p>
             <p className="text-xs text-muted-foreground">
-              {new Date(convo.updatedAt || convo.createdAt).toLocaleDateString()}
+              {new Date(
+                convo.updatedAt || convo.createdAt
+              ).toLocaleDateString()}
             </p>
           </div>
           <Button
@@ -222,11 +251,56 @@ function ExportConversationList() {
 }
 
 function ExportProjectList() {
-
   const projectsQuery = trpc.projects.list.useQuery(undefined);
+  const sharedQuery = trpc.sharing.listShared.useQuery();
+  const utils = trpc.useUtils();
+
+  const downloadZip = trpc.projects.downloadZip.useMutation({
+    onSuccess: result => {
+      const link = document.createElement("a");
+      link.href = result.url;
+      link.download = result.filename;
+      link.rel = "noopener noreferrer";
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      toast.success(
+        `Download ready — ${result.fileCount} ${result.fileCount === 1 ? "file" : "files"}`
+      );
+    },
+    onError: error => {
+      toast.error(error.message || "Could not create the project ZIP");
+    },
+  });
+
+  const createShareLink = trpc.sharing.createShareLink.useMutation({
+    onSuccess: async result => {
+      const url = `${window.location.origin}/shared/${result.slug}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast.success(
+          result.alreadyShared
+            ? "Existing share link copied"
+            : "Share link created and copied"
+        );
+      } catch {
+        toast.success(
+          result.alreadyShared
+            ? "Existing share link is ready"
+            : "Share link created"
+        );
+      }
+      utils.sharing.listShared.invalidate();
+    },
+    onError: error => {
+      toast.error(error.message || "Could not create a share link");
+    },
+  });
 
   if (!projectsQuery.data || projectsQuery.data.length === 0) {
-    return <p className="text-xs text-muted-foreground">No projects to export</p>;
+    return (
+      <p className="text-xs text-muted-foreground">No projects to export</p>
+    );
   }
 
   return (
@@ -239,16 +313,40 @@ function ExportProjectList() {
           <div className="flex-1 min-w-0">
             <p className="text-sm truncate">{project.name}</p>
             <p className="text-xs text-muted-foreground">
-              {project.stack || "No stack specified"}
+              {project.project_type || "No project type specified"}
             </p>
           </div>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => toast.info("ZIP export will be available soon")}
-          >
-            Download ZIP
-          </Button>
+          <div className="flex shrink-0 gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={createShareLink.isPending}
+              onClick={() =>
+                createShareLink.mutate({
+                  projectId: project.id,
+                  title: project.name,
+                  description: project.description || undefined,
+                })
+              }
+            >
+              {createShareLink.isPending
+                ? "Creating…"
+                : sharedQuery.data?.some(
+                      (shared: any) =>
+                        shared.project_id === project.id && shared.is_active
+                    )
+                  ? "Copy Share Link"
+                  : "Create Share Link"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              disabled={downloadZip.isPending}
+              onClick={() => downloadZip.mutate({ projectId: project.id })}
+            >
+              {downloadZip.isPending ? "Preparing…" : "Download ZIP"}
+            </Button>
+          </div>
         </div>
       ))}
     </div>

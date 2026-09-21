@@ -12,8 +12,24 @@ function getDb() {
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
-export type JobType = "ai_chat" | "code_generation" | "code_validation" | "research" | "image_generation" | "browser_task" | "code_execution" | "embedding" | "deployment";
-export type JobStatus = "queued" | "processing" | "completed" | "failed" | "retrying" | "cancelled" | "dead_letter";
+export type JobType =
+  | "ai_chat"
+  | "code_generation"
+  | "code_validation"
+  | "research"
+  | "image_generation"
+  | "browser_task"
+  | "code_execution"
+  | "embedding"
+  | "deployment";
+export type JobStatus =
+  | "queued"
+  | "processing"
+  | "completed"
+  | "failed"
+  | "retrying"
+  | "cancelled"
+  | "dead_letter";
 export type JobPriority = "critical" | "high" | "normal" | "low";
 
 export interface Job {
@@ -39,7 +55,10 @@ export interface Job {
 // Legacy aliases for backward compat
 export type { Job as InsertJob };
 
-export type JobProcessor = (job: Job, onProgress: (pct: number) => Promise<void>) => Promise<any>;
+export type JobProcessor = (
+  job: Job,
+  onProgress: (pct: number) => Promise<void>
+) => Promise<any>;
 
 interface CreateJobOptions {
   userId: number;
@@ -52,13 +71,21 @@ interface CreateJobOptions {
   parentJobId?: string;
 }
 
-const PRIORITY_WEIGHT: Record<string, number> = { critical: 4, high: 3, normal: 2, low: 1 };
+const PRIORITY_WEIGHT: Record<string, number> = {
+  critical: 4,
+  high: 3,
+  normal: 2,
+  low: 1,
+};
 
 // ─── Queue Engine ─────────────────────────────────────────────────────────────
 
 class JobQueueEngine {
   private processors: Map<JobType, JobProcessor> = new Map();
-  private activeJobs: Map<string, { abort: AbortController; timeout: NodeJS.Timeout }> = new Map();
+  private activeJobs: Map<
+    string,
+    { abort: AbortController; timeout: NodeJS.Timeout }
+  > = new Map();
   private maxConcurrency = 3;
   private listeners: Map<string, Set<(event: any) => void>> = new Map();
 
@@ -67,6 +94,11 @@ class JobQueueEngine {
   }
 
   async createJob(options: CreateJobOptions): Promise<Job> {
+    if (!this.processors.has(options.type)) {
+      throw new Error(
+        `No production processor is registered for job type: ${options.type}`
+      );
+    }
     const db = getDb();
     if (!db) throw new Error("Database unavailable");
 
@@ -110,13 +142,15 @@ class JobQueueEngine {
     return data || null;
   }
 
-  async listJobs(options: {
-    userId?: number;
-    status?: JobStatus;
-    type?: JobType;
-    limit?: number;
-    offset?: number;
-  } = {}): Promise<{ jobs: Job[]; total: number }> {
+  async listJobs(
+    options: {
+      userId?: number;
+      status?: JobStatus;
+      type?: JobType;
+      limit?: number;
+      offset?: number;
+    } = {}
+  ): Promise<{ jobs: Job[]; total: number }> {
     const db = getDb();
     if (!db) return { jobs: [], total: 0 };
 
@@ -127,7 +161,10 @@ class JobQueueEngine {
 
     const { data, count } = await query
       .order("created_at", { ascending: false })
-      .range(options.offset || 0, (options.offset || 0) + (options.limit || 50) - 1);
+      .range(
+        options.offset || 0,
+        (options.offset || 0) + (options.limit || 50) - 1
+      );
 
     return { jobs: data || [], total: count || 0 };
   }
@@ -147,7 +184,10 @@ class JobQueueEngine {
       this.activeJobs.delete(id);
     }
 
-    await db.from("jobs").update({ status: "cancelled", completed_at: new Date().toISOString() }).eq("id", id);
+    await db
+      .from("jobs")
+      .update({ status: "cancelled", completed_at: new Date().toISOString() })
+      .eq("id", id);
     this.emit(id, { type: "cancelled" });
     return true;
   }
@@ -159,8 +199,12 @@ class JobQueueEngine {
     const job = await this.getJob(id);
     if (!job || job.user_id !== userId) return null;
     if (job.status !== "failed" && job.status !== "dead_letter") return null;
+    if (!this.processors.has(job.type as JobType)) return null;
 
-    await db.from("jobs").update({ status: "queued", retries: 0, error: null, progress: 0 }).eq("id", id);
+    await db
+      .from("jobs")
+      .update({ status: "queued", retries: 0, error: null, progress: 0 })
+      .eq("id", id);
     const updated = await this.getJob(id);
     this.processQueue();
     return updated;
@@ -177,34 +221,68 @@ class JobQueueEngine {
     successRate: number;
   }> {
     const db = getDb();
-    if (!db) return { total: 0, queued: 0, processing: 0, completed: 0, failed: 0, deadLetter: 0, avgDurationMs: 0, successRate: 0 };
+    if (!db)
+      return {
+        total: 0,
+        queued: 0,
+        processing: 0,
+        completed: 0,
+        failed: 0,
+        deadLetter: 0,
+        avgDurationMs: 0,
+        successRate: 0,
+      };
 
     let query = db.from("jobs").select("*");
     if (userId) query = query.eq("user_id", userId);
     const { data: all } = await query;
 
-    const stats = { total: 0, queued: 0, processing: 0, completed: 0, failed: 0, deadLetter: 0, avgDurationMs: 0, successRate: 0 };
+    const stats = {
+      total: 0,
+      queued: 0,
+      processing: 0,
+      completed: 0,
+      failed: 0,
+      deadLetter: 0,
+      avgDurationMs: 0,
+      successRate: 0,
+    };
     let totalDuration = 0;
     let completedCount = 0;
 
     for (const job of all || []) {
       stats.total++;
       switch (job.status) {
-        case "queued": stats.queued++; break;
-        case "processing": case "retrying": stats.processing++; break;
-        case "completed": stats.completed++; break;
-        case "failed": stats.failed++; break;
-        case "dead_letter": stats.deadLetter++; break;
+        case "queued":
+          stats.queued++;
+          break;
+        case "processing":
+        case "retrying":
+          stats.processing++;
+          break;
+        case "completed":
+          stats.completed++;
+          break;
+        case "failed":
+          stats.failed++;
+          break;
+        case "dead_letter":
+          stats.deadLetter++;
+          break;
       }
       if (job.status === "completed" && job.started_at && job.completed_at) {
-        totalDuration += new Date(job.completed_at).getTime() - new Date(job.started_at).getTime();
+        totalDuration +=
+          new Date(job.completed_at).getTime() -
+          new Date(job.started_at).getTime();
         completedCount++;
       }
     }
 
-    stats.avgDurationMs = completedCount > 0 ? Math.round(totalDuration / completedCount) : 0;
+    stats.avgDurationMs =
+      completedCount > 0 ? Math.round(totalDuration / completedCount) : 0;
     const finishedJobs = stats.completed + stats.failed + stats.deadLetter;
-    stats.successRate = finishedJobs > 0 ? Math.round((stats.completed / finishedJobs) * 100) : 100;
+    stats.successRate =
+      finishedJobs > 0 ? Math.round((stats.completed / finishedJobs) * 100) : 0;
 
     return stats;
   }
@@ -244,7 +322,10 @@ class JobQueueEngine {
       .order("created_at", { ascending: true })
       .limit(this.maxConcurrency - this.activeJobs.size);
 
-    const sorted = (queued || []).sort((a: any, b: any) => (PRIORITY_WEIGHT[b.priority] || 2) - (PRIORITY_WEIGHT[a.priority] || 2));
+    const sorted = (queued || []).sort(
+      (a: any, b: any) =>
+        (PRIORITY_WEIGHT[b.priority] || 2) - (PRIORITY_WEIGHT[a.priority] || 2)
+    );
 
     for (const job of sorted) {
       if (this.activeJobs.size >= this.maxConcurrency) break;
@@ -258,16 +339,27 @@ class JobQueueEngine {
 
     const processor = this.processors.get(job.type as JobType);
     if (!processor) {
-      await db.from("jobs").update({ status: "failed", error: `No processor registered for type: ${job.type}` }).eq("id", job.id);
+      await db
+        .from("jobs")
+        .update({
+          status: "failed",
+          error: `No processor registered for type: ${job.type}`,
+        })
+        .eq("id", job.id);
       this.emit(job.id, { type: "failed", error: "No processor" });
       return;
     }
 
-    await db.from("jobs").update({ status: "processing", started_at: new Date().toISOString() }).eq("id", job.id);
+    await db
+      .from("jobs")
+      .update({ status: "processing", started_at: new Date().toISOString() })
+      .eq("id", job.id);
     this.emit(job.id, { type: "processing" });
 
     const abort = new AbortController();
-    const timeoutHandle = setTimeout(() => { abort.abort(); }, job.timeout);
+    const timeoutHandle = setTimeout(() => {
+      abort.abort();
+    }, job.timeout);
     this.activeJobs.set(job.id, { abort, timeout: timeoutHandle });
 
     const onProgress = async (pct: number) => {
@@ -280,16 +372,25 @@ class JobQueueEngine {
       const result = await Promise.race([
         processor(job, onProgress),
         new Promise((_, reject) => {
-          abort.signal.addEventListener("abort", () => reject(new Error("Job timed out")));
+          abort.signal.addEventListener("abort", () =>
+            reject(new Error("Job timed out"))
+          );
         }),
       ]);
 
       clearTimeout(timeoutHandle);
       this.activeJobs.delete(job.id);
 
-      await db.from("jobs").update({ status: "completed", result: result as any, progress: 100, completed_at: new Date().toISOString() }).eq("id", job.id);
+      await db
+        .from("jobs")
+        .update({
+          status: "completed",
+          result: result as any,
+          progress: 100,
+          completed_at: new Date().toISOString(),
+        })
+        .eq("id", job.id);
       this.emit(job.id, { type: "completed", result });
-
     } catch (error: any) {
       clearTimeout(timeoutHandle);
       this.activeJobs.delete(job.id);
@@ -298,11 +399,30 @@ class JobQueueEngine {
       const currentRetries = job.retries + 1;
 
       if (currentRetries >= job.max_retries) {
-        await db.from("jobs").update({ status: "dead_letter", error: errorMsg, retries: currentRetries, completed_at: new Date().toISOString() }).eq("id", job.id);
+        await db
+          .from("jobs")
+          .update({
+            status: "dead_letter",
+            error: errorMsg,
+            retries: currentRetries,
+            completed_at: new Date().toISOString(),
+          })
+          .eq("id", job.id);
         this.emit(job.id, { type: "dead_letter", error: errorMsg });
       } else {
-        await db.from("jobs").update({ status: "retrying", error: errorMsg, retries: currentRetries }).eq("id", job.id);
-        this.emit(job.id, { type: "retrying", retry: currentRetries, error: errorMsg });
+        await db
+          .from("jobs")
+          .update({
+            status: "retrying",
+            error: errorMsg,
+            retries: currentRetries,
+          })
+          .eq("id", job.id);
+        this.emit(job.id, {
+          type: "retrying",
+          retry: currentRetries,
+          error: errorMsg,
+        });
 
         const backoffMs = Math.min(1000 * Math.pow(2, currentRetries), 30000);
         setTimeout(async () => {

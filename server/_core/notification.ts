@@ -1,5 +1,6 @@
 import { TRPCError } from "@trpc/server";
 import { ENV } from "./env";
+import { getSupabaseAdmin } from "../supabase";
 
 export type NotificationPayload = {
   title: string;
@@ -14,9 +15,7 @@ const isNonEmptyString = (value: unknown): value is string =>
   typeof value === "string" && value.trim().length > 0;
 
 const buildEndpointUrl = (baseUrl: string): string => {
-  const normalizedBase = baseUrl.endsWith("/")
-    ? baseUrl
-    : `${baseUrl}/`;
+  const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
   return new URL(
     "webdevtoken.v1.WebDevService/SendNotification",
     normalizedBase
@@ -56,6 +55,54 @@ const validatePayload = (input: NotificationPayload): NotificationPayload => {
 
   return { title, content };
 };
+
+/** Exposes deployment capability, never credential existence or credential values. */
+export function getNotificationDeliveryStatus(): {
+  configured: boolean;
+  detail: string;
+} {
+  const configured = Boolean(ENV.forgeApiUrl && ENV.forgeApiKey);
+  return {
+    configured,
+    detail: configured
+      ? "In-app notification delivery is configured."
+      : "In-app notification delivery is unavailable because this deployment has not configured the notification service.",
+  };
+}
+
+/**
+ * Looks up a user opt-in immediately before dispatching. If the database or
+ * delivery configuration is unavailable, it intentionally returns false rather
+ * than pretending that a notification was delivered.
+ */
+export async function notifyUserIfEnabled(
+  userId: number,
+  preferenceKey:
+    | "notifications.jobCompletion"
+    | "notifications.budgetWarnings"
+    | "notifications.errorAlerts",
+  payload: NotificationPayload
+): Promise<boolean> {
+  const db = getSupabaseAdmin();
+  if (!db || !getNotificationDeliveryStatus().configured) return false;
+
+  try {
+    const { data, error } = await db
+      .from("user_settings")
+      .select("value")
+      .eq("user_id", userId)
+      .eq("key", preferenceKey)
+      .maybeSingle();
+    if (error || data?.value === "false") return false;
+    return await notifyOwner(payload);
+  } catch (error) {
+    console.warn(
+      "[Notification] Unable to check user notification preference:",
+      error
+    );
+    return false;
+  }
+}
 
 /**
  * Dispatches a project-owner notification through the Manus Notification Service.

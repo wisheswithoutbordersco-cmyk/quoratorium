@@ -1,16 +1,21 @@
 import Stripe from "stripe";
 import { ENV } from "../_core/env";
 
-if (!ENV.stripeSecretKey) {
-  console.warn("[Stripe] STRIPE_SK not configured — billing features disabled");
+let stripeClient: Stripe | null = null;
+
+export function isStripeConfigured(): boolean {
+  return Boolean(ENV.stripeSecretKey?.startsWith("sk_"));
 }
 
-// Use a placeholder key in test/dev environments to avoid Stripe constructor errors
-const stripeKey = ENV.stripeSecretKey || "sk_test_placeholder_not_configured";
-
-export const stripe = new Stripe(stripeKey, {
-  apiVersion: "2026-04-22.dahlia",
-});
+export function getStripeClient(): Stripe {
+  if (!isStripeConfigured()) {
+    throw new Error("Billing is unavailable because Stripe is not configured.");
+  }
+  stripeClient ??= new Stripe(ENV.stripeSecretKey, {
+    apiVersion: "2026-04-22.dahlia",
+  });
+  return stripeClient;
+}
 
 // ============================================================================
 // PRICING CONFIGURATION
@@ -29,14 +34,25 @@ export const PLANS = {
     dailyCredits: 100,
     monthlyCredits: 3000,
     price: 2900, // cents
-    features: ["100 credits/day", "All AI models", "Unlimited projects", "Priority support"],
+    features: [
+      "100 credits/day",
+      "All AI models",
+      "Unlimited projects",
+      "Priority support",
+    ],
   },
   pro: {
     name: "Pro",
     dailyCredits: 500,
     monthlyCredits: 15000,
     price: 9900, // cents
-    features: ["500 credits/day", "Priority AI models", "Unlimited projects", "Priority support", "Custom deployments"],
+    features: [
+      "500 credits/day",
+      "Priority AI models",
+      "Unlimited projects",
+      "Priority support",
+      "Custom deployments",
+    ],
   },
 } as const;
 
@@ -66,34 +82,53 @@ let stripePriceIds: {
  */
 export async function ensureStripeProducts(): Promise<typeof stripePriceIds> {
   if (stripePriceIds.starter_monthly) return stripePriceIds;
-  if (!ENV.stripeSecretKey) return stripePriceIds;
+  const stripe = getStripeClient();
 
   try {
     // Search for existing products by metadata
     const products = await stripe.products.list({ limit: 100, active: true });
 
-    const findPrice = async (productId: string, recurring: boolean): Promise<string | undefined> => {
-      const prices = await stripe.prices.list({ product: productId, active: true, limit: 10 });
-      return prices.data.find(p => recurring ? p.recurring !== null : p.recurring === null)?.id;
+    const findPrice = async (
+      productId: string,
+      recurring: boolean
+    ): Promise<string | undefined> => {
+      const prices = await stripe.prices.list({
+        product: productId,
+        active: true,
+        limit: 10,
+      });
+      return prices.data.find(p =>
+        recurring ? p.recurring !== null : p.recurring === null
+      )?.id;
     };
 
     // Check for existing products by name
-    const starterProduct = products.data.find(p => p.metadata?.plan === "starter");
+    const starterProduct = products.data.find(
+      p => p.metadata?.plan === "starter"
+    );
     const proProduct = products.data.find(p => p.metadata?.plan === "pro");
-    const topupSmallProduct = products.data.find(p => p.metadata?.topup === "small");
-    const topupMediumProduct = products.data.find(p => p.metadata?.topup === "medium");
-    const topupLargeProduct = products.data.find(p => p.metadata?.topup === "large");
+    const topupSmallProduct = products.data.find(
+      p => p.metadata?.topup === "small"
+    );
+    const topupMediumProduct = products.data.find(
+      p => p.metadata?.topup === "medium"
+    );
+    const topupLargeProduct = products.data.find(
+      p => p.metadata?.topup === "large"
+    );
 
     // Create or find Starter subscription
     if (starterProduct) {
       stripePriceIds.starter_monthly = await findPrice(starterProduct.id, true);
     }
     if (!stripePriceIds.starter_monthly) {
-      const product = starterProduct || await stripe.products.create({
-        name: "Quoratorium Starter",
-        description: "100 credits/day, all AI models, unlimited projects",
-        metadata: { plan: "starter" },
-      });
+      const product =
+        starterProduct ||
+        (await stripe.products.create({
+          name: "Quoratorium Starter",
+          description: "100 credits/day, all AI models, unlimited projects",
+          metadata: { plan: "starter" },
+        }));
       const price = await stripe.prices.create({
         product: typeof product === "string" ? product : product.id,
         unit_amount: PLANS.starter.price,
@@ -109,11 +144,14 @@ export async function ensureStripeProducts(): Promise<typeof stripePriceIds> {
       stripePriceIds.pro_monthly = await findPrice(proProduct.id, true);
     }
     if (!stripePriceIds.pro_monthly) {
-      const product = proProduct || await stripe.products.create({
-        name: "Quoratorium Pro",
-        description: "500 credits/day, priority AI models, unlimited everything",
-        metadata: { plan: "pro" },
-      });
+      const product =
+        proProduct ||
+        (await stripe.products.create({
+          name: "Quoratorium Pro",
+          description:
+            "500 credits/day, priority AI models, unlimited everything",
+          metadata: { plan: "pro" },
+        }));
       const price = await stripe.prices.create({
         product: typeof product === "string" ? product : product.id,
         unit_amount: PLANS.pro.price,
@@ -126,24 +164,46 @@ export async function ensureStripeProducts(): Promise<typeof stripePriceIds> {
 
     // Create or find top-up products
     const topupConfigs = [
-      { key: "topup_small" as const, meta: "small", name: "200 Credit Top-Up", amount: TOP_UPS.small.price, credits: 200 },
-      { key: "topup_medium" as const, meta: "medium", name: "500 Credit Top-Up", amount: TOP_UPS.medium.price, credits: 500 },
-      { key: "topup_large" as const, meta: "large", name: "1,500 Credit Top-Up", amount: TOP_UPS.large.price, credits: 1500 },
+      {
+        key: "topup_small" as const,
+        meta: "small",
+        name: "200 Credit Top-Up",
+        amount: TOP_UPS.small.price,
+        credits: 200,
+      },
+      {
+        key: "topup_medium" as const,
+        meta: "medium",
+        name: "500 Credit Top-Up",
+        amount: TOP_UPS.medium.price,
+        credits: 500,
+      },
+      {
+        key: "topup_large" as const,
+        meta: "large",
+        name: "1,500 Credit Top-Up",
+        amount: TOP_UPS.large.price,
+        credits: 1500,
+      },
     ];
 
     for (const cfg of topupConfigs) {
-      const existing = [topupSmallProduct, topupMediumProduct, topupLargeProduct].find(
-        p => p?.metadata?.topup === cfg.meta
-      );
+      const existing = [
+        topupSmallProduct,
+        topupMediumProduct,
+        topupLargeProduct,
+      ].find(p => p?.metadata?.topup === cfg.meta);
       if (existing) {
         stripePriceIds[cfg.key] = await findPrice(existing.id, false);
       }
       if (!stripePriceIds[cfg.key]) {
-        const product = existing || await stripe.products.create({
-          name: cfg.name,
-          description: `${cfg.credits} bonus credits for Quoratorium`,
-          metadata: { topup: cfg.meta, credits: String(cfg.credits) },
-        });
+        const product =
+          existing ||
+          (await stripe.products.create({
+            name: cfg.name,
+            description: `${cfg.credits} bonus credits for Quoratorium`,
+            metadata: { topup: cfg.meta, credits: String(cfg.credits) },
+          }));
         const price = await stripe.prices.create({
           product: typeof product === "string" ? product : product.id,
           unit_amount: cfg.amount,
@@ -165,7 +225,12 @@ export async function ensureStripeProducts(): Promise<typeof stripePriceIds> {
 /**
  * Get or create a Stripe customer for a user
  */
-export async function getOrCreateCustomer(userId: number, email: string | null, name: string | null): Promise<string> {
+export async function getOrCreateCustomer(
+  userId: number,
+  email: string | null,
+  name: string | null
+): Promise<string> {
+  const stripe = getStripeClient();
   // Search for existing customer by metadata
   const existing = await stripe.customers.search({
     query: `metadata["user_id"]:"${userId}"`,
@@ -194,8 +259,10 @@ export async function createSubscriptionCheckout(
   successUrl: string,
   cancelUrl: string
 ): Promise<string> {
+  const stripe = getStripeClient();
   const prices = await ensureStripeProducts();
-  const priceId = plan === "starter" ? prices.starter_monthly : prices.pro_monthly;
+  const priceId =
+    plan === "starter" ? prices.starter_monthly : prices.pro_monthly;
 
   if (!priceId) throw new Error(`Price not found for plan: ${plan}`);
 
@@ -220,6 +287,7 @@ export async function createTopUpCheckout(
   successUrl: string,
   cancelUrl: string
 ): Promise<string> {
+  const stripe = getStripeClient();
   const prices = await ensureStripeProducts();
   const priceId = prices[`topup_${topUpId}`];
 
@@ -240,7 +308,11 @@ export async function createTopUpCheckout(
 /**
  * Create a Customer Portal session for managing subscriptions
  */
-export async function createPortalSession(customerId: string, returnUrl: string): Promise<string> {
+export async function createPortalSession(
+  customerId: string,
+  returnUrl: string
+): Promise<string> {
+  const stripe = getStripeClient();
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
     return_url: returnUrl,

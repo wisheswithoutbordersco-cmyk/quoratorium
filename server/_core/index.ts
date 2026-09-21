@@ -16,18 +16,20 @@ import express from "express";
 import { createServer } from "http";
 import net from "net";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
+import { clerkMiddleware, getAuth } from "@clerk/express";
 import { registerStorageProxy } from "./storageProxy";
 import { registerStreamingRoutes } from "../streaming";
 import { registerSandboxRoutes } from "../sandbox/routes";
 import { appRouter } from "../routers";
 import { createContext } from "./context";
+import { ENV } from "./env";
 import { serveStatic, setupVite } from "./vite";
 import { clerkWebhookRouter } from "../webhooks/clerk";
 import { stripeWebhookRouter } from "../webhooks/stripe";
 import { handleAgentChat, handleRunCode } from "../agent-tools";
-import { handleSmartChat, handleListModels } from '../model-router';
-import { pwaIconRouter } from '../pwaIconRoute';
-import { imageGenerationRouter } from '../imageGenerationRoute';
+import { handleSmartChat, handleListModels } from "../model-router";
+import { pwaIconRouter } from "../pwaIconRoute";
+import { imageGenerationRouter } from "../imageGenerationRoute";
 import { createRequire } from "module";
 import path from "path";
 import { fileURLToPath } from "url";
@@ -38,24 +40,26 @@ let cqRouter: any = null;
 try {
   // Try multiple paths since build output is in dist/ but source is in server/
   const possiblePaths = [
-    path.resolve(__dirname, '../server/captain-q-v2.cjs'),
-    path.resolve(__dirname, './captain-q-v2.cjs'),
-    path.resolve(__dirname, '../captain-q-v2.cjs'),
-    path.resolve(process.cwd(), 'server/captain-q-v2.cjs'),
+    path.resolve(__dirname, "../server/captain-q-v2.cjs"),
+    path.resolve(__dirname, "./captain-q-v2.cjs"),
+    path.resolve(__dirname, "../captain-q-v2.cjs"),
+    path.resolve(process.cwd(), "server/captain-q-v2.cjs"),
   ];
   let loaded = false;
   for (const p of possiblePaths) {
     try {
       const cqModule = require(p);
       cqRouter = cqModule.router;
-      console.log('[Server] Toríu router loaded from:', p);
+      console.log("[Server] Toríu router loaded from:", p);
       loaded = true;
       break;
-    } catch { /* try next path */ }
+    } catch {
+      /* try next path */
+    }
   }
-  if (!loaded) console.warn('[Server] Toríu not found at any path');
+  if (!loaded) console.warn("[Server] Toríu not found at any path");
 } catch (e: any) {
-  console.warn('[Server] Toríu failed to load:', e.message);
+  console.warn("[Server] Toríu failed to load:", e.message);
 }
 
 function isPortAvailable(port: number): Promise<boolean> {
@@ -80,9 +84,14 @@ async function findAvailablePort(startPort: number = 3000): Promise<number> {
 async function startServer() {
   const app = express();
   const server = createServer(app);
+  const clerkConfigured = Boolean(
+    ENV.clerkPublishableKey.startsWith("pk_") &&
+      ENV.clerkSecretKey.startsWith("sk_")
+  );
 
   // Stripe webhook needs raw body for signature verification — must be BEFORE json parser
-  app.use("/api/webhooks/stripe",
+  app.use(
+    "/api/webhooks/stripe",
     express.raw({ type: "application/json" }),
     (req: any, _res: any, next: any) => {
       req.rawBody = req.body;
@@ -96,7 +105,18 @@ async function startServer() {
   app.use(express.json({ limit: "50mb" }));
   app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-  // PWA icon route — public, no auth required
+  // Clerk verifies session cookies and bearer tokens and decorates the request.
+  // Do not install the middleware with absent credentials: protected tRPC
+  // procedures then fail closed because no verified user can be resolved.
+  if (clerkConfigured) {
+    app.use(clerkMiddleware());
+  } else {
+    console.warn(
+      "[Auth] Clerk is not configured; protected API procedures are unavailable."
+    );
+  }
+
+  // PWA icon reads are public; writes enforce an authenticated admin in the router.
   app.use(pwaIconRouter);
 
   // Reliable image route: preconfigured GPT Image primary with one durable
@@ -106,17 +126,17 @@ async function startServer() {
   // Toríu endpoints (TTS, image gen, social queue) — must be before Clerk middleware
   // so /api/test and /api/tts are not blocked by auth
   if (cqRouter) app.use(cqRouter);
-  app.post('/api/agent/chat', handleAgentChat);
-  app.post('/api/tools/run-code', handleRunCode);
-  app.post('/api/smart-chat', handleSmartChat);
-  app.get('/api/models', handleListModels);
+  app.post("/api/agent/chat", handleAgentChat);
+  app.post("/api/tools/run-code", handleRunCode);
+  app.post("/api/smart-chat", handleSmartChat);
+  app.get("/api/models", handleListModels);
 
   // Tag Sentry events with user ID from Clerk session when available
   app.use("/api", async (req, _res, next) => {
     try {
-      const clerkAuth = (req as any).auth;
-      if (clerkAuth?.userId) {
-        Sentry.setUser({ id: clerkAuth.userId });
+      const auth = getAuth(req);
+      if (auth.userId) {
+        Sentry.setUser({ id: auth.userId });
       }
     } catch {
       // Auth is optional — proceed without user tagging
@@ -130,8 +150,6 @@ async function startServer() {
 
   // Clerk webhook endpoint
   app.use("/api/webhooks/clerk", clerkWebhookRouter);
-
-
 
   // tRPC API
   app.use(
@@ -165,17 +183,17 @@ async function startServer() {
 }
 
 // Capture unhandled exceptions and rejections
-process.on("uncaughtException", (error) => {
+process.on("uncaughtException", error => {
   Sentry.captureException(error);
   console.error("[Uncaught Exception]", error);
 });
 
-process.on("unhandledRejection", (reason) => {
+process.on("unhandledRejection", reason => {
   Sentry.captureException(reason);
   console.error("[Unhandled Rejection]", reason);
 });
 
-startServer().catch((err) => {
+startServer().catch(err => {
   Sentry.captureException(err);
   console.error(err);
 });

@@ -69,7 +69,10 @@ export async function getCreditBalance(userId: number): Promise<CreditBalance> {
 /**
  * Check if user can afford a credit deduction
  */
-export async function canAfford(userId: number, credits: number = 1): Promise<boolean> {
+export async function canAfford(
+  userId: number,
+  credits: number = 1
+): Promise<boolean> {
   const balance = await getCreditBalance(userId);
   return balance.totalAvailable >= credits;
 }
@@ -79,7 +82,11 @@ export async function canAfford(userId: number, credits: number = 1): Promise<bo
  * First uses daily credits, then bonus credits.
  * Returns false if insufficient credits.
  */
-export async function deductCredits(userId: number, credits: number = 1, reason?: string): Promise<boolean> {
+export async function deductCredits(
+  userId: number,
+  credits: number = 1,
+  reason?: string
+): Promise<boolean> {
   const balance = await getCreditBalance(userId);
 
   if (balance.totalAvailable < credits) {
@@ -90,7 +97,10 @@ export async function deductCredits(userId: number, credits: number = 1, reason?
   let remainingToDeduct = credits;
 
   // First deduct from daily credits
-  const dailyDeduction = Math.min(remainingToDeduct, balance.dailyCreditsRemaining);
+  const dailyDeduction = Math.min(
+    remainingToDeduct,
+    balance.dailyCreditsRemaining
+  );
   if (dailyDeduction > 0) {
     await getSupabaseAdmin()!
       .from("credit_usage")
@@ -121,13 +131,15 @@ export async function deductCredits(userId: number, credits: number = 1, reason?
   }
 
   // Log the transaction
-  await getSupabaseAdmin()!.from("credit_transactions").insert({
-    user_id: userId,
-    amount: -credits,
-    type: "deduction",
-    reason: reason || "ai_action",
-    created_at: new Date().toISOString(),
-  });
+  await getSupabaseAdmin()!
+    .from("credit_transactions")
+    .insert({
+      user_id: userId,
+      amount: -credits,
+      type: "deduction",
+      reason: reason || "ai_action",
+      created_at: new Date().toISOString(),
+    });
 
   return true;
 }
@@ -135,35 +147,52 @@ export async function deductCredits(userId: number, credits: number = 1, reason?
 /**
  * Add bonus credits from a top-up purchase
  */
-export async function addBonusCredits(userId: number, credits: number, source: string): Promise<void> {
-  // Get current bonus
-  const { data: current } = await getSupabaseAdmin()!
+export async function addBonusCredits(
+  userId: number,
+  credits: number,
+  source: string,
+  stripePaymentReference?: string
+): Promise<boolean> {
+  const db = getSupabaseAdmin();
+  if (!db) throw new Error("Credit storage is unavailable");
+
+  if (stripePaymentReference) {
+    const { data, error } = await db.rpc("fulfill_credit_topup", {
+      p_user_id: userId,
+      p_credits: credits,
+      p_source: source,
+      p_payment_reference: stripePaymentReference,
+    });
+    if (error)
+      throw new Error(`Unable to fulfill credit top-up: ${error.message}`);
+    return data === true;
+  }
+
+  // Non-payment grants remain available to explicit server-side admin flows.
+  const { data: current } = await db
     .from("credit_balances")
     .select("bonus_credits")
     .eq("user_id", userId)
     .single();
 
   const currentBonus = current?.bonus_credits || 0;
+  await db.from("credit_balances").upsert(
+    {
+      user_id: userId,
+      bonus_credits: currentBonus + credits,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
 
-  await getSupabaseAdmin()!
-    .from("credit_balances")
-    .upsert(
-      {
-        user_id: userId,
-        bonus_credits: currentBonus + credits,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
-
-  // Log the transaction
-  await getSupabaseAdmin()!.from("credit_transactions").insert({
+  await db.from("credit_transactions").insert({
     user_id: userId,
     amount: credits,
     type: "topup",
     reason: source,
     created_at: new Date().toISOString(),
   });
+  return true;
 }
 
 /**
@@ -175,18 +204,16 @@ export async function updateSubscription(
   stripeSubscriptionId: string | null,
   status: string
 ): Promise<void> {
-  await getSupabaseAdmin()!
-    .from("subscriptions")
-    .upsert(
-      {
-        user_id: userId,
-        plan,
-        stripe_subscription_id: stripeSubscriptionId,
-        status,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: "user_id" }
-    );
+  await getSupabaseAdmin()!.from("subscriptions").upsert(
+    {
+      user_id: userId,
+      plan,
+      stripe_subscription_id: stripeSubscriptionId,
+      status,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
 }
 
 /**
@@ -212,6 +239,8 @@ function getUTCDateString(): string {
 
 function getNextResetTime(): string {
   const now = new Date();
-  const tomorrow = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1));
+  const tomorrow = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1)
+  );
   return tomorrow.toISOString();
 }

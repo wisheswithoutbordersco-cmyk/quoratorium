@@ -1,6 +1,6 @@
-# Web App Template (tRPC + Manus Auth + Database)
+# Quoratorium
 
-This template gives you a React 19 + Tailwind 4 + Express 4 + tRPC 11 stack with Manus OAuth already wired. Procedures are your contracts, types flow end to end, and authentication "just works".
+Quoratorium is a React 19 + Tailwind 4 + Express 4 + tRPC 11 workspace for AI-assisted research, building, validation, GitHub synchronization, artifact sharing, and deployment.
 
 ---
 
@@ -8,7 +8,7 @@ This template gives you a React 19 + Tailwind 4 + Express 4 + tRPC 11 stack with
 
 - **tRPC-first:** define procedures in `server/routers.ts`, consume them with `trpc.*` hooks.
 - **Superjson out of the box:** return Drizzle rows directly—`Date` stays a `Date`.
-- **Auth baked in:** `/api/oauth/callback` handles Manus OAuth, `protectedProcedure` injects `ctx.user`.
+- **Clerk authentication:** the browser sends a Clerk session token and `protectedProcedure` resolves a verified database user. Missing Clerk configuration fails closed.
 - **Gateway-ready:** all RPC traffic is under `/api/trpc`, making it easy to route at the edge.
 
 ---
@@ -37,7 +37,7 @@ client/src/lib/trpc.ts → tRPC client binding
 client/src/pages/ → Feature UI that calls trpc hooks
 ```
 
-Framework plumbing (OAuth, context, Vite bridge) lives under `server/_core`.
+Framework plumbing (Clerk context, tRPC, health checks, and the Vite bridge) lives under `server/_core`.
 
 ---
 
@@ -82,26 +82,33 @@ Files in `client/public` are available at the root of your site—reference them
 
 ## Authentication Flow
 
-- Manus OAuth completes at `/api/oauth/callback` and drops a session cookie.
-- Each request to `/api/trpc` builds context via `server/_core/context.ts`, making the current user available as `ctx.user`.
-- Wrap protected logic in `protectedProcedure`; public access uses `publicProcedure`.
-- Frontend reads auth state with `trpc.auth.me.useQuery()` and invokes `trpc.auth.logout.useMutation()`—no cookie plumbing required.
+- `ClerkProvider` owns browser sign-in, sign-up, session state, and sign-out.
+- The tRPC client forwards the Clerk bearer token. `clerkMiddleware()` verifies it and `server/_core/context.ts` maps the Clerk identity to the application user.
+- `protectedProcedure` and direct streaming routes reject requests without a verified Clerk session. There is no client-side password or anonymous owner fallback.
+- The public landing page and explicit shared-project URLs remain public; `/workspace/*` routes require authentication.
 
 ---
 
 ## Environment Variables
 
-Available pre-defined system envs:
+Required for the authenticated application:
+- `VITE_CLERK_PUBLISHABLE_KEY`: Clerk browser publishable key.
+- `CLERK_PUBLISHABLE_KEY`: matching Clerk server publishable key.
+- `CLERK_SECRET_KEY`: Clerk server secret.
+- `CLERK_WEBHOOK_SECRET`: Clerk/Svix webhook signing secret.
+- `SUPABASE_URL`: Quoratorium Supabase project URL.
+- `SUPABASE_SERVICE_ROLE_KEY`: server-only Supabase service-role key.
+
+Platform-provided AI runtime variables:
 - `DATABASE_URL`: MySQL/TiDB connection string
 - `JWT_SECRET`: Session cookie signing secret
-- `VITE_APP_ID`: Manus OAuth application ID
-- `OAUTH_SERVER_URL`: Manus OAuth backend base URL
-- `VITE_OAUTH_PORTAL_URL`: Manus login portal URL (frontend)
 - `OWNER_OPEN_ID`, `OWNER_NAME`: Owner's info
 - `BUILT_IN_FORGE_API_URL`: Manus built-in apis (includes llm, storage, data_api, notification, etc...)
 - `BUILT_IN_FORGE_API_KEY`: Bearer token used by Manus built-in apis (server-side)
 - `VITE_FRONTEND_FORGE_API_KEY`: Bearer token for frontend access to Manus built-in apis
 - `VITE_FRONTEND_FORGE_API_URL`: Manus built-in apis URL for frontend
+
+Optional integrations are enabled only when their credentials are present: `STRIPE_SK` plus `STRIPE_WEBHOOK_SECRET`, `RESEND_API_KEY`, `GITHUB_TOKEN`, `VERCEL_TOKEN`, `NETLIFY_TOKEN`, `SONAR_API_KEY`, `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, and Redis/Upstash variables. The UI reports unavailable integrations instead of simulating success.
 
 Do not edit these directly in code or commit `.env` files.
 The envs above are system envs, when use env in website code, refer `server/_core/env.ts` for available list.
@@ -141,7 +148,7 @@ The envs above are system envs, when use env in website code, refer `server/_cor
 - Theming: Choose dark/light theme to start with for ThemeProvider according to your design style (dark or light bg), then manage colors pallette with CSS variables in `client/src/index.css` instead of hard‑coding to keep global consistency.
 - Micro‑interactions and empty states: add motion, empty states, and icons tastefully to improve quality without distracting from content.
 - Navigation: For internal tools/admin panels, use persistent sidebar. For public-facing apps, design navigation based on content structure (top nav, side nav, or contextual)—ensure clear escape routes from all pages.
-- Placeholder UI elements: When adding structural placeholders (nav items, table actions) for not-yet-implemented features, show toast on click ("Feature coming soon"). Inform user which elements are placeholders when presenting work.
+- Do not ship placeholder controls. Hide unsupported actions or present an explicit configuration requirement; never display simulated success, fabricated live data, or a no-op button.
 
 **React Best Practices:**
 - Never call setState/navigation in render phase → wrap in `useEffect`

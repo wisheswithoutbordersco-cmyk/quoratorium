@@ -1,9 +1,10 @@
 /**
  * Q Workspace — AI Cost Governance Service (Supabase)
- * 
+ *
  * Tracks spending, enforces budgets, and provides cost analytics.
  */
 import { getSupabaseAdmin } from "./supabase";
+import { notifyUserIfEnabled } from "./_core/notification";
 
 function getDb() {
   return getSupabaseAdmin();
@@ -11,23 +12,32 @@ function getDb() {
 
 // ─── Model Pricing (per 1M tokens) ───────────────────────────────────────────
 
-export const MODEL_PRICING: Record<string, { input: number; output: number; perImage?: number }> = {
-  "gpt-4o": { input: 2.50, output: 10.00 },
-  "gpt-4o-mini": { input: 0.15, output: 0.60 },
-  "claude-3-5-sonnet": { input: 3.00, output: 15.00 },
-  "claude-3.5-sonnet": { input: 3.00, output: 15.00 },
-  "claude-sonnet-4-20250514": { input: 3.00, output: 15.00 },
-  "sonar": { input: 1.00, output: 1.00 },
-  "sonar-pro": { input: 1.00, output: 1.00 },
+export const MODEL_PRICING: Record<
+  string,
+  { input: number; output: number; perImage?: number }
+> = {
+  "gpt-5-nano": { input: 0.05, output: 0.4 },
+  "gpt-5-mini": { input: 0.25, output: 2.0 },
+  "gpt-5": { input: 1.25, output: 10.0 },
+  "gpt-5.5": { input: 5.0, output: 30.0 },
+  "gemini-3-flash-preview": { input: 0.5, output: 3.0 },
+  "gemini-3.1-pro-preview": { input: 2.0, output: 12.0 },
+  sonar: { input: 1.0, output: 1.0 },
+  "sonar-pro": { input: 1.0, output: 1.0 },
   "dall-e-3": { input: 0, output: 0, perImage: 0.04 },
   "dall-e-3-hd": { input: 0, output: 0, perImage: 0.08 },
-  "gemini-2.5-flash": { input: 0.15, output: 0.60 },
-  "default": { input: 1.00, output: 2.00 },
+  "gemini-2.5-flash": { input: 0.15, output: 0.6 },
+  default: { input: 1.0, output: 2.0 },
 };
 
 // ─── Cost Calculation ─────────────────────────────────────────────────────────
 
-export function calculateCost(model: string, inputTokens: number, outputTokens: number, imageCount?: number): number {
+export function calculateCost(
+  model: string,
+  inputTokens: number,
+  outputTokens: number,
+  imageCount?: number
+): number {
   const pricing = MODEL_PRICING[model] || MODEL_PRICING["default"];
   if (pricing.perImage && imageCount) {
     return pricing.perImage * imageCount;
@@ -52,11 +62,18 @@ export interface LogApiCallParams {
   imageCount?: number;
 }
 
-export async function logApiCall(params: LogApiCallParams): Promise<{ cost: number; budgetWarning?: string }> {
+export async function logApiCall(
+  params: LogApiCallParams
+): Promise<{ cost: number; budgetWarning?: string }> {
   const db = getDb();
   if (!db) return { cost: 0 };
 
-  const cost = calculateCost(params.model, params.inputTokens, params.outputTokens, params.imageCount);
+  const cost = calculateCost(
+    params.model,
+    params.inputTokens,
+    params.outputTokens,
+    params.imageCount
+  );
 
   await db.from("api_calls").insert({
     user_id: params.userId,
@@ -86,38 +103,55 @@ interface BudgetRow {
   reset_at: string;
 }
 
-export async function ensureBudgets(userId: number): Promise<{ daily: BudgetRow; monthly: BudgetRow }> {
+export async function ensureBudgets(
+  userId: number
+): Promise<{ daily: BudgetRow; monthly: BudgetRow }> {
   const db = getDb();
   if (!db) throw new Error("Database unavailable");
 
-  const { data: existing } = await db.from("budgets").select("*").eq("user_id", userId);
-  let daily = (existing || []).find((b: any) => b.type === "daily") as BudgetRow | undefined;
-  let monthly = (existing || []).find((b: any) => b.type === "monthly") as BudgetRow | undefined;
+  const { data: existing } = await db
+    .from("budgets")
+    .select("*")
+    .eq("user_id", userId);
+  let daily = (existing || []).find((b: any) => b.type === "daily") as
+    | BudgetRow
+    | undefined;
+  let monthly = (existing || []).find((b: any) => b.type === "monthly") as
+    | BudgetRow
+    | undefined;
 
   const now = new Date();
 
   if (!daily) {
     const resetAt = new Date(now);
     resetAt.setHours(23, 59, 59, 999);
-    const { data: row } = await db.from("budgets").insert({
-      user_id: userId,
-      type: "daily",
-      limit_usd: "10.00",
-      current_spend: "0",
-      reset_at: resetAt.toISOString(),
-    }).select().single();
+    const { data: row } = await db
+      .from("budgets")
+      .insert({
+        user_id: userId,
+        type: "daily",
+        limit_usd: "10.00",
+        current_spend: "0",
+        reset_at: resetAt.toISOString(),
+      })
+      .select()
+      .single();
     daily = row!;
   }
 
   if (!monthly) {
     const resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    const { data: row } = await db.from("budgets").insert({
-      user_id: userId,
-      type: "monthly",
-      limit_usd: "100.00",
-      current_spend: "0",
-      reset_at: resetAt.toISOString(),
-    }).select().single();
+    const { data: row } = await db
+      .from("budgets")
+      .insert({
+        user_id: userId,
+        type: "monthly",
+        limit_usd: "100.00",
+        current_spend: "0",
+        reset_at: resetAt.toISOString(),
+      })
+      .select()
+      .single();
     monthly = row!;
   }
 
@@ -125,14 +159,24 @@ export async function ensureBudgets(userId: number): Promise<{ daily: BudgetRow;
   if (daily && new Date(daily.reset_at) < now) {
     const resetAt = new Date(now);
     resetAt.setHours(23, 59, 59, 999);
-    await db.from("budgets").update({ current_spend: "0", reset_at: resetAt.toISOString() }).eq("id", daily.id);
+    await db
+      .from("budgets")
+      .update({ current_spend: "0", reset_at: resetAt.toISOString() })
+      .eq("id", daily.id);
     daily = { ...daily, current_spend: "0", reset_at: resetAt.toISOString() };
   }
 
   if (monthly && new Date(monthly.reset_at) < now) {
     const resetAt = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    await db.from("budgets").update({ current_spend: "0", reset_at: resetAt.toISOString() }).eq("id", monthly.id);
-    monthly = { ...monthly, current_spend: "0", reset_at: resetAt.toISOString() };
+    await db
+      .from("budgets")
+      .update({ current_spend: "0", reset_at: resetAt.toISOString() })
+      .eq("id", monthly.id);
+    monthly = {
+      ...monthly,
+      current_spend: "0",
+      reset_at: resetAt.toISOString(),
+    };
   }
 
   return { daily: daily!, monthly: monthly! };
@@ -148,14 +192,89 @@ export async function updateBudgetLimits(
   const { daily, monthly } = await ensureBudgets(userId);
 
   if (limits.dailyLimit) {
-    await db.from("budgets").update({ limit_usd: limits.dailyLimit }).eq("id", daily.id);
+    await db
+      .from("budgets")
+      .update({ limit_usd: limits.dailyLimit })
+      .eq("id", daily.id);
   }
   if (limits.monthlyLimit) {
-    await db.from("budgets").update({ limit_usd: limits.monthlyLimit }).eq("id", monthly.id);
+    await db
+      .from("budgets")
+      .update({ limit_usd: limits.monthlyLimit })
+      .eq("id", monthly.id);
   }
 }
 
-async function checkBudgetAfterCall(userId: number, cost: number): Promise<string | undefined> {
+export interface BudgetPolicy {
+  warningThreshold: number;
+  autoPause: boolean;
+}
+
+const DEFAULT_BUDGET_POLICY: BudgetPolicy = {
+  warningThreshold: 80,
+  autoPause: true,
+};
+
+/** Budget policies live in user settings because they apply to both budget windows. */
+export async function getBudgetPolicy(userId: number): Promise<BudgetPolicy> {
+  const db = getDb();
+  if (!db) return DEFAULT_BUDGET_POLICY;
+  const { data, error } = await db
+    .from("user_settings")
+    .select("key, value")
+    .eq("user_id", userId)
+    .in("key", ["budget.warningThreshold", "budget.autoPause"]);
+  if (error) return DEFAULT_BUDGET_POLICY;
+  const values = Object.fromEntries(
+    (data || []).map((row: any) => [row.key, row.value])
+  );
+  const threshold = Number(values["budget.warningThreshold"]);
+  return {
+    warningThreshold:
+      Number.isInteger(threshold) && threshold >= 1 && threshold <= 100
+        ? threshold
+        : DEFAULT_BUDGET_POLICY.warningThreshold,
+    autoPause:
+      values["budget.autoPause"] === undefined
+        ? DEFAULT_BUDGET_POLICY.autoPause
+        : values["budget.autoPause"] === "true",
+  };
+}
+
+export async function updateBudgetPolicy(
+  userId: number,
+  policy: Partial<BudgetPolicy>
+): Promise<void> {
+  const db = getDb();
+  if (!db) return;
+  const updates: Array<{ user_id: number; key: string; value: string }> = [];
+  if (policy.warningThreshold !== undefined) {
+    updates.push({
+      user_id: userId,
+      key: "budget.warningThreshold",
+      value: String(policy.warningThreshold),
+    });
+  }
+  if (policy.autoPause !== undefined) {
+    updates.push({
+      user_id: userId,
+      key: "budget.autoPause",
+      value: String(policy.autoPause),
+    });
+  }
+  for (const update of updates) {
+    const { error } = await db
+      .from("user_settings")
+      .upsert(update, { onConflict: "user_id,key" });
+    if (error)
+      throw new Error(`Unable to save budget policy: ${error.message}`);
+  }
+}
+
+async function checkBudgetAfterCall(
+  userId: number,
+  cost: number
+): Promise<string | undefined> {
   const db = getDb();
   if (!db) return undefined;
 
@@ -164,55 +283,129 @@ async function checkBudgetAfterCall(userId: number, cost: number): Promise<strin
   const newDailySpend = parseFloat(daily.current_spend) + cost;
   const newMonthlySpend = parseFloat(monthly.current_spend) + cost;
 
-  await db.from("budgets").update({ current_spend: newDailySpend.toFixed(6) }).eq("id", daily.id);
-  await db.from("budgets").update({ current_spend: newMonthlySpend.toFixed(6) }).eq("id", monthly.id);
+  await db
+    .from("budgets")
+    .update({ current_spend: newDailySpend.toFixed(6) })
+    .eq("id", daily.id);
+  await db
+    .from("budgets")
+    .update({ current_spend: newMonthlySpend.toFixed(6) })
+    .eq("id", monthly.id);
 
   const dailyLimit = parseFloat(daily.limit_usd);
   const monthlyLimit = parseFloat(monthly.limit_usd);
+  const policy = await getBudgetPolicy(userId);
 
   if (newDailySpend >= dailyLimit) {
-    await createAlert(userId, "hard_stop", `Daily budget exceeded: $${newDailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`, dailyLimit.toString());
-    return "HARD_STOP_DAILY";
+    await createAlert(
+      userId,
+      "hard_stop",
+      `Daily budget exceeded: $${newDailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`,
+      dailyLimit.toString()
+    );
+    void notifyUserIfEnabled(userId, "notifications.budgetWarnings", {
+      title: "Daily budget limit reached",
+      content: `Daily spend is $${newDailySpend.toFixed(2)} of $${dailyLimit.toFixed(2)}.${policy.autoPause ? " New AI requests will be paused." : " Auto-pause is off."}`,
+    });
+    return policy.autoPause ? "HARD_STOP_DAILY" : "LIMIT_REACHED_DAILY";
   }
   if (newMonthlySpend >= monthlyLimit) {
-    await createAlert(userId, "hard_stop", `Monthly budget exceeded: $${newMonthlySpend.toFixed(2)} / $${monthlyLimit.toFixed(2)}`, monthlyLimit.toString());
-    return "HARD_STOP_MONTHLY";
+    await createAlert(
+      userId,
+      "hard_stop",
+      `Monthly budget exceeded: $${newMonthlySpend.toFixed(2)} / $${monthlyLimit.toFixed(2)}`,
+      monthlyLimit.toString()
+    );
+    void notifyUserIfEnabled(userId, "notifications.budgetWarnings", {
+      title: "Monthly budget limit reached",
+      content: `Monthly spend is $${newMonthlySpend.toFixed(2)} of $${monthlyLimit.toFixed(2)}.${policy.autoPause ? " New AI requests will be paused." : " Auto-pause is off."}`,
+    });
+    return policy.autoPause ? "HARD_STOP_MONTHLY" : "LIMIT_REACHED_MONTHLY";
   }
-  if (newDailySpend >= dailyLimit * 0.8) {
-    await createAlert(userId, "warning", `Daily budget at 80%: $${newDailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`, (dailyLimit * 0.8).toString());
+  if (newDailySpend >= dailyLimit * (policy.warningThreshold / 100)) {
+    await createAlert(
+      userId,
+      "warning",
+      `Daily budget at ${policy.warningThreshold}%: $${newDailySpend.toFixed(2)} / $${dailyLimit.toFixed(2)}`,
+      (dailyLimit * (policy.warningThreshold / 100)).toString()
+    );
+    void notifyUserIfEnabled(userId, "notifications.budgetWarnings", {
+      title: "Daily budget warning",
+      content: `Daily spend is $${newDailySpend.toFixed(2)} of $${dailyLimit.toFixed(2)} (${policy.warningThreshold}% warning threshold).`,
+    });
     return "WARNING_DAILY";
   }
-  if (newMonthlySpend >= monthlyLimit * 0.8) {
-    await createAlert(userId, "warning", `Monthly budget at 80%: $${newMonthlySpend.toFixed(2)} / $${monthlyLimit.toFixed(2)}`, (monthlyLimit * 0.8).toString());
+  if (newMonthlySpend >= monthlyLimit * (policy.warningThreshold / 100)) {
+    await createAlert(
+      userId,
+      "warning",
+      `Monthly budget at ${policy.warningThreshold}%: $${newMonthlySpend.toFixed(2)} / $${monthlyLimit.toFixed(2)}`,
+      (monthlyLimit * (policy.warningThreshold / 100)).toString()
+    );
+    void notifyUserIfEnabled(userId, "notifications.budgetWarnings", {
+      title: "Monthly budget warning",
+      content: `Monthly spend is $${newMonthlySpend.toFixed(2)} of $${monthlyLimit.toFixed(2)} (${policy.warningThreshold}% warning threshold).`,
+    });
     return "WARNING_MONTHLY";
   }
 
   return undefined;
 }
 
-async function createAlert(userId: number, type: "warning" | "hard_stop" | "loop_detected" | "token_limit", message: string, threshold?: string) {
+async function createAlert(
+  userId: number,
+  type: "warning" | "hard_stop" | "loop_detected" | "token_limit",
+  message: string,
+  threshold?: string
+) {
   const db = getDb();
   if (!db) return;
-  await db.from("cost_alerts").insert({ user_id: userId, type, message, threshold: threshold || null });
+  await db
+    .from("cost_alerts")
+    .insert({ user_id: userId, type, message, threshold: threshold || null });
 }
 
 // ─── Pre-execution Budget Check ───────────────────────────────────────────────
 
-export async function canAffordRequest(userId: number, estimatedCost: number): Promise<{ allowed: boolean; reason?: string }> {
+export async function canAffordRequest(
+  userId: number,
+  estimatedCost: number
+): Promise<{ allowed: boolean; reason?: string; warning?: string }> {
   const { daily, monthly } = await ensureBudgets(userId);
 
   const dailySpend = parseFloat(daily.current_spend);
   const monthlySpend = parseFloat(monthly.current_spend);
   const dailyLimit = parseFloat(daily.limit_usd);
   const monthlyLimit = parseFloat(monthly.limit_usd);
+  const policy = await getBudgetPolicy(userId);
+  const nextDailySpend = dailySpend + estimatedCost;
+  const nextMonthlySpend = monthlySpend + estimatedCost;
 
-  if (dailySpend + estimatedCost > dailyLimit) {
-    return { allowed: false, reason: `Daily budget would be exceeded ($${(dailySpend + estimatedCost).toFixed(2)} > $${dailyLimit.toFixed(2)})` };
+  if (nextDailySpend > dailyLimit) {
+    const reason = `Daily budget would be exceeded ($${nextDailySpend.toFixed(2)} > $${dailyLimit.toFixed(2)})`;
+    if (policy.autoPause) return { allowed: false, reason };
+    return { allowed: true, warning: `${reason}; auto-pause is off.` };
   }
-  if (monthlySpend + estimatedCost > monthlyLimit) {
-    return { allowed: false, reason: `Monthly budget would be exceeded ($${(monthlySpend + estimatedCost).toFixed(2)} > $${monthlyLimit.toFixed(2)})` };
+  if (nextMonthlySpend > monthlyLimit) {
+    const reason = `Monthly budget would be exceeded ($${nextMonthlySpend.toFixed(2)} > $${monthlyLimit.toFixed(2)})`;
+    if (policy.autoPause) return { allowed: false, reason };
+    return { allowed: true, warning: `${reason}; auto-pause is off.` };
   }
-  return { allowed: true };
+  const warnings: string[] = [];
+  if (nextDailySpend >= dailyLimit * (policy.warningThreshold / 100)) {
+    warnings.push(
+      `Daily spend will reach the ${policy.warningThreshold}% warning threshold.`
+    );
+  }
+  if (nextMonthlySpend >= monthlyLimit * (policy.warningThreshold / 100)) {
+    warnings.push(
+      `Monthly spend will reach the ${policy.warningThreshold}% warning threshold.`
+    );
+  }
+  return {
+    allowed: true,
+    warning: warnings.length ? warnings.join(" ") : undefined,
+  };
 }
 
 // ─── Cost Analytics ───────────────────────────────────────────────────────────
@@ -226,13 +419,24 @@ export async function getCostSummary(userId: number): Promise<{
   projectedMonthly: number;
 }> {
   const db = getDb();
-  if (!db) return { todaySpend: 0, monthSpend: 0, totalSpend: 0, todayBreakdown: {}, monthBreakdown: {}, projectedMonthly: 0 };
+  if (!db)
+    return {
+      todaySpend: 0,
+      monthSpend: 0,
+      totalSpend: 0,
+      todayBreakdown: {},
+      monthBreakdown: {},
+      projectedMonthly: 0,
+    };
 
   const now = new Date();
   const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-  const { data: allCalls } = await db.from("api_calls").select("*").eq("user_id", userId);
+  const { data: allCalls } = await db
+    .from("api_calls")
+    .select("*")
+    .eq("user_id", userId);
 
   let todaySpend = 0;
   let monthSpend = 0;
@@ -255,9 +459,14 @@ export async function getCostSummary(userId: number): Promise<{
     }
   }
 
-  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const daysInMonth = new Date(
+    now.getFullYear(),
+    now.getMonth() + 1,
+    0
+  ).getDate();
   const dayOfMonth = now.getDate();
-  const projectedMonthly = dayOfMonth > 0 ? (monthSpend / dayOfMonth) * daysInMonth : 0;
+  const projectedMonthly =
+    dayOfMonth > 0 ? (monthSpend / dayOfMonth) * daysInMonth : 0;
 
   return {
     todaySpend: Math.round(todaySpend * 100) / 100,
@@ -269,7 +478,10 @@ export async function getCostSummary(userId: number): Promise<{
   };
 }
 
-export async function getCostHistory(userId: number, days: number = 30): Promise<Array<{ date: string; cost: number; calls: number }>> {
+export async function getCostHistory(
+  userId: number,
+  days: number = 30
+): Promise<Array<{ date: string; cost: number; calls: number }>> {
   const db = getDb();
   if (!db) return [];
 
@@ -302,10 +514,16 @@ export async function getCostBreakdown(userId: number): Promise<{
   byModel: Record<string, { cost: number; calls: number; tokens: number }>;
   byWorker: Record<string, { cost: number; calls: number }>;
   byProject: Record<string, { cost: number; calls: number }>;
-  topExpensive: Array<{ model: string; worker: string; cost: number; timestamp: string }>;
+  topExpensive: Array<{
+    model: string;
+    worker: string;
+    cost: number;
+    timestamp: string;
+  }>;
 }> {
   const db = getDb();
-  if (!db) return { byModel: {}, byWorker: {}, byProject: {}, topExpensive: [] };
+  if (!db)
+    return { byModel: {}, byWorker: {}, byProject: {}, topExpensive: [] };
 
   const { data: allCalls } = await db
     .from("api_calls")
@@ -313,7 +531,10 @@ export async function getCostBreakdown(userId: number): Promise<{
     .eq("user_id", userId)
     .order("created_at", { ascending: false });
 
-  const byModel: Record<string, { cost: number; calls: number; tokens: number }> = {};
+  const byModel: Record<
+    string,
+    { cost: number; calls: number; tokens: number }
+  > = {};
   const byWorker: Record<string, { cost: number; calls: number }> = {};
   const byProject: Record<string, { cost: number; calls: number }> = {};
 
@@ -321,7 +542,8 @@ export async function getCostBreakdown(userId: number): Promise<{
     const cost = parseFloat(call.cost_usd);
     const tokens = call.input_tokens + call.output_tokens;
 
-    if (!byModel[call.model]) byModel[call.model] = { cost: 0, calls: 0, tokens: 0 };
+    if (!byModel[call.model])
+      byModel[call.model] = { cost: 0, calls: 0, tokens: 0 };
     byModel[call.model].cost += cost;
     byModel[call.model].calls++;
     byModel[call.model].tokens += tokens;
@@ -339,22 +561,52 @@ export async function getCostBreakdown(userId: number): Promise<{
   const topExpensive = (allCalls || [])
     .sort((a: any, b: any) => parseFloat(b.cost_usd) - parseFloat(a.cost_usd))
     .slice(0, 10)
-    .map((c: any) => ({ model: c.model, worker: c.worker, cost: parseFloat(c.cost_usd), timestamp: c.created_at }));
+    .map((c: any) => ({
+      model: c.model,
+      worker: c.worker,
+      cost: parseFloat(c.cost_usd),
+      timestamp: c.created_at,
+    }));
 
   return { byModel, byWorker, byProject, topExpensive };
 }
 
 export async function getBudgetStatus(userId: number): Promise<{
-  daily: { limit: number; spent: number; remaining: number; percentage: number; resetsAt: string };
-  monthly: { limit: number; spent: number; remaining: number; percentage: number; resetsAt: string };
+  daily: {
+    limit: number;
+    spent: number;
+    remaining: number;
+    percentage: number;
+    resetsAt: string;
+  };
+  monthly: {
+    limit: number;
+    spent: number;
+    remaining: number;
+    percentage: number;
+    resetsAt: string;
+  };
   alerts: Array<{ type: string; message: string; triggeredAt: string }>;
 }> {
   const db = getDb();
-  if (!db) return {
-    daily: { limit: 10, spent: 0, remaining: 10, percentage: 0, resetsAt: "" },
-    monthly: { limit: 100, spent: 0, remaining: 100, percentage: 0, resetsAt: "" },
-    alerts: [],
-  };
+  if (!db)
+    return {
+      daily: {
+        limit: 10,
+        spent: 0,
+        remaining: 10,
+        percentage: 0,
+        resetsAt: "",
+      },
+      monthly: {
+        limit: 100,
+        spent: 0,
+        remaining: 100,
+        percentage: 0,
+        resetsAt: "",
+      },
+      alerts: [],
+    };
 
   const { daily, monthly } = await ensureBudgets(userId);
 
@@ -382,10 +634,17 @@ export async function getBudgetStatus(userId: number): Promise<{
       limit: monthlyLimit,
       spent: Math.round(monthlySpent * 100) / 100,
       remaining: Math.round((monthlyLimit - monthlySpent) * 100) / 100,
-      percentage: Math.min(100, Math.round((monthlySpent / monthlyLimit) * 100)),
+      percentage: Math.min(
+        100,
+        Math.round((monthlySpent / monthlyLimit) * 100)
+      ),
       resetsAt: monthly.reset_at,
     },
-    alerts: (recentAlerts || []).map((a: any) => ({ type: a.type, message: a.message, triggeredAt: a.triggered_at })),
+    alerts: (recentAlerts || []).map((a: any) => ({
+      type: a.type,
+      message: a.message,
+      triggeredAt: a.triggered_at,
+    })),
   };
 }
 
@@ -401,7 +660,12 @@ interface TaskCallTracker {
 const activeTaskTrackers: Map<string, TaskCallTracker> = new Map();
 
 export function startTaskTracking(taskId: string): void {
-  activeTaskTrackers.set(taskId, { calls: 0, totalTokens: 0, workerCalls: {}, startedAt: Date.now() });
+  activeTaskTrackers.set(taskId, {
+    calls: 0,
+    totalTokens: 0,
+    workerCalls: {},
+    startedAt: Date.now(),
+  });
 }
 
 export function endTaskTracking(taskId: string): void {
@@ -416,7 +680,12 @@ export async function trackTaskCall(
 ): Promise<{ allowed: boolean; warning?: string }> {
   let tracker = activeTaskTrackers.get(taskId);
   if (!tracker) {
-    tracker = { calls: 0, totalTokens: 0, workerCalls: {}, startedAt: Date.now() };
+    tracker = {
+      calls: 0,
+      totalTokens: 0,
+      workerCalls: {},
+      startedAt: Date.now(),
+    };
     activeTaskTrackers.set(taskId, tracker);
   }
 
@@ -434,7 +703,10 @@ export async function trackTaskCall(
         threshold: "5",
       });
     }
-    return { allowed: false, warning: `Loop detected: ${worker} called ${tracker.workerCalls[worker]} times. Task paused.` };
+    return {
+      allowed: false,
+      warning: `Loop detected: ${worker} called ${tracker.workerCalls[worker]} times. Task paused.`,
+    };
   }
 
   if (tracker.totalTokens > 100_000) {
@@ -447,11 +719,17 @@ export async function trackTaskCall(
         threshold: "100000",
       });
     }
-    return { allowed: false, warning: `Token limit exceeded: ${tracker.totalTokens.toLocaleString()} tokens used. Task stopped.` };
+    return {
+      allowed: false,
+      warning: `Token limit exceeded: ${tracker.totalTokens.toLocaleString()} tokens used. Task stopped.`,
+    };
   }
 
   if (tracker.totalTokens > 50_000) {
-    return { allowed: true, warning: `High token usage: ${tracker.totalTokens.toLocaleString()} tokens in this task.` };
+    return {
+      allowed: true,
+      warning: `High token usage: ${tracker.totalTokens.toLocaleString()} tokens in this task.`,
+    };
   }
 
   return { allowed: true };
