@@ -76,7 +76,7 @@ export async function persistConversationAttachments(input: {
       const stored = await storagePut(
         `conversation-assets/${input.userId}/${input.conversationId}/${sanitizeFileName(attachment.name)}`,
         bytes,
-        attachment.type,
+        attachment.type
       );
       storedKey = stored.key;
 
@@ -130,7 +130,7 @@ export async function persistConversationAttachments(input: {
 }
 
 export async function rehydrateAttachmentMetadata(
-  value: unknown,
+  value: unknown
 ): Promise<DurableChatAttachment[]> {
   if (!Array.isArray(value)) return [];
 
@@ -139,10 +139,16 @@ export async function rehydrateAttachmentMetadata(
       if (!item || typeof item !== "object") return [];
       const raw = item as Record<string, unknown>;
       const id = typeof raw.id === "string" ? raw.id : "";
-      const name = typeof raw.name === "string" ? raw.name.slice(0, 255) : "attachment";
-      const type = typeof raw.type === "string" ? raw.type : "application/octet-stream";
-      const size = typeof raw.size === "number" && Number.isFinite(raw.size) ? raw.size : 0;
-      const storageKey = typeof raw.storageKey === "string" ? raw.storageKey : undefined;
+      const name =
+        typeof raw.name === "string" ? raw.name.slice(0, 255) : "attachment";
+      const type =
+        typeof raw.type === "string" ? raw.type : "application/octet-stream";
+      const size =
+        typeof raw.size === "number" && Number.isFinite(raw.size)
+          ? raw.size
+          : 0;
+      const storageKey =
+        typeof raw.storageKey === "string" ? raw.storageKey : undefined;
       const fallbackUrl = typeof raw.url === "string" ? raw.url : undefined;
 
       return [
@@ -169,23 +175,24 @@ export async function rehydrateAttachmentMetadata(
           };
         })(),
       ];
-    }),
+    })
   );
 }
 
 export async function listConversationImageAssetIds(
   userId: number,
-  conversationId: number,
+  conversationId: number
 ): Promise<string[]> {
   const entries = await db.getUserVault(userId);
   return entries
-    .filter(entry =>
-      entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
-      entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
-      Number(entry.metadata?.conversationId) === conversationId &&
-      typeof entry.mime_type === "string" &&
-      entry.mime_type.startsWith("image/") &&
-      Boolean(entry.file_key),
+    .filter(
+      entry =>
+        entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+        entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
+        Number(entry.metadata?.conversationId) === conversationId &&
+        typeof entry.mime_type === "string" &&
+        entry.mime_type.startsWith("image/") &&
+        Boolean(entry.file_key)
     )
     .sort((a, b) => Number(a.id) - Number(b.id))
     .slice(0, 10)
@@ -194,30 +201,64 @@ export async function listConversationImageAssetIds(
 
 export async function resolveChatAssetSignedUrls(
   userId: number,
-  assetIds: string[],
+  assetIds: string[]
 ): Promise<string[]> {
   if (assetIds.length === 0) return [];
   const allowedIds = new Set(assetIds.slice(0, 10));
   const entries = await db.getUserVault(userId);
-  const matching = entries.filter(entry =>
-    entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
-    entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
-    allowedIds.has(String(entry.id)) &&
-    Boolean(entry.file_key),
+  const matching = entries.filter(
+    entry =>
+      entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+      entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
+      allowedIds.has(String(entry.id)) &&
+      Boolean(entry.file_key)
   );
 
-  return Promise.all(matching.map(entry => storageGetSignedUrl(entry.file_key!)));
+  return Promise.all(
+    matching.map(entry => storageGetSignedUrl(entry.file_key!))
+  );
+}
+
+export async function resolveChatAssetRecords(
+  userId: number,
+  assetIds: string[]
+): Promise<
+  Array<{ id: string; name: string; type: string; size: number; url: string }>
+> {
+  if (assetIds.length === 0) return [];
+  const allowedIds = new Set(assetIds.slice(0, 6));
+  const entries = await db.getUserVault(userId);
+  const matching = entries.filter(
+    entry =>
+      entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+      entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
+      allowedIds.has(String(entry.id)) &&
+      typeof entry.mime_type === "string" &&
+      entry.mime_type.startsWith("image/") &&
+      Boolean(entry.file_key)
+  );
+
+  return Promise.all(
+    matching.map(async entry => ({
+      id: String(entry.id),
+      name: entry.name,
+      type: entry.mime_type!,
+      size: Number(entry.metadata?.size || 0),
+      url: await storageGetSignedUrl(entry.file_key!),
+    }))
+  );
 }
 
 export async function deleteConversationAssetReferences(
   userId: number,
-  conversationId: number,
+  conversationId: number
 ): Promise<number> {
   const entries = await db.getUserVault(userId);
-  const matching = entries.filter(entry =>
-    entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
-    entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
-    Number(entry.metadata?.conversationId) === conversationId,
+  const matching = entries.filter(
+    entry =>
+      entry.entry_type === CHAT_ASSET_ENTRY_TYPE &&
+      entry.metadata?.recordKind === CHAT_ASSET_RECORD_KIND &&
+      Number(entry.metadata?.conversationId) === conversationId
   );
 
   await Promise.all(
@@ -226,14 +267,17 @@ export async function deleteConversationAssetReferences(
         try {
           await storageDelete(entry.file_key);
         } catch (error) {
-          console.warn("[ChatAssets] Failed to delete stored attachment object", {
-            entryId: entry.id,
-            error: error instanceof Error ? error.message : String(error),
-          });
+          console.warn(
+            "[ChatAssets] Failed to delete stored attachment object",
+            {
+              entryId: entry.id,
+              error: error instanceof Error ? error.message : String(error),
+            }
+          );
         }
       }
       await db.deleteVaultEntry(entry.id, userId);
-    }),
+    })
   );
   return matching.length;
 }
