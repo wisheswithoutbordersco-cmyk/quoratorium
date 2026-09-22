@@ -39,6 +39,10 @@ export default function ActionCatalog() {
   const catalogQuery = trpc.actions.catalog.useQuery(undefined, {
     retry: false,
   });
+  const serviceStatusQuery = trpc.actions.serviceStatus.useQuery(undefined, {
+    retry: false,
+    refetchInterval: 60_000,
+  });
   const auditQuery = trpc.actions.audit.useQuery(
     { limit: 50 },
     { retry: false }
@@ -53,6 +57,17 @@ export default function ActionCatalog() {
     }
     return Array.from(groups.entries());
   }, [catalogQuery.data]);
+
+  const serviceStatusBySystem = useMemo(() => {
+    const statuses = new Map<
+      string,
+      NonNullable<typeof serviceStatusQuery.data>[number]
+    >();
+    for (const status of serviceStatusQuery.data || []) {
+      statuses.set(status.system, status);
+    }
+    return statuses;
+  }, [serviceStatusQuery.data]);
 
   const enabledCount = (catalogQuery.data || []).filter(
     item => item.status === "enabled"
@@ -132,6 +147,25 @@ export default function ActionCatalog() {
                       </p>
                     </div>
                   </div>
+                  {serviceStatusBySystem.get(system) ? (
+                    <div
+                      className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider ${
+                        serviceStatusBySystem.get(system)?.connected
+                          ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                          : "border-amber-500/30 bg-amber-500/10 text-amber-300"
+                      }`}
+                      title={serviceStatusBySystem.get(system)?.message}
+                    >
+                      {serviceStatusBySystem.get(system)?.connected ? (
+                        <CheckCircle2 size={11} />
+                      ) : (
+                        <AlertTriangle size={11} />
+                      )}
+                      {serviceStatusBySystem.get(system)?.connected
+                        ? "Connected"
+                        : "Unavailable"}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="grid gap-3 lg:grid-cols-2">

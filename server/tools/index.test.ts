@@ -60,10 +60,14 @@ describe("runToolLoop", () => {
     expect(toolNames).toContain("github_list_repositories");
     expect(toolNames).toContain("github_read_repository_file");
     expect(toolNames).toContain("github_propose_change");
+    expect(toolNames).toContain("extractatorium_process");
+    expect(toolNames).toContain("templatorium_detect_text");
     expect(toolNames).toContain("recyclatorium_propose");
     expect(toolNames).not.toContain("github_open_pull_request");
     expect(toolNames).not.toContain("github_merge_pull_request");
     expect(toolNames).not.toContain("recyclatorium_publish");
+    expect(toolNames).not.toContain("extractatorium_publish");
+    expect(toolNames).not.toContain("templatorium_publish");
   });
 
   it("retries a compatible OpenRouter model when the preferred model is rejected", async () => {

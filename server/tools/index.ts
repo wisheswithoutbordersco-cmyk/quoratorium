@@ -119,6 +119,7 @@ export async function runToolLoop(
       await import("./proposeShopifyDraft");
       await import("./scriptorium");
       await import("./extractatorium");
+      await import("./templatorium");
       await import("./githubRead");
       await import("./githubPropose");
       await import("./recyclatoriumPropose");

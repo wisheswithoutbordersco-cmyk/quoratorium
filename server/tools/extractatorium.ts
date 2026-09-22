@@ -1,154 +1,123 @@
-/**
- * Tool: extractorium_process
- * Send an existing worksheet, printable, or design image to Extractorium
- * (vision analysis) and get back its text/structure in a clean, prompt-ready
- * form. This is the "refresh" entrypoint of the -orium suite:
- * old image in -> prompt-ready structure out -> Scriptorium regenerates it.
- */
+import { isCapabilityEnabled } from "../actionCatalog";
+import {
+  analyzeWithExtractorium,
+  loadOwnerImageAttachment,
+  recordPrioritySuiteAudit,
+  type ExtractoriumOperation,
+} from "../prioritySuiteService";
 import { registerTool, type ToolContext, type ToolResult } from "./index";
 
-const DEFAULT_EXTRACTORIUM_URL = "https://extractorium-production.up.railway.app";
-const MAX_WAIT_MS = 120_000;
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-async function readJson(response: Response): Promise<unknown> {
-  const body = await response.text();
-  if (!body.trim()) return {};
-  try {
-    return JSON.parse(body);
-  } catch {
-    return { message: body.slice(0, 500) };
-  }
-}
-
-/** tRPC wraps successful results as { result: { data: { json: <payload> } } } */
-function unwrapTRPC(body: unknown): unknown {
-  if (!isRecord(body)) return body;
-  const result = body.result;
-  if (!isRecord(result)) return body;
-  const data = result.data;
-  if (!isRecord(data)) return result;
-  return "json" in data ? data.json : data;
-}
-
-function getErrorDetail(value: unknown): string | undefined {
-  if (!isRecord(value)) return undefined;
-  const err = value.error;
-  if (isRecord(err) && typeof err.message === "string") return err.message.slice(0, 500);
-  for (const key of ["message", "details"]) {
-    const detail = value[key];
-    if (typeof detail === "string" && detail.trim()) return detail.trim().slice(0, 500);
-  }
-  return undefined;
-}
-
-function fileNameFromUrl(url: URL): string {
-  const last = url.pathname.split("/").filter(Boolean).pop();
-  return last && last.includes(".") ? last : "worksheet.png";
-}
+const CAPABILITY_ID = "extractorium.document.read";
 
 registerTool({
-  name: "extractorium_process",
+  name: "extractatorium_process",
   description:
-    "Analyze an existing worksheet, printable, poster, or design image and extract its text and structure into a clean, prompt-ready form. Use when the user wants to refresh, recreate, or reverse-engineer an EXISTING image. Do NOT use for creating brand-new visuals (use scriptorium_generate or generate_image for that).",
+    "Use the secured Extractorium service to read and clean text from one image attached to the current message, or to create a faithful visual recreation description. This is a read/analysis action only and never publishes or changes the source file.",
   parameters: {
     type: "object",
     properties: {
-      imageUrl: {
+      operation: {
         type: "string",
-        description: "Public HTTPS URL of the image to analyze (worksheet, poster, printable).",
+        enum: ["process", "analyzeVision"],
+        description:
+          "Use process to transcribe and organize visible document text. Use analyzeVision for a faithful visual recreation description.",
       },
     },
-    required: ["imageUrl"],
+    required: ["operation"],
     additionalProperties: false,
   },
-  async execute(args: Record<string, any>, _context: ToolContext): Promise<ToolResult> {
-    const imageUrl = typeof args.imageUrl === "string" ? args.imageUrl.trim() : "";
-    if (!imageUrl) {
-      return { success: false, output: "Missing image URL to analyze." };
+  async execute(
+    args: Record<string, any>,
+    context: ToolContext
+  ): Promise<ToolResult> {
+    if (!isCapabilityEnabled(CAPABILITY_ID)) {
+      return {
+        success: false,
+        output: "The Extractorium capability is disabled.",
+      };
     }
 
-    let parsedUrl: URL;
+    const userId = Number(context.userId);
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return {
+        success: false,
+        output: "A verified workspace owner session is required.",
+      };
+    }
+
+    const operation: ExtractoriumOperation =
+      args.operation === "analyzeVision" ? "analyzeVision" : "process";
+    let assetName = "attached image";
     try {
-      parsedUrl = new URL(imageUrl);
-    } catch {
-      return { success: false, output: "imageUrl is not a valid URL." };
-    }
-    if (parsedUrl.protocol !== "https:") {
-      return { success: false, output: "imageUrl must be an https:// URL." };
-    }
-
-    const baseUrl = (process.env.EXTRACTORIUM_URL || DEFAULT_EXTRACTORIUM_URL).replace(/\/+$/, "");
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), MAX_WAIT_MS);
-
-    try {
-      // 1. Fetch the image bytes so we can send base64 to Extractorium.
-      const imgResponse = await fetch(imageUrl, { signal: controller.signal });
-      if (!imgResponse.ok) {
-        return { success: false, output: `Could not fetch image (${imgResponse.status}) from ${imageUrl}.` };
-      }
-      const buffer = await imgResponse.arrayBuffer();
-      if (buffer.byteLength === 0) {
-        return { success: false, output: "Downloaded image was empty." };
-      }
-      if (buffer.byteLength > 10 * 1024 * 1024) {
-        return { success: false, output: `Image is ${(buffer.byteLength / 1024 / 1024).toFixed(1)}MB; Extractorium input should stay under 10MB.` };
-      }
-
-      const mimeType = imgResponse.headers.get("content-type")?.split(";")[0]?.trim() || "image/png";
-      const imageBase64 = Buffer.from(buffer).toString("base64");
-
-      // 2. Call Extractorium's tRPC document.analyzeVision mutation.
-      const procResponse = await fetch(`${baseUrl}/api/trpc/document.analyzeVision`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          json: {
-            imageBase64,
-            mimeType,
-            fileName: fileNameFromUrl(parsedUrl),
-            fileSize: buffer.byteLength,
-          },
-        }),
-        signal: controller.signal,
+      const image = await loadOwnerImageAttachment(
+        userId,
+        context.durableAttachmentIds || []
+      );
+      assetName = image.name;
+      const result = await analyzeWithExtractorium(operation, image);
+      await recordPrioritySuiteAudit({
+        system: "Extractorium",
+        capability: CAPABILITY_ID,
+        eventType: "extractorium_document_analyzed",
+        userId,
+        projectId: context.projectId,
+        operation,
+        assetName,
+        outcome: "completed",
       });
-      const procBody = await readJson(procResponse);
 
-      if (!procResponse.ok) {
+      if (operation === "process") {
+        const cleanedText =
+          typeof result.cleanedText === "string" ? result.cleanedText : "";
+        const rawText =
+          typeof result.rawText === "string" ? result.rawText : "";
+        const usefulText = cleanedText || rawText;
         return {
-          success: false,
-          output: `Extractorium analysis failed (${procResponse.status}): ${getErrorDetail(procBody) || "No error details returned."}`,
+          success: true,
+          output: usefulText
+            ? `Extractorium read and organized ${assetName}:\n\n${usefulText.slice(0, 14_000)}`
+            : `Extractorium processed ${assetName}, but returned no readable text.`,
+          data: {
+            capability: CAPABILITY_ID,
+            operation,
+            assetName,
+            result,
+          },
         };
       }
 
-      const payload = unwrapTRPC(procBody);
-      const text = isRecord(payload)
-        ? JSON.stringify(payload)
-        : String(payload ?? "");
-
-      if (!text.trim() || text.trim() === "{}") {
-        return { success: false, output: "Extractorium returned an empty analysis." };
-      }
-
+      const description =
+        typeof result.description === "string" ? result.description : "";
       return {
         success: true,
-        output: `Extractorium analyzed the image. Extracted structure: ${text.slice(0, 1200)}${text.length > 1200 ? "…" : ""}`,
-        data: { extractorium: payload },
+        output: description
+          ? `Extractorium described ${assetName}:\n\n${description.slice(0, 14_000)}`
+          : `Extractorium analyzed ${assetName}, but returned no description.`,
+        data: {
+          capability: CAPABILITY_ID,
+          operation,
+          assetName,
+          result,
+        },
       };
-    } catch (error: any) {
-      const timedOut = error?.name === "AbortError";
+    } catch (error) {
+      await recordPrioritySuiteAudit({
+        system: "Extractorium",
+        capability: CAPABILITY_ID,
+        eventType: "extractorium_document_analysis_failed",
+        userId,
+        projectId: context.projectId,
+        operation,
+        assetName,
+        outcome: "failed",
+      });
       return {
         success: false,
-        output: timedOut
-          ? "Extractorium analysis timed out after 120 seconds."
-          : `Extractorium analysis error: ${error?.message || "Unknown error"}`,
+        output:
+          error instanceof Error
+            ? error.message
+            : "Extractorium could not complete the analysis.",
       };
-    } finally {
-      clearTimeout(timeout);
     }
   },
 });
