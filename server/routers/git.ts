@@ -2,9 +2,19 @@
  * Git Integration tRPC Router
  */
 import { z } from "zod";
-import { protectedProcedure, router } from "../_core/trpc";
+import {
+  businessActionProcedure,
+  protectedProcedure,
+  router,
+} from "../_core/trpc";
 import * as github from "../githubService";
 import { getActionCatalog } from "../actionCatalog";
+import {
+  cancelGitHubProposal,
+  executeApprovedGitHubProposal,
+  getGitHubProposal,
+  listGitHubProposals,
+} from "../githubProposalService";
 
 export const gitRouter = router({
   // Get connection status
@@ -59,6 +69,33 @@ export const gitRouter = router({
   }),
 
   capabilities: protectedProcedure.query(() => getActionCatalog("GitHub")),
+
+  proposals: protectedProcedure
+    .input(
+      z
+        .object({ limit: z.number().int().min(1).max(100).optional() })
+        .optional()
+    )
+    .query(({ ctx, input }) => listGitHubProposals(ctx.user.id, input?.limit)),
+
+  proposal: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .query(({ ctx, input }) => getGitHubProposal(ctx.user.id, input.id)),
+
+  cancelProposal: protectedProcedure
+    .input(z.object({ id: z.string().uuid() }))
+    .mutation(({ ctx, input }) => cancelGitHubProposal(ctx.user.id, input.id)),
+
+  openPullRequest: businessActionProcedure
+    .input(
+      z.object({
+        id: z.string().uuid(),
+        confirmation: z.literal("OPEN_PULL_REQUEST"),
+      })
+    )
+    .mutation(({ ctx, input }) =>
+      executeApprovedGitHubProposal(ctx.user.id, input.id)
+    ),
 
   // Get commits for a repo
   commits: protectedProcedure

@@ -59,6 +59,8 @@ describe("runToolLoop", () => {
     expect(toolNames).toContain("scriptorium_generate");
     expect(toolNames).toContain("github_list_repositories");
     expect(toolNames).toContain("github_read_repository_file");
+    expect(toolNames).toContain("github_propose_change");
+    expect(toolNames).not.toContain("github_open_pull_request");
     expect(toolNames).not.toContain("github_merge_pull_request");
   });
 

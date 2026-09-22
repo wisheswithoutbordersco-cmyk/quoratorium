@@ -469,6 +469,9 @@ export function ConversationPanel({
               if (event.data?.businessAction) {
                 void utils.businessActions.list.invalidate();
               }
+              if (event.data?.githubProposal) {
+                void utils.git.proposals.invalidate();
+              }
               // Tool completed. Image artifacts are transported separately from
               // prose so they render reliably even when their source is a data URL.
               const imageArtifacts = Array.isArray(event.artifacts)

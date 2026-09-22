@@ -4,6 +4,7 @@ import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { GitHubProposalPanel } from "@/components/GitHubProposalPanel";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft,
@@ -13,7 +14,6 @@ import {
   FileSearch,
   FolderTree,
   GitBranch,
-  GitPullRequest,
   Loader2,
   LockKeyhole,
   RefreshCw,
@@ -201,7 +201,8 @@ export default function Git() {
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
               Toríu can now see your codebase, explain what it does, and find
-              where things live. This phase is read-only.
+              where things live. Repository browsing stays read-only; proposed
+              changes require your separate approval before GitHub is touched.
             </p>
           </div>
           {connected && (
@@ -231,8 +232,9 @@ export default function Git() {
                 <p className="mt-1 text-sm text-muted-foreground">
                   Repository listing, structure, code search, file reading, and
                   commit history are audited. Toríu cannot create repositories,
-                  push files, merge code, or change GitHub settings from this
-                  explorer.
+                  merge code, or change GitHub settings. A toriu/ branch and
+                  draft pull request can only be created from an exact proposal
+                  you unlock, review, and confirm here.
                 </p>
               </div>
             </div>
@@ -244,6 +246,8 @@ export default function Git() {
             )}
           </CardContent>
         </Card>
+
+        {connected && <GitHubProposalPanel />}
 
         {!connected && (
           <Card className="border-border/50 bg-card/50">
@@ -587,23 +591,6 @@ export default function Git() {
                           <code>{fileQuery.data.content}</code>
                         </pre>
                       )}
-                    </CardContent>
-                  </Card>
-
-                  <Card className="border-amber-500/20 bg-amber-500/[0.035]">
-                    <CardContent className="flex gap-3 p-5">
-                      <GitPullRequest className="mt-0.5 h-5 w-5 shrink-0 text-amber-300" />
-                      <div>
-                        <p className="font-medium">
-                          Next GitHub step: reviewed pull requests
-                        </p>
-                        <p className="mt-1 text-sm text-muted-foreground">
-                          When this read-only layer is proven, Toríu will
-                          propose a change first. Only after your approval will
-                          she create a dedicated branch and open a pull request.
-                          She will never merge it.
-                        </p>
-                      </div>
                     </CardContent>
                   </Card>
                 </>

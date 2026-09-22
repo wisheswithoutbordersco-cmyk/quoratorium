@@ -120,6 +120,7 @@ export async function runToolLoop(
       await import("./scriptorium");
       await import("./extractatorium");
       await import("./githubRead");
+      await import("./githubPropose");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }
