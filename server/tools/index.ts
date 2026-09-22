@@ -121,6 +121,7 @@ export async function runToolLoop(
       await import("./extractatorium");
       await import("./githubRead");
       await import("./githubPropose");
+      await import("./recyclatoriumPropose");
     } catch (regErr: any) {
       console.warn("[ToolLoop] Tool registration failed:", regErr?.message);
     }

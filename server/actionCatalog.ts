@@ -72,6 +72,18 @@ export const ACTION_CATALOG: readonly ActionCapability[] = [
     auditEventType: "github_merge_blocked",
     status: "disabled",
   },
+  {
+    id: "recyclatorium.product_plan.propose",
+    system: "Recyclatorium",
+    name: "Printable product plan",
+    description:
+      "Inspect owner-supplied visual assets and produce a reviewable printable-product plan without exporting or publishing it.",
+    permission: "propose",
+    risk: "medium",
+    confirmation: "review_then_confirm",
+    auditEventType: "recyclatorium_plan_proposed",
+    status: "enabled",
+  },
 ] as const;
 
 export function getActionCatalog(system?: string): ActionCapability[] {
