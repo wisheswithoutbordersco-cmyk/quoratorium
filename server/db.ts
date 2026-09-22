@@ -1,6 +1,6 @@
 /**
  * Q Workspace — Database Layer (Supabase Postgres)
- * 
+ *
  * All queries use the Supabase admin client (service_role key, bypasses RLS).
  * Tables use snake_case column names in Postgres.
  */
@@ -290,7 +290,10 @@ export async function upsertUser(user: {
     .limit(1)
     .maybeSingle();
   if (lookupError) {
-    console.error("[Database] Failed to look up user before upsert:", lookupError.message);
+    console.error(
+      "[Database] Failed to look up user before upsert:",
+      lookupError.message
+    );
     throw new Error(`Failed to look up user: ${lookupError.message}`);
   }
 
@@ -299,12 +302,18 @@ export async function upsertUser(user: {
     const updateData: Record<string, any> = {};
     if (user.name !== undefined) updateData.name = user.name;
     if (user.email !== undefined) updateData.email = user.email;
-    if (user.loginMethod !== undefined) updateData.login_method = user.loginMethod;
-    if (user.lastSignedIn !== undefined) updateData.last_signed_in = user.lastSignedIn.toISOString();
+    if (user.loginMethod !== undefined)
+      updateData.login_method = user.loginMethod;
+    if (user.lastSignedIn !== undefined)
+      updateData.last_signed_in = user.lastSignedIn.toISOString();
     if (user.role !== undefined) updateData.role = user.role;
-    if (Object.keys(updateData).length === 0) updateData.last_signed_in = new Date().toISOString();
+    if (Object.keys(updateData).length === 0)
+      updateData.last_signed_in = new Date().toISOString();
 
-    const { error: updateError } = await db.from("users").update(updateData).eq("clerk_id", user.clerkId);
+    const { error: updateError } = await db
+      .from("users")
+      .update(updateData)
+      .eq("clerk_id", user.clerkId);
     if (updateError) {
       console.error("[Database] Failed to update user:", updateError.message);
       throw new Error(`Failed to update user: ${updateError.message}`);
@@ -326,10 +335,14 @@ export async function upsertUser(user: {
   }
 }
 
-export async function getUserByClerkId(clerkId: string): Promise<User | undefined> {
+export async function getUserByClerkId(
+  clerkId: string
+): Promise<User | undefined> {
   const db = getDbOrNull();
   if (!db) {
-    console.error("[Database] Cannot look up user by Clerk ID: Supabase not available");
+    console.error(
+      "[Database] Cannot look up user by Clerk ID: Supabase not available"
+    );
     return undefined;
   }
   const { data, error } = await db
@@ -339,7 +352,10 @@ export async function getUserByClerkId(clerkId: string): Promise<User | undefine
     .limit(1)
     .maybeSingle();
   if (error) {
-    console.error("[Database] Failed to look up user by Clerk ID:", error.message);
+    console.error(
+      "[Database] Failed to look up user by Clerk ID:",
+      error.message
+    );
     throw new Error(`Failed to look up user by Clerk ID: ${error.message}`);
   }
   return data || undefined;
@@ -351,7 +367,9 @@ export const getUserByOpenId = getUserByClerkId;
 export async function getUserById(id: number): Promise<User | undefined> {
   const db = getDbOrNull();
   if (!db) {
-    console.error("[Database] Cannot look up user by ID: Supabase not available");
+    console.error(
+      "[Database] Cannot look up user by ID: Supabase not available"
+    );
     return undefined;
   }
   const { data, error } = await db
@@ -411,7 +429,10 @@ export async function getUserProjects(userId: number): Promise<Project[]> {
   return data || [];
 }
 
-export async function getProject(id: number, userId: number): Promise<Project | undefined> {
+export async function getProject(
+  id: number,
+  userId: number
+): Promise<Project | undefined> {
   const db = getDbOrNull();
   if (!db) return undefined;
   const { data } = await db
@@ -424,16 +445,20 @@ export async function getProject(id: number, userId: number): Promise<Project | 
   return data || undefined;
 }
 
-export async function updateProject(id: number, userId: number, data: Partial<{
-  name: string;
-  description: string | null;
-  project_type: string;
-  status: string;
-  current_phase: number;
-  total_phases: number;
-  phases: any;
-  metadata: any;
-}>): Promise<Project | undefined> {
+export async function updateProject(
+  id: number,
+  userId: number,
+  data: Partial<{
+    name: string;
+    description: string | null;
+    project_type: string;
+    status: string;
+    current_phase: number;
+    total_phases: number;
+    phases: any;
+    metadata: any;
+  }>
+): Promise<Project | undefined> {
   const db = getDb();
   const { error } = await db
     .from("projects")
@@ -441,7 +466,11 @@ export async function updateProject(id: number, userId: number, data: Partial<{
     .eq("id", id)
     .eq("user_id", userId);
   if (error) throw new Error(`Failed to update project: ${error.message}`);
-  const { data: row } = await db.from("projects").select("*").eq("id", id).single();
+  const { data: row } = await db
+    .from("projects")
+    .select("*")
+    .eq("id", id)
+    .single();
   return row || undefined;
 }
 
@@ -480,8 +509,13 @@ export async function getConversationForUser(
     .limit(1)
     .maybeSingle();
   if (error) {
-    console.error("[Database] Failed to look up conversation ownership:", error.message);
-    throw new Error(`Failed to look up conversation ownership: ${error.message}`);
+    console.error(
+      "[Database] Failed to look up conversation ownership:",
+      error.message
+    );
+    throw new Error(
+      `Failed to look up conversation ownership: ${error.message}`
+    );
   }
   return data || undefined;
 }
@@ -497,7 +531,8 @@ export async function updateConversationTitle(
     .update({ title, updated_at: new Date().toISOString() })
     .eq("id", conversationId)
     .eq("user_id", userId);
-  if (error) throw new Error(`Failed to update conversation title: ${error.message}`);
+  if (error)
+    throw new Error(`Failed to update conversation title: ${error.message}`);
 }
 
 export async function addConversationMessage(data: {
@@ -527,19 +562,27 @@ export async function addConversationMessage(data: {
     .eq("id", data.conversationId)
     .eq("user_id", data.userId);
   if (touchError) {
-    console.warn(`[Database] Failed to update conversation timestamp: ${touchError.message}`);
+    console.warn(
+      `[Database] Failed to update conversation timestamp: ${touchError.message}`
+    );
   }
 
   return row.id;
 }
 
-export async function getConversationHistory(userId: number, projectId?: number | null, limit = 50): Promise<Message[]> {
+export async function getConversationHistory(
+  userId: number,
+  projectId?: number | null,
+  limit = 50
+): Promise<Message[]> {
   const db = getDbOrNull();
   if (!db) return [];
 
   let query = db.from("conversations").select("*").eq("user_id", userId);
   if (projectId) query = query.eq("project_id", projectId);
-  const { data: convs } = await query.order("created_at", { ascending: false }).limit(5);
+  const { data: convs } = await query
+    .order("created_at", { ascending: false })
+    .limit(5);
 
   if (!convs || convs.length === 0) return [];
   const latestConv = convs[0];
@@ -596,7 +639,10 @@ export async function getUserMemory(userId: number): Promise<MemoryEntry[]> {
   return data || [];
 }
 
-export async function deleteMemoryEntry(id: number, userId: number): Promise<void> {
+export async function deleteMemoryEntry(
+  id: number,
+  userId: number
+): Promise<void> {
   const db = getDb();
   await db.from("memory_entries").delete().eq("id", id).eq("user_id", userId);
 }
@@ -645,7 +691,7 @@ export async function getUserVault(userId: number): Promise<VaultEntry[]> {
 
 export async function getUserVaultEntriesByType(
   userId: number,
-  entryType: string,
+  entryType: string
 ): Promise<VaultEntry[]> {
   const db = getDbOrNull();
   if (!db) return [];
@@ -682,7 +728,10 @@ export async function updateVaultEntry(data: {
   return row;
 }
 
-export async function deleteVaultEntry(id: number, userId: number): Promise<void> {
+export async function deleteVaultEntry(
+  id: number,
+  userId: number
+): Promise<void> {
   const db = getDb();
   await db.from("vault_entries").delete().eq("id", id).eq("user_id", userId);
 }
@@ -700,7 +749,8 @@ export async function updateConversationMessageMetadata(data: {
     .eq("id", data.messageId)
     .eq("conversation_id", data.conversationId)
     .eq("user_id", data.userId);
-  if (error) throw new Error(`Failed to update message metadata: ${error.message}`);
+  if (error)
+    throw new Error(`Failed to update message metadata: ${error.message}`);
 }
 
 // ─── Generated Files ────────────────────────────────────────────────────────
@@ -736,7 +786,10 @@ export async function createGeneratedFile(data: {
   return row.id;
 }
 
-export async function getProjectFiles(projectId: number, userId: number): Promise<GeneratedFile[]> {
+export async function getProjectFiles(
+  projectId: number,
+  userId: number
+): Promise<GeneratedFile[]> {
   const db = getDbOrNull();
   if (!db) return [];
   const { data } = await db
@@ -775,7 +828,11 @@ export async function addOrchestrationEvent(data: {
   return row.id;
 }
 
-export async function getProjectOrchestrationEvents(projectId: number, userId: number, limit = 30): Promise<OrchestrationEvent[]> {
+export async function getProjectOrchestrationEvents(
+  projectId: number,
+  userId: number,
+  limit = 30
+): Promise<OrchestrationEvent[]> {
   const db = getDbOrNull();
   if (!db) return [];
   const { data } = await db
@@ -785,5 +842,25 @@ export async function getProjectOrchestrationEvents(projectId: number, userId: n
     .eq("user_id", userId)
     .order("created_at", { ascending: false })
     .limit(limit);
+  return data || [];
+}
+
+export async function getUserOrchestrationEvents(
+  userId: number,
+  limit = 50
+): Promise<OrchestrationEvent[]> {
+  const db = getSupabaseAdmin();
+  if (!db) return [];
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  const { data, error } = await db
+    .from("orchestration_events")
+    .select(
+      "id,project_id,user_id,event_type,agent_name,summary,payload,created_at"
+    )
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(safeLimit);
+  if (error)
+    throw new Error(`Failed to list orchestration events: ${error.message}`);
   return data || [];
 }

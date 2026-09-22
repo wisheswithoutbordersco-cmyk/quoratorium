@@ -16,6 +16,7 @@ import {
   PanelLeft,
   Rocket,
   Settings,
+  ShieldCheck,
   Menu,
   X,
 } from "lucide-react";
@@ -32,6 +33,7 @@ const navItems = [
   { path: "/workspace/launchpad", label: "Launchpad", icon: Rocket },
   { path: "/workspace/vault", label: "Vault", icon: KeyRound },
   { path: "/workspace/git", label: "Git", icon: GitBranch },
+  { path: "/workspace/actions", label: "Actions", icon: ShieldCheck },
   { path: "/workspace/settings", label: "Settings", icon: Settings },
 ];
 

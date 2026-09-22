@@ -23,6 +23,7 @@ import Git from "./pages/Git";
 import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
+import ActionCatalog from "./pages/ActionCatalog";
 
 function WorkspaceRouter() {
   return (
@@ -33,6 +34,7 @@ function WorkspaceRouter() {
       <Route path="/workspace/vault" component={Vault} />
       <Route path="/workspace/launchpad" component={Launchpad} />
       <Route path="/workspace/git" component={Git} />
+      <Route path="/workspace/actions" component={ActionCatalog} />
       <Route path="/workspace/settings" component={Settings} />
       <Route path="/workspace/recyclatorium" component={Recyclatorium} />
 
@@ -89,6 +91,9 @@ function WorkspaceRouter() {
       </Route>
       <Route path="/git">
         <Redirect to="/workspace/git" replace />
+      </Route>
+      <Route path="/actions">
+        <Redirect to="/workspace/actions" replace />
       </Route>
       <Route path="/settings">
         <Redirect to="/workspace/settings" replace />

@@ -30,6 +30,7 @@ import { billingRouter } from "./routers/billing";
 import { sessionHealthRouter } from "./routers/sessionHealth";
 import { businessActionsRouter } from "./routers/businessActions";
 import { recyclatoriumRouter } from "./routers/recyclatorium";
+import { actionsRouter } from "./routers/actions";
 
 export const appRouter = router({
   system: systemRouter,
@@ -116,6 +117,7 @@ export const appRouter = router({
   sessionHealth: sessionHealthRouter,
   businessActions: businessActionsRouter,
   recyclatorium: recyclatoriumRouter,
+  actions: actionsRouter,
 });
 
 export type AppRouter = typeof appRouter;
