@@ -514,6 +514,95 @@ export async function searchRepositoryCode(
   };
 }
 
+export async function createPullRequestFromProposal(
+  userId: number,
+  params: {
+    repository: string;
+    baseBranch: string;
+    branchName: string;
+    title: string;
+    body: string;
+    commitMessage: string;
+    files: Array<{ path: string; content: string }>;
+  }
+): Promise<{ number: number; url: string; commitSha: string }> {
+  const token = await getUserToken(userId);
+  const endpoint = repositoryEndpoint(params.repository);
+  const baseBranch = validateReference(params.baseBranch);
+  const branchName = validateReference(params.branchName);
+  if (!baseBranch || !branchName?.startsWith("toriu/")) {
+    throw new Error("Approved GitHub branches must use the toriu/ namespace.");
+  }
+  if (baseBranch === branchName) {
+    throw new Error(
+      "The proposal branch must be different from its base branch."
+    );
+  }
+  if (!params.files.length || params.files.length > 50) {
+    throw new Error(
+      "Approved pull requests must contain between 1 and 50 files."
+    );
+  }
+
+  const baseRef = await githubFetch(
+    token,
+    `${endpoint}/git/ref/heads/${encodeURIComponent(baseBranch)}`
+  );
+  const baseCommitSha = baseRef.object.sha;
+  const baseCommit = await githubFetch(
+    token,
+    `${endpoint}/git/commits/${encodeURIComponent(baseCommitSha)}`
+  );
+
+  const treeItems = await Promise.all(
+    params.files.map(async file => {
+      const path = validateRepositoryPath(file.path);
+      const blob = await githubFetch(token, `${endpoint}/git/blobs`, {
+        method: "POST",
+        body: JSON.stringify({ content: file.content, encoding: "utf-8" }),
+      });
+      return { path, mode: "100644", type: "blob", sha: blob.sha };
+    })
+  );
+
+  const tree = await githubFetch(token, `${endpoint}/git/trees`, {
+    method: "POST",
+    body: JSON.stringify({ base_tree: baseCommit.tree.sha, tree: treeItems }),
+  });
+  const commit = await githubFetch(token, `${endpoint}/git/commits`, {
+    method: "POST",
+    body: JSON.stringify({
+      message: params.commitMessage.trim(),
+      tree: tree.sha,
+      parents: [baseCommitSha],
+    }),
+  });
+  await githubFetch(token, `${endpoint}/git/refs`, {
+    method: "POST",
+    body: JSON.stringify({
+      ref: `refs/heads/${branchName}`,
+      sha: commit.sha,
+    }),
+  });
+
+  const pullRequest = await githubFetch(token, `${endpoint}/pulls`, {
+    method: "POST",
+    body: JSON.stringify({
+      title: params.title.trim(),
+      body: `${params.body.trim()}\n\n---\nCreated by Toríu after explicit owner approval. Toríu cannot merge this pull request.`.trim(),
+      head: branchName,
+      base: baseBranch,
+      draft: true,
+    }),
+  });
+
+  return {
+    number: pullRequest.number,
+    url: pullRequest.html_url,
+    commitSha: commit.sha,
+  };
+}
+
 // ─── Pull Code ────────────────────────────────────────────────────────────────
 
 export async function pullFiles(

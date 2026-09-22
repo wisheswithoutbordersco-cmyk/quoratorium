@@ -46,7 +46,7 @@ export const ACTION_CATALOG: readonly ActionCapability[] = [
     risk: "medium",
     confirmation: "review_then_confirm",
     auditEventType: "github_change_proposed",
-    status: "planned",
+    status: "enabled",
   },
   {
     id: "github.branch_pull_request",
@@ -58,7 +58,7 @@ export const ACTION_CATALOG: readonly ActionCapability[] = [
     risk: "high",
     confirmation: "always_confirm",
     auditEventType: "github_pull_request_opened",
-    status: "planned",
+    status: "enabled",
   },
   {
     id: "github.merge",
