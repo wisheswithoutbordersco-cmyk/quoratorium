@@ -4,9 +4,13 @@ import type { User } from "../db";
 
 const mocks = vi.hoisted(() => ({
   getUserOrchestrationEvents: vi.fn(),
+  getPriorityServiceStatuses: vi.fn(),
 }));
 
 vi.mock("../db", () => mocks);
+vi.mock("../prioritySuiteService", () => ({
+  getPriorityServiceStatuses: mocks.getPriorityServiceStatuses,
+}));
 
 import { actionsRouter } from "./actions";
 
@@ -36,6 +40,20 @@ function caller(authenticated = true) {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.getPriorityServiceStatuses.mockResolvedValue([
+    {
+      system: "Extractorium",
+      configured: true,
+      connected: true,
+      message: "Authenticated service connection is available.",
+    },
+    {
+      system: "Templatorium",
+      configured: true,
+      connected: true,
+      message: "Authenticated service connection is available.",
+    },
+  ]);
   mocks.getUserOrchestrationEvents.mockResolvedValue([
     {
       id: 11,
@@ -68,6 +86,7 @@ beforeEach(() => {
 describe("Action Catalog router", () => {
   it("requires an authenticated workspace session", async () => {
     await expect(caller(false).catalog()).rejects.toThrow();
+    await expect(caller(false).serviceStatus()).rejects.toThrow();
     await expect(caller(false).audit({ limit: 10 })).rejects.toThrow();
   });
 
@@ -84,8 +103,23 @@ describe("Action Catalog router", () => {
           id: "recyclatorium.product_plan.propose",
           status: "enabled",
         }),
+        expect.objectContaining({
+          id: "extractorium.document.read",
+          status: "enabled",
+        }),
+        expect.objectContaining({
+          id: "templatorium.text_regions.read",
+          status: "enabled",
+        }),
       ])
     );
+  });
+
+  it("returns live authenticated service status", async () => {
+    await expect(caller().serviceStatus()).resolves.toEqual([
+      expect.objectContaining({ system: "Extractorium", connected: true }),
+      expect.objectContaining({ system: "Templatorium", connected: true }),
+    ]);
   });
 
   it("returns only capability events and strips unapproved payload fields", async () => {

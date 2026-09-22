@@ -84,6 +84,30 @@ export const ACTION_CATALOG: readonly ActionCapability[] = [
     auditEventType: "recyclatorium_plan_proposed",
     status: "enabled",
   },
+  {
+    id: "extractorium.document.read",
+    system: "Extractorium",
+    name: "Document and visual analysis",
+    description:
+      "Send one owner-scoped image attachment to Extractorium for faithful text extraction, structured cleanup, or a visual recreation description.",
+    permission: "read",
+    risk: "medium",
+    confirmation: "none",
+    auditEventType: "extractorium_document_analyzed",
+    status: "enabled",
+  },
+  {
+    id: "templatorium.text_regions.read",
+    system: "Templatorium",
+    name: "Template text-region detection",
+    description:
+      "Send one owner-scoped template image to Templatorium to detect visible text, coordinates, confidence, and recovery guidance.",
+    permission: "read",
+    risk: "medium",
+    confirmation: "none",
+    auditEventType: "templatorium_text_detected",
+    status: "enabled",
+  },
 ] as const;
 
 export function getActionCatalog(system?: string): ActionCapability[] {

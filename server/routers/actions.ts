@@ -2,6 +2,7 @@ import { z } from "zod";
 import { getActionCatalog } from "../actionCatalog";
 import { protectedProcedure, router } from "../_core/trpc";
 import { getUserOrchestrationEvents } from "../db";
+import { getPriorityServiceStatuses } from "../prioritySuiteService";
 
 const AUDITED_PREFIXES = [
   "github_",
@@ -29,6 +30,7 @@ function safePayload(value: unknown): Record<string, unknown> | null {
     "risk",
     "confirmation",
     "action",
+    "operation",
     "repository",
     "reference",
     "path",
@@ -51,6 +53,7 @@ function safePayload(value: unknown): Record<string, unknown> | null {
 
 export const actionsRouter = router({
   catalog: protectedProcedure.query(() => getActionCatalog()),
+  serviceStatus: protectedProcedure.query(() => getPriorityServiceStatuses()),
 
   audit: protectedProcedure
     .input(
