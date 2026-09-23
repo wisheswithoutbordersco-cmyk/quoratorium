@@ -26,6 +26,7 @@ const originalEnv = {
   PROVIDER_CREDENTIAL_KEY: process.env.PROVIDER_CREDENTIAL_KEY,
   PROVIDER_CREDENTIAL_LEGACY_KEY:
     process.env.PROVIDER_CREDENTIAL_LEGACY_KEY,
+  INTEGRATION_CREDENTIAL_KEY: process.env.INTEGRATION_CREDENTIAL_KEY,
   BUSINESS_CREDENTIAL_KEY: process.env.BUSINESS_CREDENTIAL_KEY,
   JWT_SECRET: process.env.JWT_SECRET,
 };
@@ -35,6 +36,7 @@ beforeEach(() => {
   process.env.PROVIDER_CREDENTIAL_KEY =
     "stable-provider-credential-key-material";
   delete process.env.PROVIDER_CREDENTIAL_LEGACY_KEY;
+  delete process.env.INTEGRATION_CREDENTIAL_KEY;
   delete process.env.BUSINESS_CREDENTIAL_KEY;
   process.env.JWT_SECRET = "session-secret-that-may-rotate";
 });
@@ -48,6 +50,19 @@ afterEach(() => {
 
 describe("provider credential encryption", () => {
   it("keeps credentials readable when JWT_SECRET rotates", () => {
+    const stored = encryptProviderCredential("github-secret-token", "github");
+    process.env.JWT_SECRET = "a-completely-different-session-secret";
+
+    expect(decryptProviderCredential(stored, "github")).toEqual({
+      value: "github-secret-token",
+      needsRotation: false,
+    });
+  });
+
+  it("uses the existing integration credential key when no provider key is set", () => {
+    delete process.env.PROVIDER_CREDENTIAL_KEY;
+    process.env.INTEGRATION_CREDENTIAL_KEY =
+      "existing-stable-integration-credential-key";
     const stored = encryptProviderCredential("github-secret-token", "github");
     process.env.JWT_SECRET = "a-completely-different-session-secret";
 

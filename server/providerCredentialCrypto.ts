@@ -31,13 +31,17 @@ function normalizeSecret(value: string | undefined): string | null {
 }
 
 function currentSecret(): string {
+  // PROVIDER_CREDENTIAL_KEY is an explicit override. Railway production already
+  // provides INTEGRATION_CREDENTIAL_KEY, which is the stable default so JWT
+  // rotation never strands provider tokens again.
   const secret =
     normalizeSecret(process.env.PROVIDER_CREDENTIAL_KEY) ||
+    normalizeSecret(process.env.INTEGRATION_CREDENTIAL_KEY) ||
     normalizeSecret(process.env.BUSINESS_CREDENTIAL_KEY) ||
     normalizeSecret(process.env.JWT_SECRET);
   if (!secret) {
     throw new ProviderCredentialError(
-      "Provider credential encryption is not configured. Set PROVIDER_CREDENTIAL_KEY to a stable secret of at least 16 characters."
+      "Provider credential encryption is not configured. Set PROVIDER_CREDENTIAL_KEY or INTEGRATION_CREDENTIAL_KEY to a stable secret of at least 16 characters."
     );
   }
   return secret;
@@ -55,6 +59,7 @@ function secretCandidates(): SecretCandidate[] {
 
   add(currentSecret(), true);
   add(process.env.PROVIDER_CREDENTIAL_KEY, false);
+  add(process.env.INTEGRATION_CREDENTIAL_KEY, false);
   add(process.env.BUSINESS_CREDENTIAL_KEY, false);
   add(process.env.JWT_SECRET, false);
   add(process.env.PROVIDER_CREDENTIAL_LEGACY_KEY, false);
