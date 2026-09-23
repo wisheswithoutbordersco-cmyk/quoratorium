@@ -53,7 +53,11 @@ const statusText: Record<Proposal["status"], string> = {
   failed: "Needs attention",
 };
 
-export function GitHubProposalPanel() {
+export function GitHubProposalPanel({
+  githubConnected = true,
+}: {
+  githubConnected?: boolean;
+}) {
   const utils = trpc.useUtils();
   const [unlockOpen, setUnlockOpen] = useState(false);
   const [actionCode, setActionCode] = useState("");
@@ -144,6 +148,19 @@ export function GitHubProposalPanel() {
           </div>
         </CardHeader>
         <CardContent className="space-y-3">
+          {!githubConnected && proposals.some(p => p.status === "proposed") && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3 text-xs text-amber-100">
+              A proposal is waiting, but GitHub must be reconnected before it
+              can create a branch or draft pull request. Reconnect it in{" "}
+              <a
+                href="/workspace/settings"
+                className="font-semibold underline underline-offset-2"
+              >
+                Workspace Settings
+              </a>
+              , then return here to approve.
+            </div>
+          )}
           {proposals.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
               No proposals yet. Ask Toríu to inspect a repository and propose a
@@ -258,8 +275,11 @@ export function GitHubProposalPanel() {
                           setConfirming(proposal);
                         }}
                       >
+                        disabled={!githubConnected}
                         <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
-                        Review and approve
+                        {githubConnected
+                          ? "Review and approve"
+                          : "Reconnect GitHub to approve"}
                       </Button>
                     </div>
                   ) : null}

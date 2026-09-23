@@ -247,7 +247,7 @@ export default function Git() {
           </CardContent>
         </Card>
 
-        {connected && <GitHubProposalPanel />}
+        <GitHubProposalPanel githubConnected={connected} />
 
         {!connected && (
           <Card className="border-border/50 bg-card/50">

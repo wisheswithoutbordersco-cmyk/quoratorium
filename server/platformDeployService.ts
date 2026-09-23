@@ -2,40 +2,17 @@
  * Platform Deploy Service (Supabase)
  * Handles deployment to Vercel, Netlify, and Railway via their APIs.
  */
-import crypto from "crypto";
+import { createHash } from "node:crypto";
 import { getSupabaseAdmin } from "./supabase";
 import { sendBuildCompleteEmail } from "./services/email";
+import {
+  decryptProviderCredential,
+  encryptProviderCredential,
+  isProviderCredentialError,
+} from "./providerCredentialCrypto";
 
 function getDb() {
   return getSupabaseAdmin();
-}
-
-// ─── Encryption ─────────────────────────────────────────────────────────────
-
-function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET || "fallback-secret-key-for-dev-only";
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
-}
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, encrypted] = encryptedText.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv(
-    "aes-256-cbc",
-    getEncryptionKey(),
-    iv
-  );
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
 }
 
 // ─── Types ──────────────────────────────────────────────────────────────────
@@ -154,6 +131,7 @@ export interface PlatformStatus {
   connected: boolean;
   username?: string;
   teamId?: string;
+  reconnectRequired?: boolean;
   deploymentSupported: boolean;
   unsupportedReason?: string;
 }
@@ -178,7 +156,7 @@ export async function connectPlatform(
       .eq("platform", platform)
       .limit(1);
 
-    const tokenEncrypted = encrypt(token);
+    const tokenEncrypted = encryptProviderCredential(token, platform);
     if (existing && existing.length > 0) {
       await db
         .from("platform_connections")
@@ -244,11 +222,29 @@ export async function getPlatformStatuses(
   return platforms.map(p => {
     const conn = (connections || []).find((c: any) => c.platform === p);
     const hasSystemToken = !!getSystemToken(p);
+    let savedCredentialReadable = false;
+    if (conn) {
+      try {
+        decryptProviderCredential(conn.token_encrypted, p);
+        savedCredentialReadable = true;
+      } catch (error) {
+        if (!isProviderCredentialError(error)) throw error;
+        console.warn(
+          `[Deploy] Saved ${p} credential needs reconnection:`,
+          error.message
+        );
+      }
+    }
     return {
       platform: p,
-      connected: !!conn || hasSystemToken,
-      username: conn?.username || (hasSystemToken ? "system" : undefined),
-      teamId: conn?.team_id || undefined,
+      connected: savedCredentialReadable || hasSystemToken,
+      username: savedCredentialReadable
+        ? conn?.username
+        : hasSystemToken
+          ? "system"
+          : undefined,
+      teamId: savedCredentialReadable ? conn?.team_id || undefined : undefined,
+      reconnectRequired: Boolean(conn && !savedCredentialReadable),
       deploymentSupported: p !== "railway",
       unsupportedReason:
         p === "railway"
@@ -271,8 +267,34 @@ async function getPlatformToken(
     .eq("platform", platform)
     .limit(1)
     .single();
-  if (!data) return null;
-  return decrypt(data.token_encrypted);
+  if (!data) return getSystemToken(platform);
+  try {
+    const decrypted = decryptProviderCredential(data.token_encrypted, platform);
+    if (decrypted.needsRotation) {
+      const { error } = await db
+        .from("platform_connections")
+        .update({
+          token_encrypted: encryptProviderCredential(
+            decrypted.value,
+            platform
+          ),
+        })
+        .eq("user_id", userId)
+        .eq("platform", platform);
+      if (error) {
+        console.warn(
+          `[Deploy] ${platform} credential worked but could not be rotated:`,
+          error.message
+        );
+      }
+    }
+    return decrypted.value;
+  } catch (error) {
+    if (!isProviderCredentialError(error)) throw error;
+    const systemToken = getSystemToken(platform);
+    if (systemToken) return systemToken;
+    throw error;
+  }
 }
 
 // ─── Token Validation ───────────────────────────────────────────────────────
@@ -546,7 +568,7 @@ async function deployToNetlify(
   const fileContents: Record<string, string> = {};
   for (const file of req.files) {
     const path = "/" + file.filepath.replace(/^\/+/, "");
-    const hash = crypto.createHash("sha1").update(file.content).digest("hex");
+    const hash = createHash("sha1").update(file.content).digest("hex");
     fileDigests[path] = hash;
     fileContents[hash] = file.content;
   }

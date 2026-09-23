@@ -5,6 +5,7 @@ import { gitRouter } from "./git";
 
 vi.mock("../githubService", () => ({
   getGitHubConnection: vi.fn(),
+  getPersonalGitHubCredentialStatus: vi.fn(),
   getSystemGitHubUsername: vi.fn(),
   getSystemGitHubDefaults: vi.fn(),
   connectGitHub: vi.fn(),
@@ -26,13 +27,20 @@ const context = {
 describe("GitHub settings router", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(github.getPersonalGitHubCredentialStatus).mockResolvedValue({
+      connection: null,
+      reconnectRequired: false,
+    });
   });
 
   it("reports a personal connection and its defaults", async () => {
-    vi.mocked(github.getGitHubConnection).mockResolvedValue({
-      username: "octocat",
-      default_repo: "octocat/project",
-      default_branch: "develop",
+    vi.mocked(github.getPersonalGitHubCredentialStatus).mockResolvedValue({
+      connection: {
+        username: "octocat",
+        default_repo: "octocat/project",
+        default_branch: "develop",
+      },
+      reconnectRequired: false,
     });
 
     const caller = gitRouter.createCaller(context);
@@ -42,12 +50,12 @@ describe("GitHub settings router", () => {
       defaultRepo: "octocat/project",
       defaultBranch: "develop",
       connectionSource: "personal",
+      reconnectRequired: false,
     });
     expect(github.getSystemGitHubUsername).not.toHaveBeenCalled();
   });
 
   it("reports a workspace connection with saved per-user defaults", async () => {
-    vi.mocked(github.getGitHubConnection).mockResolvedValue(null);
     vi.mocked(github.getSystemGitHubUsername).mockResolvedValue(
       "workspace-owner"
     );
@@ -63,11 +71,11 @@ describe("GitHub settings router", () => {
       defaultRepo: "workspace-owner/project",
       defaultBranch: "main",
       connectionSource: "workspace",
+      reconnectRequired: false,
     });
   });
 
   it("reports a disconnected state when neither connection is available", async () => {
-    vi.mocked(github.getGitHubConnection).mockResolvedValue(null);
     vi.mocked(github.getSystemGitHubUsername).mockResolvedValue(null);
 
     const caller = gitRouter.createCaller(context);
@@ -77,6 +85,25 @@ describe("GitHub settings router", () => {
       defaultRepo: null,
       defaultBranch: null,
       connectionSource: null,
+      reconnectRequired: false,
+    });
+  });
+
+  it("reports that an unreadable saved token must be reconnected", async () => {
+    vi.mocked(github.getPersonalGitHubCredentialStatus).mockResolvedValue({
+      connection: null,
+      reconnectRequired: true,
+    });
+    vi.mocked(github.getSystemGitHubUsername).mockResolvedValue(null);
+
+    const caller = gitRouter.createCaller(context);
+    await expect(caller.status()).resolves.toEqual({
+      connected: false,
+      username: null,
+      defaultRepo: null,
+      defaultBranch: null,
+      connectionSource: null,
+      reconnectRequired: true,
     });
   });
 

@@ -5,7 +5,7 @@ import { registerTool, type ToolContext, type ToolResult } from "./index";
 registerTool({
   name: "github_propose_change",
   description:
-    "Prepare a reviewable GitHub code-change proposal after inspecting the repository. This stores the exact repository, base branch, new toriu/ branch, commit message, pull-request title/body, and complete file contents inside Quoratorium. It does not contact or modify GitHub. The owner must review and separately confirm the proposal in the Git explorer before any branch or pull request is created.",
+    "Prepare a reviewable GitHub code-change proposal after inspecting the repository. This stores the exact repository, base branch, new toriu/ branch, commit message, pull-request title/body, and complete file contents inside Quoratorium. It does not contact or modify GitHub. The owner must review and separately confirm the proposal at https://quoratorium.com/workspace/git before any branch or pull request is created.",
   parameters: {
     type: "object",
     properties: {
@@ -96,14 +96,22 @@ registerTool({
 
     return {
       success: true,
-      output: `GitHub proposal ${proposal.id} is ready for owner review. Nothing was sent to GitHub.\nRepository: ${proposal.repository}\nBase: ${proposal.base_branch}\nProposed branch: ${proposal.branch_name}\nPull request: ${proposal.title}\nFiles: ${proposal.files.map(file => file.path).join(", ")}\nOpen the Git explorer to review the complete payload and explicitly approve or cancel it.`,
+      output: `GitHub proposal ${proposal.id} is ready for owner review. Nothing was sent to GitHub.\nRepository: ${proposal.repository}\nBase: ${proposal.base_branch}\nProposed branch: ${proposal.branch_name}\nPull request: ${proposal.title}\nFiles: ${proposal.files.map(file => file.path).join(", ")}\nReview and approve it at https://quoratorium.com/workspace/git. The page is registered in the production workspace; do not claim that the approval screen is unavailable.`,
       data: {
         githubProposal: true,
         proposalId: proposal.id,
         repository: proposal.repository,
         branchName: proposal.branch_name,
         status: proposal.status,
+        reviewUrl: "https://quoratorium.com/workspace/git",
       },
+      artifacts: [
+        {
+          type: "url",
+          name: "Review GitHub proposal",
+          url: "https://quoratorium.com/workspace/git",
+        },
+      ],
     };
   },
 });

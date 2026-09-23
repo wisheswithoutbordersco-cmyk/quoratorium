@@ -694,6 +694,7 @@ function PlatformConnectionsSection() {
         const info = PLATFORM_INFO[platform];
         const status = platforms.find((p: any) => p.platform === platform);
         const isConnected = status?.connected;
+        const reconnectRequired = status?.reconnectRequired;
         const isConnecting = connectingPlatform === platform;
 
         return (
@@ -710,6 +711,11 @@ function PlatformConnectionsSection() {
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
                       Connected
                       {status?.username ? ` as ${status.username}` : ""}
+                    </span>
+                  )}
+                  {reconnectRequired && (
+                    <span className="rounded-full bg-amber-500/10 px-1.5 py-0.5 text-[9px] text-amber-300">
+                      Reconnect required
                     </span>
                   )}
                 </div>
@@ -737,7 +743,11 @@ function PlatformConnectionsSection() {
                     setTokenInput("");
                   }}
                 >
-                  {isConnecting ? "Cancel" : "Connect"}
+                  {isConnecting
+                    ? "Cancel"
+                    : reconnectRequired
+                      ? "Reconnect"
+                      : "Connect"}
                 </Button>
               )}
             </div>
@@ -887,6 +897,7 @@ function GitHubSettingsSection() {
   const status = statusQuery.data;
   const isConnected = !!status?.connected;
   const isPersonalConnection = status?.connectionSource === "personal";
+  const reconnectRequired = !!status?.reconnectRequired;
 
   return (
     <div className="space-y-5 py-3">
@@ -909,7 +920,9 @@ function GitHubSettingsSection() {
               ? isPersonalConnection
                 ? "Using your encrypted personal access token."
                 : "Using the secure GitHub connection configured for this workspace."
-              : "Connect GitHub to browse repositories and push generated code."}
+              : reconnectRequired
+                ? "The saved token was encrypted with an older server key. Reconnect GitHub to restore Tori’s repository access; your pending proposals are preserved."
+                : "Connect GitHub to browse repositories and create approved draft pull requests."}
           </p>
         </div>
 
@@ -941,14 +954,18 @@ function GitHubSettingsSection() {
                   <Github className="size-5 text-muted-foreground" />
                 </div>
                 <div>
-                  <p className="text-sm font-medium">Connect your account</p>
+                  <p className="text-sm font-medium">
+                    {reconnectRequired
+                      ? "Reconnect your account"
+                      : "Connect your account"}
+                  </p>
                   <p className="text-xs text-muted-foreground">
                     Tokens are encrypted before they are stored.
                   </p>
                 </div>
               </div>
               <Button size="sm" onClick={() => setShowConnectForm(true)}>
-                Connect GitHub
+                {reconnectRequired ? "Reconnect GitHub" : "Connect GitHub"}
               </Button>
             </div>
           ) : (
