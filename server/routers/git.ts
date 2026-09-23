@@ -19,14 +19,16 @@ import {
 export const gitRouter = router({
   // Get connection status
   status: protectedProcedure.query(async ({ ctx }) => {
-    const conn = await github.getGitHubConnection(ctx.user.id);
-    if (conn) {
+    const personal = await github.getPersonalGitHubCredentialStatus(ctx.user.id);
+    if (personal.connection) {
+      const conn = personal.connection;
       return {
         connected: true,
         username: conn.username,
         defaultRepo: conn.defaultRepo || conn.default_repo || null,
         defaultBranch: conn.defaultBranch || conn.default_branch || null,
         connectionSource: "personal" as const,
+        reconnectRequired: false,
       };
     }
     // Fallback: check system GitHub token
@@ -39,6 +41,7 @@ export const gitRouter = router({
         defaultRepo: defaults.defaultRepo,
         defaultBranch: defaults.defaultBranch,
         connectionSource: "workspace" as const,
+        reconnectRequired: personal.reconnectRequired,
       };
     }
     return {
@@ -47,6 +50,7 @@ export const gitRouter = router({
       defaultRepo: null,
       defaultBranch: null,
       connectionSource: null,
+      reconnectRequired: personal.reconnectRequired,
     };
   }),
 

@@ -2,9 +2,13 @@
  * GitHub Integration Service (Supabase)
  * Handles: token encryption, repo operations, push/pull, commits, branches
  */
-import crypto from "crypto";
 import { getSupabaseAdmin } from "./supabase";
 import { addOrchestrationEvent } from "./db";
+import {
+  decryptProviderCredential,
+  encryptProviderCredential,
+  isProviderCredentialError,
+} from "./providerCredentialCrypto";
 
 function getDb() {
   return getSupabaseAdmin();
@@ -56,33 +60,6 @@ function repositoryEndpoint(repo: string): string {
 
 function truncateText(value: string, maxLength: number): string {
   return value.length > maxLength ? `${value.slice(0, maxLength)}…` : value;
-}
-
-// Use JWT_SECRET as encryption key (first 32 bytes)
-function getEncryptionKey(): Buffer {
-  const secret = process.env.JWT_SECRET || "fallback-secret-key-for-dev-only";
-  return crypto.createHash("sha256").update(secret).digest();
-}
-
-function encrypt(text: string): string {
-  const iv = crypto.randomBytes(16);
-  const cipher = crypto.createCipheriv("aes-256-cbc", getEncryptionKey(), iv);
-  let encrypted = cipher.update(text, "utf8", "hex");
-  encrypted += cipher.final("hex");
-  return iv.toString("hex") + ":" + encrypted;
-}
-
-function decrypt(encryptedText: string): string {
-  const [ivHex, encrypted] = encryptedText.split(":");
-  const iv = Buffer.from(ivHex, "hex");
-  const decipher = crypto.createDecipheriv(
-    "aes-256-cbc",
-    getEncryptionKey(),
-    iv
-  );
-  let decrypted = decipher.update(encrypted, "hex", "utf8");
-  decrypted += decipher.final("utf8");
-  return decrypted;
 }
 
 // ─── GitHub API Helpers ───────────────────────────────────────────────────────
@@ -172,12 +149,15 @@ export async function connectGitHub(
   if (existing && existing.length > 0) {
     await db
       .from("github_connections")
-      .update({ token_encrypted: encrypt(token), username })
+      .update({
+        token_encrypted: encryptProviderCredential(token, "github"),
+        username,
+      })
       .eq("user_id", userId);
   } else {
     await db.from("github_connections").insert({
       user_id: userId,
-      token_encrypted: encrypt(token),
+      token_encrypted: encryptProviderCredential(token, "github"),
       username,
     });
   }
@@ -204,9 +184,61 @@ export async function getGitHubConnection(userId: number) {
   return data || null;
 }
 
+async function decryptGitHubToken(connection: any): Promise<string> {
+  const decrypted = decryptProviderCredential(
+    connection.token_encrypted,
+    "github"
+  );
+  if (decrypted.needsRotation) {
+    const db = getDb();
+    const { error } = db
+      ? await db
+          .from("github_connections")
+          .update({
+            token_encrypted: encryptProviderCredential(
+              decrypted.value,
+              "github"
+            ),
+          })
+          .eq("id", connection.id)
+      : { error: null };
+    if (error) {
+      console.warn(
+        "[GitHub] Credential worked but could not be rotated:",
+        error.message
+      );
+    }
+  }
+  return decrypted.value;
+}
+
+export async function getPersonalGitHubCredentialStatus(
+  userId: number
+): Promise<{ connection: any | null; reconnectRequired: boolean }> {
+  const connection = await getGitHubConnection(userId);
+  if (!connection) return { connection: null, reconnectRequired: false };
+  try {
+    await decryptGitHubToken(connection);
+    return { connection, reconnectRequired: false };
+  } catch (error) {
+    if (!isProviderCredentialError(error)) throw error;
+    console.warn("[GitHub] Saved credential needs reconnection:", error.message);
+    return { connection: null, reconnectRequired: true };
+  }
+}
+
 async function getUserToken(userId: number): Promise<string> {
   const conn = await getGitHubConnection(userId);
-  if (conn) return decrypt(conn.token_encrypted);
+  if (conn) {
+    try {
+      return await decryptGitHubToken(conn);
+    } catch (error) {
+      if (!isProviderCredentialError(error)) throw error;
+      const systemToken = process.env.GITHUB_TOKEN;
+      if (systemToken) return systemToken;
+      throw error;
+    }
+  }
 
   // Fallback: use system GitHub token from environment (owner's PAT)
   const systemToken = process.env.GITHUB_TOKEN;
