@@ -270,7 +270,7 @@ export function ProjectSidebar({
           <div className="p-3 border-b border-border">
             <motion.button
               onClick={handleNewChat}
-              className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[11px] font-medium hover:bg-primary/20 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[13px] font-semibold shadow-[inset_0_1px_0_rgba(255,190,126,0.05),0_6px_18px_rgba(0,0,0,0.2)] hover:bg-primary/20 hover:border-primary/45 transition-colors"
               whileTap={{ scale: 0.97 }}
             >
               <Plus size={12} />
@@ -282,9 +282,9 @@ export function ProjectSidebar({
           <div className="px-3 py-2 flex gap-1">
             <button
               onClick={() => setTab("conversations")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                 tab === "conversations"
-                  ? "bg-primary/10 text-primary border border-primary/20"
+                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(255,190,126,0.04)]"
                   : "text-muted-foreground/50 hover:text-muted-foreground border border-transparent"
               }`}
             >
@@ -293,9 +293,9 @@ export function ProjectSidebar({
             </button>
             <button
               onClick={() => setTab("projects")}
-              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-md text-[10px] font-medium transition-all ${
+              className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                 tab === "projects"
-                  ? "bg-primary/10 text-primary border border-primary/20"
+                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(255,190,126,0.04)]"
                   : "text-muted-foreground/50 hover:text-muted-foreground border border-transparent"
               }`}
             >
@@ -305,9 +305,9 @@ export function ProjectSidebar({
           </div>
 
           {/* Search */}
-          <div className="px-3 py-1">
-            <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-secondary border border-border">
-              <Search size={11} className="text-muted-foreground/50" />
+          <div className="px-3 py-1.5">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary border border-primary/20 shadow-[inset_0_1px_0_rgba(255,190,126,0.035)] focus-within:border-primary/45 transition-colors">
+              <Search size={13} className="text-muted-foreground/60" />
               <input
                 type="text"
                 value={search}
@@ -317,7 +317,7 @@ export function ProjectSidebar({
                     ? "Search conversations..."
                     : "Search projects..."
                 }
-                className="flex-1 bg-transparent text-[11px] text-foreground placeholder:text-muted-foreground/40 outline-none"
+                className="flex-1 bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/45 outline-none"
               />
             </div>
           </div>
@@ -343,15 +343,15 @@ export function ProjectSidebar({
                   </p>
                 </div>
               ) : (
-                <div className="space-y-0.5">
+                <div className="space-y-1.5">
                   {filteredConversations.map((conv: any, i: number) => (
                     <motion.button
                       key={conv.id}
                       onClick={() => void handleSelectConversation(conv)}
-                      className={`w-full text-left px-3 py-2.5 rounded-lg transition-colors group relative ${
+                      className={`w-full text-left px-3 py-3 rounded-xl border transition-all group relative shadow-[inset_0_1px_0_rgba(255,190,126,0.025),0_5px_16px_rgba(0,0,0,0.16)] ${
                         activeConversationId === conv.id.toString()
-                          ? "bg-primary/10 border border-primary/20"
-                          : "hover:bg-secondary/60 border border-transparent"
+                          ? "bg-primary/12 border-primary/45 shadow-[inset_3px_0_0_rgba(232,122,37,0.85),inset_0_1px_0_rgba(255,190,126,0.06),0_8px_22px_rgba(0,0,0,0.24)]"
+                          : "bg-[#0b0704] border-primary/20 hover:bg-secondary hover:border-primary/40"
                       }`}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -362,7 +362,7 @@ export function ProjectSidebar({
                           size={10}
                           className="text-primary/50 shrink-0"
                         />
-                        <span className="text-[11px] text-foreground/80 font-medium truncate flex-1 group-hover:text-foreground transition-colors">
+                        <span className="text-[13px] text-foreground/85 font-semibold truncate flex-1 group-hover:text-foreground transition-colors">
                           {conv.title || "Untitled Chat"}
                         </span>
                         <button
@@ -373,13 +373,13 @@ export function ProjectSidebar({
                         </button>
                       </div>
                       <div className="flex items-center gap-2 mt-1 pl-5">
-                        <span className="text-[9px] text-muted-foreground/40">
+                        <span className="text-[11px] text-muted-foreground/55">
                           {formatTimeAgo(
                             new Date(conv.updatedAt || conv.createdAt)
                           )}
                         </span>
                         {conv.messageCount && (
-                          <span className="text-[9px] text-muted-foreground/30">
+                          <span className="text-[11px] text-muted-foreground/45">
                             {conv.messageCount} msgs
                           </span>
                         )}
@@ -403,19 +403,19 @@ export function ProjectSidebar({
                 </p>
               </div>
             ) : (
-              <div className="space-y-0.5">
+              <div className="space-y-1.5">
                 {filteredProjects.map((project: any, i: number) => (
                   <motion.button
                     key={project.id}
                     onClick={() => handleSelectProject(project)}
-                    className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-secondary/60 transition-colors group"
+                    className="w-full text-left px-3 py-3 rounded-xl bg-[#0b0704] border border-primary/20 shadow-[inset_0_1px_0_rgba(255,190,126,0.025),0_5px_16px_rgba(0,0,0,0.16)] hover:bg-secondary hover:border-primary/40 transition-all group"
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}
                   >
                     <div className="flex items-center gap-2">
                       {getStatusIcon(project.status)}
-                      <span className="text-[11px] text-foreground/80 font-medium truncate flex-1 group-hover:text-foreground transition-colors">
+                      <span className="text-[13px] text-foreground/85 font-semibold truncate flex-1 group-hover:text-foreground transition-colors">
                         {project.name}
                       </span>
                       <ChevronRight
@@ -424,11 +424,11 @@ export function ProjectSidebar({
                       />
                     </div>
                     <div className="flex items-center gap-2 mt-1 pl-5">
-                      <span className="text-[9px] text-muted-foreground/40">
+                      <span className="text-[11px] text-muted-foreground/55">
                         {formatTimeAgo(new Date(project.createdAt))}
                       </span>
                       {project.description && (
-                        <span className="text-[9px] text-muted-foreground/30 truncate max-w-[120px]">
+                        <span className="text-[11px] text-muted-foreground/45 truncate max-w-[120px]">
                           {project.description}
                         </span>
                       )}
@@ -444,7 +444,7 @@ export function ProjectSidebar({
             <div className="flex items-center justify-between">
               <motion.button
                 onClick={handleNewProject}
-                className="flex items-center gap-1.5 px-2 py-1 rounded text-[9px] text-muted-foreground/50 hover:text-primary transition-colors"
+                className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] text-muted-foreground/60 hover:text-primary hover:bg-primary/5 transition-colors"
                 whileTap={{ scale: 0.95 }}
               >
                 <Plus size={9} />

@@ -119,7 +119,7 @@
     @apply bg-background text-foreground antialiased;
     min-width: 320px;
     background-color: #050302;
-    font-family: "Manrope", "Inter", system-ui, -apple-system, sans-serif;
+    font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
   }
 
   button:not(:disabled),
@@ -271,7 +271,7 @@
     margin-top: 0.85rem;
     max-width: 44rem;
     color: #fff8f2;
-    font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
     font-size: clamp(2.25rem, 5vw, 4.25rem);
     font-weight: 680;
     letter-spacing: -0.05em;
@@ -304,7 +304,7 @@
 
 @layer utilities {
   .font-display {
-    font-family: "Space Grotesk", "Manrope", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
   }
 
   .font-mono {
@@ -312,7 +312,7 @@
   }
 
   .font-body {
-    font-family: "Manrope", "Inter", system-ui, sans-serif;
+    font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, sans-serif;
   }
 
   .tabular-nums {

@@ -21,6 +21,8 @@ import {
   Download,
   Maximize2,
   Rocket,
+  Copy,
+  Check,
 } from "lucide-react";
 import { PushToGitHub } from "@/components/PushToGitHub";
 import { Streamdown } from "streamdown";
@@ -921,6 +923,7 @@ function MessageBubble({
   onVoiceStarted?: () => void;
 }) {
   const isUser = message.role === "user";
+  const [copied, setCopied] = useState(false);
   const [showPushDialog, setShowPushDialog] = useState(false);
   const [selectedImageIndex, setSelectedImageIndex] = useState<number | null>(
     null
@@ -946,6 +949,16 @@ function MessageBubble({
   const selectedImage =
     selectedImageIndex === null ? null : generatedImages[selectedImageIndex];
 
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(message.content);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1800);
+    } catch {
+      toast.error("Could not copy this message. Please try again.");
+    }
+  };
+
   return (
     <motion.div
       className={"flex " + (isUser ? "justify-end" : "justify-start")}
@@ -969,10 +982,10 @@ function MessageBubble({
         )}
         <div
           className={
-            "rounded-xl px-3.5 py-2.5 text-sm sm:text-[13px] leading-relaxed " +
+            "rounded-2xl border px-4 py-3.5 text-[15px] sm:text-[15px] leading-[1.7] transition-colors " +
             (isUser
-              ? "bg-primary text-primary-foreground"
-              : "surface-elevated border border-border text-foreground")
+              ? "border-orange-300/25 bg-[linear-gradient(145deg,#e77827_0%,#bd4d0d_100%)] text-primary-foreground shadow-[inset_0_1px_0_rgba(255,230,204,0.22),0_10px_28px_rgba(112,35,3,0.3)]"
+              : "bg-[#100a06] border-primary/25 text-foreground shadow-[inset_0_1px_0_rgba(255,190,126,0.06),inset_3px_0_0_rgba(216,102,24,0.28),0_10px_28px_rgba(0,0,0,0.3)]")
           }
         >
           {isUser ? (
@@ -1094,12 +1107,37 @@ function MessageBubble({
             onClose={() => setShowPushDialog(false)}
           />
         )}
-        <p className="text-[9px] text-muted-foreground/30 mt-0.5 px-1">
-          {new Date(message.timestamp).toLocaleTimeString([], {
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
-        </p>
+        {!isStreaming && message.content && (
+          <div
+            className={`mt-1.5 flex items-center gap-2 px-1 ${
+              isUser ? "justify-end" : "justify-start"
+            }`}
+          >
+            <p className="text-[10px] text-muted-foreground/45">
+              {new Date(message.timestamp).toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+            <motion.button
+              type="button"
+              onClick={handleCopy}
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-[#100a06] text-muted-foreground/75 shadow-[inset_0_1px_0_rgba(255,190,126,0.05),0_4px_12px_rgba(0,0,0,0.24)] transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+              whileTap={{ scale: 0.9 }}
+              aria-label={copied ? "Message copied" : "Copy this message"}
+              title={copied ? "Copied" : "Copy this message"}
+            >
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-emerald-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
+            </motion.button>
+            <span className="sr-only" aria-live="polite">
+              {copied ? "Message copied to clipboard" : ""}
+            </span>
+          </div>
+        )}
       </div>
 
       <Dialog
