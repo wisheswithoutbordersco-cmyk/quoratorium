@@ -2,6 +2,7 @@
  * Q Workspace — Application Root
  * Landing page at /, workspace at /workspace/*
  */
+import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { Redirect, Route, Switch } from "wouter";
@@ -25,6 +26,15 @@ import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
 import ActionCatalog from "./pages/ActionCatalog";
 
+const TEMPLATORIUM_URL = "https://templatorium-production.up.railway.app/";
+
+function TemplatoriumRedirect() {
+  useEffect(() => {
+    window.location.replace(TEMPLATORIUM_URL);
+  }, []);
+  return null;
+}
+
 function WorkspaceRouter() {
   return (
     <Switch>
@@ -35,6 +45,8 @@ function WorkspaceRouter() {
       <Route path="/workspace/launchpad" component={Launchpad} />
       <Route path="/workspace/git" component={Git} />
       <Route path="/workspace/actions" component={ActionCatalog} />
+      {/* Compatibility for stale/relative links; Templatorium is external. */}
+      <Route path="/workspace/templatorium" component={TemplatoriumRedirect} />
       <Route path="/workspace/settings" component={Settings} />
       <Route path="/workspace/recyclatorium" component={Recyclatorium} />
 
@@ -98,6 +110,7 @@ function WorkspaceRouter() {
       <Route path="/settings">
         <Redirect to="/workspace/settings" replace />
       </Route>
+      <Route path="/templatorium" component={TemplatoriumRedirect} />
       <Route path="/analytics">
         <Redirect to="/workspace" replace />
       </Route>
