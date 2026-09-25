@@ -16,13 +16,13 @@ const apps = [
     name: "Templatorium",
     letter: "T",
     description: "Template Editor — Upload, edit text, export clean PDFs",
-    url: "https://templatorium-production.up.railway.app",
+    url: "/workspace/launch/templatorium",
   },
   {
     name: "Extractorium",
     letter: "E",
     description: "Vision & OCR — Reverse-prompt images, extract text",
-    url: "https://extractorium-production.up.railway.app",
+    url: "/workspace/launch/extractorium",
   },
   {
     name: "Colloquiorium",

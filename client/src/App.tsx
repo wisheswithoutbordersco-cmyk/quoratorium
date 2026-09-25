@@ -25,6 +25,7 @@ import SharedProject from "./pages/SharedProject";
 import NotFound from "./pages/NotFound";
 import Recyclatorium from "./pages/Recyclatorium";
 import ActionCatalog from "./pages/ActionCatalog";
+import ToolLaunch from "./pages/ToolLaunch";
 
 const TEMPLATORIUM_URL = "https://templatorium-production.up.railway.app/";
 
@@ -43,6 +44,7 @@ function WorkspaceRouter() {
       <Route path="/workspace/projects" component={Projects} />
       <Route path="/workspace/vault" component={Vault} />
       <Route path="/workspace/launchpad" component={Launchpad} />
+      <Route path="/workspace/launch/:tool" component={ToolLaunch} />
       <Route path="/workspace/git" component={Git} />
       <Route path="/workspace/actions" component={ActionCatalog} />
       {/* Compatibility for stale/relative links; Templatorium is external. */}

@@ -9,6 +9,11 @@ import {
   startOwnerAccessSession,
   verifyOwnerAccessCode,
 } from "./ownerAccessAuth";
+import {
+  isToolLaunchConfigured,
+  launchUrlFor,
+  type ToolLaunchTarget,
+} from "./toolLaunchAuth";
 import { clearBusinessActionSession } from "./businessActionAuth";
 import { aiRouter } from "./routers/ai";
 import { projectsRouter } from "./routers/projects";
@@ -96,6 +101,25 @@ export const appRouter = router({
       clearBusinessActionSession(ctx.res);
       return { success: true } as const;
     }),
+    toolLaunch: publicProcedure
+      .input(z.object({ tool: z.enum(["templatorium", "extractorium"]) }))
+      .mutation(({ ctx, input }) => {
+        if (!ctx.authenticatedUser || !ctx.isVerifiedOwner) {
+          throw new TRPCError({
+            code: "UNAUTHORIZED",
+            message:
+              "Your Quoratorium session is required to launch this tool.",
+          });
+        }
+        const tool = input.tool as ToolLaunchTarget;
+        if (!isToolLaunchConfigured(tool)) {
+          throw new TRPCError({
+            code: "PRECONDITION_FAILED",
+            message: "This tool’s secure launch is not configured yet.",
+          });
+        }
+        return { url: launchUrlFor(tool, ctx.authenticatedUser.id) };
+      }),
   }),
   ai: aiRouter,
   projects: projectsRouter,

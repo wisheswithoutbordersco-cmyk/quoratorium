@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { TRPCError } from "@trpc/server";
 import { createContext, type TrpcContext } from "./context";
 import { protectedProcedure, router } from "./trpc";
+import { appRouter } from "../routers";
 
 const testRouter = router({
   protectedValue: protectedProcedure.query(({ ctx }) => ({
@@ -40,5 +41,29 @@ describe("tRPC workspace authentication boundary", () => {
     >({
       code: "UNAUTHORIZED",
     });
+  });
+
+  it("issues a tool launch only for a verified owner session", async () => {
+    process.env.QUORATORIUM_TEMPLATORIUM_SSO_SECRET = "t".repeat(40);
+    const anonymous = appRouter.createCaller(unauthenticatedContext());
+    await expect(
+      anonymous.auth.toolLaunch({ tool: "templatorium" })
+    ).rejects.toMatchObject<Partial<TRPCError>>({ code: "UNAUTHORIZED" });
+
+    const owner = appRouter.createCaller({
+      ...unauthenticatedContext(),
+      user: { id: 42 } as TrpcContext["user"],
+      isOwner: true,
+      authenticatedUser: { id: 42 } as TrpcContext["authenticatedUser"],
+      isVerifiedOwner: true,
+    });
+    await expect(
+      owner.auth.toolLaunch({ tool: "templatorium" })
+    ).resolves.toMatchObject({
+      url: expect.stringContaining(
+        "https://templatorium-production.up.railway.app/launch#ticket="
+      ),
+    });
+    delete process.env.QUORATORIUM_TEMPLATORIUM_SSO_SECRET;
   });
 });
