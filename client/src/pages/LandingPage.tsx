@@ -123,10 +123,10 @@ export default function LandingPage() {
               Early access
             </a>
           </div>
-          <Link href="/workspace" className="ember-button ember-button-small">
+          <a href="#early-access" className="ember-button ember-button-small">
             Enter workspace
             <ArrowUpRight size={14} />
-          </Link>
+          </a>
         </div>
       </nav>
 
