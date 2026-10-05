@@ -155,7 +155,7 @@ export default function LandingPage() {
                 You just get the work.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <a href="#early-access" className="ember-button">
+                <a href="https://tally.so/r/jaOyB1" className="ember-button">
                   Get early access
                   <ArrowRight size={17} />
                 </a>
@@ -437,37 +437,6 @@ export default function LandingPage() {
               <p className="section-copy mx-auto">
                 Join the waitlist and tell us the first thing you'd ask her.
               </p>
-              <div
-                role="group"
-                aria-label="Early access email signup preview"
-                className="mx-auto mt-8 flex max-w-xl flex-col gap-3 sm:flex-row"
-              >
-                <label className="sr-only" htmlFor="early-access-email">
-                  Email address
-                </label>
-                <input
-                  id="early-access-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Email address"
-                  aria-describedby="early-access-status"
-                  className="min-h-[3.25rem] min-w-0 flex-1 rounded-xl border border-[#f28c38]/20 bg-[#090503] px-4 py-3 text-base text-[#fff8f2] outline-none placeholder:text-[#806d60] focus:border-[#f28c38]/55 focus:ring-2 focus:ring-[#f28c38]/15"
-                />
-                <button
-                  type="button"
-                  disabled
-                  className="ember-button min-h-[3.25rem] w-full disabled:cursor-not-allowed disabled:opacity-55 sm:w-auto"
-                >
-                  Get early access
-                  <ArrowRight size={17} />
-                </button>
-              </div>
-              <p
-                id="early-access-status"
-                className="mt-4 text-xs leading-5 text-[#a9978a]"
-              >
-                Waitlist signups aren't connected yet.
-              </p>
             </div>
           </div>
         </section>
@@ -484,7 +453,7 @@ export default function LandingPage() {
             <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#aa998c]">
               Bring the lesson idea. She'll bring the team.
             </p>
-            <a href="#early-access" className="ember-button mt-9">
+            <a href="https://tally.so/r/jaOyB1" className="ember-button mt-9">
               Get early access
               <ArrowRight size={17} />
             </a>
