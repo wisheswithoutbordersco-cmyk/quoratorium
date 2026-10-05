@@ -12,7 +12,6 @@ import {
   HeartHandshake,
   Layers3,
   Play,
-  Rocket,
   Search,
   ShieldCheck,
   Sparkles,
@@ -27,91 +26,47 @@ const orchestrationAgents = [
   {
     icon: Code2,
     name: "Builder",
-    model: "Creates the solution",
-    copy: "Turns your intent into production-ready code, files, and working interfaces.",
+    model: "Creates the materials",
+    copy: "Turns your lesson idea into finished, printable classroom resources.",
   },
   {
     icon: Search,
     name: "Researcher",
-    model: "Finds the right context",
-    copy: "Investigates requirements, patterns, and sources before decisions are made.",
+    model: "Finds the right content",
+    copy: "Verifies facts, standards, and sources before anything reaches your classroom.",
   },
   {
     icon: CheckCircle2,
     name: "Validator",
     model: "Protects the outcome",
-    copy: "Reviews quality, security, and completeness before work reaches you.",
-  },
-  {
-    icon: Rocket,
-    name: "Deployer",
-    model: "Ships with confidence",
-    copy: "Packages and moves approved work from the workspace into the world.",
+    copy: "Checks grade level, accuracy, and answer-key alignment before you print.",
   },
 ];
 
 const values = [
   {
     icon: SunMedium,
-    eyebrow: "Orange",
-    title: "Energy with purpose",
-    copy: "Warm, capable momentum that turns an idea into meaningful action.",
+    eyebrow: "Time back",
+    title: "More evenings for you",
+    copy: "Turn tomorrow's worksheet, center, or handout into classroom-ready materials without losing your evening.",
   },
   {
     icon: Gem,
-    eyebrow: "Pearl",
-    title: "Clarity and wellbeing",
-    copy: "Calm guidance, considered choices, and a workspace that never feels chaotic.",
+    eyebrow: "Your classroom",
+    title: "Your style leads",
+    copy: "Toríú follows your routines, grade level, and teaching style—not a one-size-fits-all template.",
   },
   {
     icon: ShieldCheck,
-    eyebrow: "Bull",
-    title: "Stability you can trust",
-    copy: "Dependable execution, careful validation, and strong safeguards at every step.",
+    eyebrow: "Classroom-ready",
+    title: "Ready before you print",
+    copy: "Checks help catch mismatched grade levels, facts, and answer keys before materials reach your students.",
   },
   {
     icon: Flower2,
-    eyebrow: "Carnation",
+    eyebrow: "Teacher-first",
     title: "Care in every interaction",
-    copy: "A helpful presence that listens, remembers context, and stays by your side.",
-  },
-];
-
-const plans = [
-  {
-    name: "Free",
-    price: "$0",
-    copy: "A simple way to meet Toríu and explore the workspace.",
-    features: ["25 credits per day", "Basic AI models", "3 projects"],
-    cta: "Get started",
-    href: "/workspace",
-  },
-  {
-    name: "Starter",
-    price: "$29",
-    copy: "For independent builders who want to move faster.",
-    features: [
-      "100 credits per day",
-      "All AI models",
-      "Unlimited projects",
-      "Priority support",
-    ],
-    cta: "Choose Starter",
-    href: "/workspace/billing",
-    featured: true,
-  },
-  {
-    name: "Pro",
-    price: "$99",
-    copy: "For power users shipping production work.",
-    features: [
-      "500 credits per day",
-      "Priority AI models",
-      "Unlimited projects",
-      "Custom deployments",
-    ],
-    cta: "Choose Pro",
-    href: "/workspace/billing",
+    copy: "Clear, encouraging support for the real work and time pressure of teaching.",
   },
 ];
 
@@ -122,7 +77,7 @@ function BrandMark({ compact = false }: { compact?: boolean }) {
         <HyperBlackQSmall className="h-7 w-7" />
       </div>
       {!compact && (
-        <span className="font-display text-sm font-bold tracking-[0.18em] text-[#fff8f2] sm:text-base">
+        <span className="font-display text-sm font-bold tracking-[0.18em] text-[#fff8f2] max-[360px]:hidden sm:text-base">
           QUORATORIUM
         </span>
       )}
@@ -159,13 +114,13 @@ export default function LandingPage() {
           </Link>
           <div className="hidden items-center gap-8 md:flex">
             <a href="#orchestration" className="nav-link">
-              Orchestration
+              How it works
             </a>
             <a href="#values" className="nav-link">
-              Values
+              For teachers
             </a>
-            <a href="#pricing" className="nav-link">
-              Pricing
+            <a href="#early-access" className="nav-link">
+              Early access
             </a>
           </div>
           <Link href="/workspace" className="ember-button ember-button-small">
@@ -186,35 +141,34 @@ export default function LandingPage() {
             >
               <div className="mb-7 inline-flex items-center gap-2 rounded-full border border-[#e77a25]/25 bg-[#e77a25]/8 px-3.5 py-2 text-[11px] font-semibold uppercase tracking-[0.16em] text-[#ffb065]">
                 <Sparkles size={13} />
-                Trusted multi-model orchestration
+                MEET TORIÚ
               </div>
-              <p className="mb-3 text-sm font-semibold uppercase tracking-[0.26em] text-[#d77a2c]">
-                Meet Toríu
-              </p>
-              <h1 className="font-display max-w-[820px] text-5xl font-bold leading-[0.94] tracking-[-0.055em] text-[#fff9f4] sm:text-6xl lg:text-[5.6rem]">
-                Your ideas,
-                <span className="block ember-text">orchestrated.</span>
+              <h1 className="font-display max-w-[820px] text-4xl font-bold leading-[1.02] tracking-[-0.055em] text-[#fff9f4] sm:text-6xl lg:text-[4.5rem]">
+                Tell her what you need for your classroom.
+                <span className="block ember-text">She handles the rest.</span>
               </h1>
-              <p className="mt-7 max-w-xl text-base leading-8 text-[#cdbeb3] sm:text-lg">
-                Toríu is your trustworthy orchestration agent inside
-                Quoratorium—coordinating specialized AI models to research,
-                build, validate, and ship the work that matters.
+              <p className="mt-7 max-w-xl text-base leading-7 text-[#cdbeb3] sm:text-lg sm:leading-8">
+                Toríú is your AI teaching assistant. Send her a photo of a
+                worksheet and she rebuilds it, fully editable. Ask for a
+                fractions center for tomorrow and it comes back classroom-ready,
+                differentiated, with an answer key. You never see the machinery.
+                You just get the work.
               </p>
               <div className="mt-9 flex flex-col gap-3 sm:flex-row">
-                <Link href="/workspace" className="ember-button">
-                  Start building with Toríu
+                <a href="https://tally.so/r/jaOyB1" className="ember-button">
+                  Get early access
                   <ArrowRight size={17} />
-                </Link>
-                <a href="#how" className="ember-button-secondary">
+                </a>
+                <a href="#watch" className="ember-button-secondary">
                   <Play size={15} fill="currentColor" />
                   See how it works
                 </a>
               </div>
               <div className="mt-10 flex flex-wrap gap-x-6 gap-y-3 text-xs text-[#9f8f84]">
                 {[
-                  "One conversation",
-                  "Multiple specialists",
+                  "One conversation, not five AI apps",
                   "You stay in control",
+                  "Built for real classroom deadlines",
                 ].map(item => (
                   <span key={item} className="flex items-center gap-2">
                     <Check size={13} className="text-[#ee852c]" /> {item}
@@ -261,23 +215,54 @@ export default function LandingPage() {
           </div>
         </section>
 
+        <section
+          id="watch"
+          className="scroll-mt-24 border-b border-[#f28c38]/10 bg-[#080402] py-20 sm:py-28"
+        >
+          <div className="mx-auto max-w-7xl px-5 sm:px-8">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="section-kicker">
+                A peek inside the classroom workflow
+              </p>
+              <h2 className="section-title">Watch Toríú work</h2>
+            </div>
+            <div
+              role="img"
+              aria-label="Demo video drops this week — follow @quoratorium."
+              className="relative mx-auto mt-10 flex aspect-video max-h-[620px] w-full max-w-5xl items-center justify-center overflow-hidden rounded-3xl border border-[#f28c38]/20 bg-[#0b0502] px-5 shadow-[0_35px_120px_rgba(139,49,4,0.2)] sm:mt-14 sm:rounded-[2rem]"
+            >
+              <div
+                className="ember-grid absolute inset-0 opacity-50"
+                aria-hidden="true"
+              />
+              <div
+                className="absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(216,97,22,0.13),transparent_65%)]"
+                aria-hidden="true"
+              />
+              <p className="relative max-w-md text-center text-base font-medium leading-7 text-[#f5d9c3] sm:text-xl sm:leading-8">
+                Demo video drops this week — follow @quoratorium.
+              </p>
+            </div>
+          </div>
+        </section>
+
         <section className="border-b border-[#f28c38]/10 bg-[#080402]">
           <div className="mx-auto grid max-w-7xl grid-cols-1 divide-y divide-[#f28c38]/10 px-5 sm:px-8 md:grid-cols-3 md:divide-x md:divide-y-0">
             {[
               [
                 ShieldCheck,
                 "Protection",
-                "Your work and data are handled with care.",
+                "Your materials and data stay yours.",
               ],
               [
                 Layers3,
                 "Identity",
-                "Your intent stays central from start to finish.",
+                "Your classroom needs lead — Toríú adapts to your style, not the other way around.",
               ],
               [
                 HeartHandshake,
                 "Friendliness",
-                "Clear guidance without needless complexity.",
+                "Clear answers without edu-jargon or tool-learning.",
               ],
             ].map(([Icon, title, copy]) => {
               const ValueIcon = Icon as typeof ShieldCheck;
@@ -306,8 +291,8 @@ export default function LandingPage() {
 
         <section id="orchestration" className="relative py-24 sm:py-32">
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
-            <div className="grid gap-12 lg:grid-cols-[0.78fr_1.22fr] lg:gap-20">
-              <div className="lg:sticky lg:top-28 lg:self-start">
+            <div className="grid gap-12">
+              <div className="max-w-3xl">
                 <p className="section-kicker">One guide. Many specialists.</p>
                 <h2 className="section-title">
                   Toríu keeps the whole team moving as one.
@@ -317,20 +302,16 @@ export default function LandingPage() {
                   chooses the right specialist, preserves context, and checks
                   the work before it comes back to you.
                 </p>
-                <div className="mt-8 rounded-2xl border border-[#f28c38]/15 bg-[#d86116]/[0.06] p-5">
-                  <div className="flex items-center gap-3">
-                    <Bot size={19} className="text-[#ff9b45]" />
-                    <span className="text-sm font-semibold text-[#fff4ea]">
-                      Toríu coordinates the handoffs
-                    </span>
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-[#a9978a]">
-                    Less tool switching. Less lost context. More finished work.
+                <div className="mt-8 flex max-w-xl items-start gap-3 rounded-2xl border border-[#f28c38]/15 bg-[#d86116]/[0.06] p-5">
+                  <Bot size={19} className="mt-0.5 shrink-0 text-[#ff9b45]" />
+                  <p className="text-sm leading-6 text-[#a9978a]">
+                    Toríú coordinates the handoffs — less searching, less prep
+                    time, more finished lessons.
                   </p>
                 </div>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2">
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
                 {orchestrationAgents.map((agent, index) => (
                   <motion.div
                     key={agent.name}
@@ -371,7 +352,7 @@ export default function LandingPage() {
         >
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <div className="max-w-2xl">
-              <p className="section-kicker">A calmer way to build</p>
+              <p className="section-kicker">A calmer way to teach</p>
               <h2 className="section-title">
                 From first thought to finished work.
               </h2>
@@ -380,18 +361,18 @@ export default function LandingPage() {
               {[
                 [
                   "01",
-                  "Tell Toríu",
-                  "Describe the outcome in your own words. Add files, examples, or constraints whenever you need.",
+                  "Tell Toríú",
+                  "Describe what you need in your own words — a worksheet rebuilt, a center activity, a quiz, a handout. Attach an example anytime.",
                 ],
                 [
                   "02",
                   "Watch the work",
-                  "Toríu forms a plan, coordinates the right agents, and keeps every step visible in one conversation.",
+                  "Toríú plans it, calls the right specialists, and keeps every step visible in one conversation.",
                 ],
                 [
                   "03",
                   "Review and ship",
-                  "Inspect the result, ask for refinements, and deploy only when the work feels right.",
+                  "Check the result, ask for changes, and download classroom-ready files when it feels right.",
                 ],
               ].map(([step, title, copy]) => (
                 <div key={step} className="bg-[#090503] p-7 sm:p-9">
@@ -414,14 +395,13 @@ export default function LandingPage() {
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <div className="grid gap-12 lg:grid-cols-[0.72fr_1.28fr] lg:gap-20">
               <div>
-                <p className="section-kicker">The meaning behind Toríu</p>
+                <p className="section-kicker">Made for the work teachers do</p>
                 <h2 className="section-title">
-                  Guided by values. Driven by purpose.
+                  More support for every school day.
                 </h2>
                 <p className="section-copy">
-                  Toríu is designed to feel capable without feeling cold—an
-                  agent with the steadiness to protect your work and the warmth
-                  to help you move forward.
+                  From the first idea to the final answer key, Toríú helps you
+                  make useful classroom materials in your own teaching style.
                 </p>
               </div>
               <div className="grid gap-4 sm:grid-cols-2">
@@ -445,65 +425,18 @@ export default function LandingPage() {
         </section>
 
         <section
-          id="pricing"
-          className="border-y border-[#f28c38]/10 bg-[#080402] py-24 sm:py-32"
+          id="early-access"
+          className="scroll-mt-24 border-y border-[#f28c38]/10 bg-[#080402] py-20 sm:py-28"
         >
           <div className="mx-auto max-w-7xl px-5 sm:px-8">
             <div className="mx-auto max-w-2xl text-center">
-              <p className="section-kicker">Simple pricing</p>
-              <h2 className="section-title">Start with one conversation.</h2>
+              <p className="section-kicker">EARLY ACCESS</p>
+              <h2 className="section-title">
+                Toríú is opening to teachers soon.
+              </h2>
               <p className="section-copy mx-auto">
-                Choose the pace that fits your work. Every plan keeps Toríu at
-                the center.
+                Join the waitlist and tell us the first thing you'd ask her.
               </p>
-            </div>
-            <div className="mt-14 grid gap-5 lg:grid-cols-3">
-              {plans.map(plan => (
-                <EmberCard
-                  key={plan.name}
-                  className={`flex h-full flex-col p-7 sm:p-8 ${plan.featured ? "ember-card-featured" : ""}`}
-                >
-                  {plan.featured && (
-                    <span className="mb-5 w-fit rounded-full bg-[#d76617] px-3 py-1 text-[10px] font-bold uppercase tracking-[0.16em] text-white">
-                      Most popular
-                    </span>
-                  )}
-                  <h3 className="font-display text-2xl font-semibold">
-                    {plan.name}
-                  </h3>
-                  <p className="mt-2 min-h-12 text-sm leading-6 text-[#9f8f84]">
-                    {plan.copy}
-                  </p>
-                  <div className="mt-7 flex items-end gap-1">
-                    <span className="font-display text-5xl font-bold tracking-[-0.05em]">
-                      {plan.price}
-                    </span>
-                    <span className="pb-1 text-sm text-[#7f6d61]">/ month</span>
-                  </div>
-                  <ul className="mt-8 flex-1 space-y-3">
-                    {plan.features.map(feature => (
-                      <li
-                        key={feature}
-                        className="flex items-center gap-3 text-sm text-[#c8b7aa]"
-                      >
-                        <Check size={14} className="text-[#ed852d]" />
-                        {feature}
-                      </li>
-                    ))}
-                  </ul>
-                  <Link
-                    href={plan.href}
-                    className={
-                      plan.featured
-                        ? "ember-button mt-9"
-                        : "ember-button-secondary mt-9"
-                    }
-                  >
-                    {plan.cta}
-                    <ArrowRight size={15} />
-                  </Link>
-                </EmberCard>
-              ))}
             </div>
           </div>
         </section>
@@ -515,16 +448,15 @@ export default function LandingPage() {
               T
             </div>
             <h2 className="font-display text-4xl font-bold tracking-[-0.04em] sm:text-6xl">
-              Ready to build with Toríu?
+              Ready to meet Toríú?
             </h2>
             <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-[#aa998c]">
-              Bring the idea. Toríu will assemble the team, keep the context,
-              and help you carry it across the finish line.
+              Bring the lesson idea. She'll bring the team.
             </p>
-            <Link href="/workspace" className="ember-button mt-9">
-              Enter Quoratorium
+            <a href="https://tally.so/r/jaOyB1" className="ember-button mt-9">
+              Get early access
               <ArrowRight size={17} />
-            </Link>
+            </a>
           </div>
         </section>
       </main>
@@ -533,7 +465,7 @@ export default function LandingPage() {
         <div className="mx-auto flex max-w-7xl flex-col gap-7 px-5 py-10 sm:px-8 md:flex-row md:items-center md:justify-between">
           <BrandMark />
           <p className="text-sm text-[#7f6d61]">
-            Toríu is here to orchestrate possibilities—and empower your journey.
+            Toríú is here to give teachers their evenings back.
           </p>
           <p className="font-mono text-[10px] uppercase tracking-[0.12em] text-[#5e4e44]">
             © 2026 Quoratorium
