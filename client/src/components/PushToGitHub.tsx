@@ -42,7 +42,7 @@ export function PushToGitHub({
       {!isLoading && !gitStatus?.connected ? (
         <div className="space-y-3">
           <p className="text-xs text-white/50">
-            Connect GitHub first so Toríu can inspect your codebase. GitHub
+            Connect GitHub first so your assistant can inspect your codebase. GitHub
             reading is safe and does not modify repositories.
           </p>
           <button

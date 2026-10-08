@@ -354,7 +354,7 @@ export default function Projects() {
                     What are you building?
                   </h2>
                   <p className="text-xs text-muted-foreground mb-4">
-                    Toríu will analyze your project and create a build plan
+                    Your assistant will analyze your project and create a build plan
                   </p>
                   <div className="grid grid-cols-2 gap-2 mb-4">
                     {PROJECT_TYPES.map(type => (
@@ -397,7 +397,7 @@ export default function Projects() {
                     Project Details
                   </h2>
                   <p className="text-xs text-muted-foreground mb-4">
-                    Describe what you want - Toríu will break it into phases
+                    Describe what you want, and your assistant will break it into phases
                   </p>
                   <div className="space-y-3 mb-4">
                     <div>
@@ -417,7 +417,7 @@ export default function Projects() {
                     </div>
                     <div>
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1 block">
-                        What should Toríu build?
+                        What should your assistant build?
                       </label>
                       <textarea
                         value={newProject.description}
@@ -459,7 +459,7 @@ export default function Projects() {
                     </button>
                   </div>
                   <p className="text-[9px] text-muted-foreground/40 mt-3 text-center">
-                    A build brief is required. Toríu will route to Builder
+                    A build brief is required. Your assistant will route to Builder
                     (OpenAI) for code generation and Validator (Claude) for
                     review.
                   </p>

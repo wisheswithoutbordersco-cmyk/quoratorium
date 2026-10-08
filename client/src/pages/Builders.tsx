@@ -21,7 +21,7 @@ import { useOrchestrationStore } from "@/stores";
 const builderDefs = [
   {
     id: "captain",
-    name: "Toríu",
+    name: "Q",
     type: "Orchestrator",
     icon: Bot,
     capabilities: ["Planning", "Routing", "Analysis", "Coordination"],

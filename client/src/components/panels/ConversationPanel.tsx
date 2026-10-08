@@ -31,7 +31,7 @@ import { toast } from "sonner";
 import { HolographicCode } from "@/components/HolographicCode";
 import { LivePreview } from "@/components/LivePreview";
 import { DeployModal } from "@/components/DeployModal";
-import { ToriuAvatar } from "@/components/ToriuAvatar";
+import { QIdentity } from "@/components/QIdentity";
 import {
   useConversationStore,
   useOrchestrationStore,
@@ -592,7 +592,7 @@ export function ConversationPanel({
       );
       if (files.length > remainingSlots) {
         toast.error(
-          `Toríu accepts up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`
+          `You can add up to ${MAX_CHAT_ATTACHMENTS} attachments per message.`
         );
       }
       for (const file of files.slice(0, remainingSlots)) {
@@ -738,7 +738,7 @@ export function ConversationPanel({
             exit={{ opacity: 0, y: -4 }}
           >
             <div className="relative">
-              <ToriuAvatar size={18} active />
+              <QIdentity size={20} state="thinking" />
               <motion.div
                 className="absolute inset-0 rounded-full"
                 style={{ boxShadow: "0 0 8px 2px rgba(255,255,255,0.15)" }}
@@ -889,7 +889,7 @@ export function ConversationPanel({
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask Toríu to build, research, or validate..."
+            placeholder="Ask your assistant to build, research, or validate..."
             className="flex-1 bg-transparent text-base sm:text-sm text-foreground placeholder:text-muted-foreground/40 resize-none outline-none max-h-[120px] min-h-[44px] sm:min-h-0 py-2 sm:py-0"
             rows={1}
           />
@@ -974,9 +974,9 @@ function MessageBubble({
       >
         {!isUser && (
           <div className="flex items-center gap-1.5 mb-1">
-            <ToriuAvatar size={18} />
+            <QIdentity size={18} state="idle" />
             <span className="text-[9px] text-primary/60 font-medium tracking-wider uppercase">
-              Toríu
+              Quoratorium
             </span>
           </div>
         )}
@@ -984,8 +984,8 @@ function MessageBubble({
           className={
             "rounded-2xl border px-4 py-3.5 text-[15px] sm:text-[15px] leading-[1.7] transition-colors " +
             (isUser
-              ? "border-orange-300/25 bg-[linear-gradient(145deg,#e77827_0%,#bd4d0d_100%)] text-primary-foreground shadow-[inset_0_1px_0_rgba(255,230,204,0.22),0_10px_28px_rgba(112,35,3,0.3)]"
-              : "bg-[#100a06] border-primary/25 text-foreground shadow-[inset_0_1px_0_rgba(255,190,126,0.06),inset_3px_0_0_rgba(216,102,24,0.28),0_10px_28px_rgba(0,0,0,0.3)]")
+              ? "backdrop-blur-xl border-white/15 bg-white/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_10px_28px_rgba(0,0,0,0.3)]"
+              : "backdrop-blur-xl bg-white/[0.025] border-white/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_3px_0_0_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.3)]")
           }
         >
           {isUser ? (

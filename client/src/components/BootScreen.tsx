@@ -4,15 +4,13 @@
  */
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { ToriuAvatar } from "./ToriuAvatar";
+import { HyperBlackQHero } from "./HyperBlackQ";
 
 const BOOT_LINES = [
   "Initializing Quoratorium v3.0...",
-  "Loading neural orchestration engine...",
-  "Connecting to DeepSeek (Builder)...",
-  "Connecting to Gemini (Validator)...",
-  "Connecting to OpenRouter (Router)...",
-  "Calibrating Toríu routing...",
+  "Preparing your tools...",
+  "Restoring your workspace...",
+  "Checking your session...",
   "System ready.",
 ];
 
@@ -62,30 +60,30 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
       {!complete && (
         <motion.div
           className="fixed inset-0 z-[9999] flex flex-col items-center justify-center"
-          style={{ backgroundColor: "#050302" }}
+          style={{ backgroundColor: "#000000" }}
           exit={{ opacity: 0 }}
           transition={{ duration: 0.5 }}
         >
-          {/* Ambient glow — hyper-dark, barely visible */}
+          {/* Soft silver glow behind the glass Q */}
           <div className="absolute inset-0 overflow-hidden">
             <motion.div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] rounded-full"
               style={{
-                background: "radial-gradient(circle, rgba(216,102,24,0.14) 0%, transparent 70%)",
+                background: "radial-gradient(circle, rgba(255,255,255,0.08) 0%, transparent 70%)",
               }}
               animate={{ scale: [1, 1.2, 1], opacity: [0.4, 0.7, 0.4] }}
               transition={{ duration: 4, repeat: Infinity, ease: "easeInOut" }}
             />
           </div>
 
-          {/* Toríu agent identity */}
+          {/* Quoratorium identity */}
           <motion.div
             className="relative mb-8"
             initial={{ opacity: 0, scale: 0.8 }}
             animate={{ opacity: 1, scale: 1 }}
             transition={{ duration: 0.6, ease: [0.23, 1, 0.32, 1] }}
           >
-            {/* Subtle ember glow */}
+            {/* Subtle glass glow */}
             <motion.div
               className="absolute inset-0 flex items-center justify-center"
               style={{ filter: "blur(24px)" }}
@@ -95,16 +93,16 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
               <div
                 className="w-24 h-24 rounded-full"
                 style={{
-                  background: "radial-gradient(circle, rgba(239,126,43,0.22) 0%, transparent 70%)",
+                  background: "radial-gradient(circle, rgba(255,255,255,0.16) 0%, transparent 70%)",
                 }}
               />
             </motion.div>
-            <ToriuAvatar size={112} active className="relative z-10" />
+            <HyperBlackQHero size={144} className="relative z-10" />
           </motion.div>
 
           <div className="mb-6 text-center">
-            <p className="font-display text-lg font-semibold tracking-[0.08em] text-foreground">TORÍU</p>
-            <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-primary/70">Quoratorium orchestration agent</p>
+            <p className="font-display text-lg font-semibold tracking-[0.18em] text-foreground">QUORATORIUM</p>
+            <p className="mt-1 text-[10px] uppercase tracking-[0.18em] text-muted-foreground/70">Owner workspace</p>
           </div>
 
           {/* Boot text */}
@@ -132,8 +130,8 @@ export function BootScreen({ onComplete }: { onComplete: () => void }) {
             <motion.div
               className="h-full rounded-full"
               style={{
-                background: "linear-gradient(90deg, #9a3d0b, #ef852d)",
-                boxShadow: "0 0 10px rgba(216,102,24,0.45)",
+                background: "linear-gradient(90deg, #777d88, #f1f2f5)",
+                boxShadow: "0 0 10px rgba(255,255,255,0.2)",
               }}
               animate={{ width: `${progress}%` }}
               transition={{ duration: 0.1 }}
