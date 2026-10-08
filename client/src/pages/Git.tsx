@@ -194,13 +194,13 @@ export default function Git() {
         <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
-              Toríu GitHub Connection
+              Owner GitHub Connection
             </p>
             <h1 className="text-3xl font-bold tracking-tight">
               Repository Explorer
             </h1>
             <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
-              Toríu can now see your codebase, explain what it does, and find
+              Quoratorium can now inspect your codebase, explain what it does, and find
               where things live. Repository browsing stays read-only; proposed
               changes require your separate approval before GitHub is touched.
             </p>
@@ -231,8 +231,8 @@ export default function Git() {
                 <p className="font-medium">Read-only GitHub access is active</p>
                 <p className="mt-1 text-sm text-muted-foreground">
                   Repository listing, structure, code search, file reading, and
-                  commit history are audited. Toríu cannot create repositories,
-                  merge code, or change GitHub settings. A toriu/ branch and
+                  commit history are audited. The assistant cannot create repositories,
+                  merge code, or change GitHub settings. A dedicated branch and
                   draft pull request can only be created from an exact proposal
                   you unlock, review, and confirm here.
                 </p>
@@ -258,7 +258,7 @@ export default function Git() {
               {!showConnectForm ? (
                 <div className="flex flex-col items-start gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <p className="max-w-2xl text-sm text-muted-foreground">
-                    Connect the account Toríu should read. The token is
+                    Connect the owner account to browse. The token is
                     encrypted server-side and used only by the GitHub service.
                   </p>
                   <Button onClick={() => setShowConnectForm(true)}>
@@ -269,7 +269,7 @@ export default function Git() {
                 <div className="max-w-xl space-y-3">
                   <p className="text-sm text-muted-foreground">
                     Paste a GitHub personal access token that can read the
-                    repositories you want Toríu to inspect.
+                    repositories you want your assistant to inspect.
                   </p>
                   <Input
                     type="password"

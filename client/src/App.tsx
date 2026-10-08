@@ -1,6 +1,6 @@
 /**
  * Q Workspace — Application Root
- * Landing page at /, workspace at /workspace/*
+ * The root domain opens the protected owner workspace.
  */
 import { useEffect } from "react";
 import { Toaster } from "@/components/ui/sonner";
@@ -11,9 +11,6 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import { SettingsInitializer } from "./components/SettingsInitializer";
 import { ThemeProvider } from "./contexts/ThemeContext";
 import { PasswordGate } from "./components/PasswordGate";
-
-// Landing Page
-import LandingPage from "./pages/LandingPage";
 
 // Workspace Pages
 import Home from "./pages/Home";
@@ -164,7 +161,9 @@ function WorkspaceRouter() {
 function Router() {
   return (
     <Switch>
-      <Route path="/" component={LandingPage} />
+      <Route path="/">
+        <Redirect to="/workspace" replace />
+      </Route>
       <Route path="/shared/:slug" component={SharedProject} />
       <Route>
         <PasswordGate>
@@ -184,9 +183,9 @@ function App() {
             position="bottom-right"
             toastOptions={{
               style: {
-                background: "#0b0704",
-                border: "1px solid rgba(242,140,56,0.18)",
-                color: "#f7efe9",
+                background: "rgba(12,12,14,0.92)",
+                border: "1px solid rgba(255,255,255,0.1)",
+                color: "#f1f2f5",
               },
             }}
           />

@@ -4,7 +4,7 @@
  */
 import { useState, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, Plus, Search, Trash2, Loader2, Pencil, GraduationCap, Sparkles, AlertCircle, BookOpen, Lightbulb, Shield, Star, Clock } from "lucide-react";
+import { Brain, Plus, Search, Trash2, Loader2, Pencil, Sparkles, AlertCircle, BookOpen, Lightbulb, Shield, Star, Clock } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
@@ -157,7 +157,7 @@ export default function Memory() {
                 Agent Memory
               </h1>
               <p className="text-[11px] text-muted-foreground/50 mt-1">
-                Toríu remembers your preferences, corrections, and context across sessions
+                Your assistant remembers your preferences, corrections, and context across sessions
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -167,8 +167,8 @@ export default function Memory() {
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.97 }}
               >
-                <GraduationCap size={13} />
-                Teach Toríu
+                <BookOpen size={13} />
+                Add correction
               </motion.button>
               <motion.button
                 onClick={openCreate}
@@ -339,7 +339,7 @@ export default function Memory() {
               <p className="text-xs text-muted-foreground/40 mt-1">
                 {search || activeFilter !== "all"
                   ? "Try adjusting your search or filter"
-                  : "Teach Toríu about your preferences and corrections"}
+                  : "Add memories for your preferences and corrections"}
               </p>
             </div>
           )}
@@ -369,18 +369,18 @@ export default function Memory() {
               onClick={(e) => e.stopPropagation()}
             >
               <h2 className="text-base font-display text-foreground mb-1 flex items-center gap-2">
-                {modalMode === "teach" && <GraduationCap size={16} className="text-primary" />}
+                {modalMode === "teach" && <BookOpen size={16} className="text-primary" />}
                 {modalMode === "edit" && <Pencil size={16} className="text-primary" />}
                 {modalMode === "create" && <Plus size={16} className="text-primary" />}
                 {modalMode === "teach"
-                  ? "Teach Toríu"
+                  ? "Add correction"
                   : modalMode === "edit"
                   ? "Edit Memory"
                   : "Add Memory"}
               </h2>
               <p className="text-[10px] text-muted-foreground/50 mb-4">
                 {modalMode === "teach"
-                  ? "Tell Toríu something it should always remember — corrections have highest priority"
+                  ? "Tell your assistant what to remember — corrections take priority"
                   : "Store context that persists across all sessions"}
               </p>
 
@@ -389,7 +389,7 @@ export default function Memory() {
                   type="text"
                   value={formData.title}
                   onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                  placeholder={modalMode === "teach" ? "What should Toríu remember?" : "Title"}
+                  placeholder={modalMode === "teach" ? "What should your assistant remember?" : "Title"}
                   className="w-full px-3 py-2 rounded-lg bg-background border border-border text-sm text-foreground placeholder:text-muted-foreground/40 outline-none focus:border-primary/50"
                   autoFocus
                 />

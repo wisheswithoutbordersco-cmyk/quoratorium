@@ -43,16 +43,16 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   const configured = status.data?.configured !== false;
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[#050302] px-4">
+    <div className="min-h-screen flex items-center justify-center bg-black px-4 py-8">
       <div
-        className={`w-full max-w-sm p-8 rounded-3xl bg-[#0b0704] border border-primary/20 ${shake ? "animate-shake" : ""}`}
+        className={`relative w-full max-w-md p-8 sm:p-10 rounded-[1.75rem] bg-white/[0.035] backdrop-blur-2xl border border-white/10 ${shake ? "animate-shake" : ""}`}
         style={{
           boxShadow:
-            "0 0 70px rgba(216, 102, 24, 0.12), 0 24px 48px rgba(0, 0, 0, 0.8)",
+            "inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 80px rgba(0,0,0,0.72)",
         }}
       >
         <div className="flex flex-col items-center gap-4 mb-8">
-          <HyperBlackQHero className="scale-75" />
+          <HyperBlackQHero size={192} />
           <div className="text-center">
             <h1 className="font-display text-xl font-bold text-white tracking-[0.12em]">
               QUORATORIUM
@@ -60,7 +60,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
             <p className="mt-2 text-sm text-white/40">
               {loading
                 ? "Verifying workspace access..."
-                : "Enter your owner access code to meet Toríu."}
+                : "Enter your owner access code to open your workspace."}
             </p>
           </div>
         </div>
@@ -84,7 +84,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               autoFocus
               disabled={loading || unlock.isPending}
               autoComplete="current-password"
-              className="w-full px-4 py-3 rounded-xl bg-white/[0.03] border border-primary/15 text-white placeholder:text-white/30 focus:outline-none focus:border-primary/60 transition-colors text-center text-lg tracking-widest disabled:opacity-50"
+              className="w-full px-4 py-4 rounded-xl bg-white/[0.035] border border-white/10 text-white placeholder:text-white/35 focus:outline-none focus:border-white/30 focus:bg-white/[0.06] transition-colors text-center text-lg tracking-widest disabled:opacity-50"
             />
             {error && (
               <p className="text-red-400 text-xs text-center">{error}</p>
@@ -92,13 +92,13 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
             <button
               type="submit"
               disabled={loading || unlock.isPending || !password.trim()}
-              className="w-full py-3 rounded-xl bg-primary border border-primary text-white font-semibold tracking-wide transition-all duration-200 hover:bg-[#e87825] hover:border-[#f59a44] active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full py-3.5 rounded-xl bg-white/[0.12] border border-white/15 text-white font-semibold tracking-wide transition-all duration-200 hover:bg-white/[0.18] hover:border-white/30 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 boxShadow:
-                  "0 0 18px rgba(216, 102, 24, 0.15), inset 0 0 12px rgba(216, 102, 24, 0.06)",
+                  "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.28)",
               }}
             >
-              {unlock.isPending ? "Verifying..." : "Enter"}
+              {unlock.isPending ? "Verifying..." : "Open workspace"}
             </button>
           </form>
         )}

@@ -26,13 +26,13 @@ interface NeuralOrchestrationProps {
 }
 
 const WORKER_CONFIGS: Record<string, { label: string; color: string; glowColor: string }> = {
-  captain: { label: "Toríu", color: "#d86618", glowColor: "rgba(216, 102, 24, 0.6)" },
-  builder: { label: "Builder", color: "#3b82f6", glowColor: "rgba(59, 130, 246, 0.6)" },
-  validator: { label: "Validator", color: "#10b981", glowColor: "rgba(16, 185, 129, 0.6)" },
-  research: { label: "Research", color: "#f59a44", glowColor: "rgba(245, 154, 68, 0.6)" },
-  artist: { label: "Artist", color: "#f59e0b", glowColor: "rgba(245, 158, 11, 0.6)" },
-  browser: { label: "Browser", color: "#06b6d4", glowColor: "rgba(6, 182, 212, 0.6)" },
-  executor: { label: "Executor", color: "#f97316", glowColor: "rgba(249, 115, 22, 0.6)" },
+  captain: { label: "Q", color: "#e4e6eb", glowColor: "rgba(255, 255, 255, 0.34)" },
+  builder: { label: "Builder", color: "#b8bdc6", glowColor: "rgba(216, 219, 226, 0.42)" },
+  validator: { label: "Validator", color: "#e4e6eb", glowColor: "rgba(255, 255, 255, 0.45)" },
+  research: { label: "Research", color: "#9298a4", glowColor: "rgba(178, 183, 193, 0.34)" },
+  artist: { label: "Artist", color: "#c2c6d0", glowColor: "rgba(224, 226, 232, 0.4)" },
+  browser: { label: "Browser", color: "#7f8590", glowColor: "rgba(164, 169, 179, 0.3)" },
+  executor: { label: "Executor", color: "#aeb3bd", glowColor: "rgba(211, 215, 224, 0.35)" },
 };
 
 export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcessing = false }: NeuralOrchestrationProps) {
@@ -50,7 +50,7 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
     const result: WorkerNode[] = [
       {
         id: "captain",
-        label: "Toríu",
+        label: "Q",
         color: WORKER_CONFIGS.captain.color,
         glowColor: WORKER_CONFIGS.captain.glowColor,
         x: centerX,

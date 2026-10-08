@@ -203,7 +203,7 @@ export default function Home() {
           )}
         </AnimatePresence>
 
-        {/* Center Panel — Cognitive Zone (chat with Toríu) */}
+        {/* Center Panel — owner assistant conversation */}
         <motion.div
           className="flex flex-col relative surface-base flex-1 lg:border-r lg:border-border"
           layout

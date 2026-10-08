@@ -108,7 +108,7 @@ export function GitHubProposalPanel({
       setConfirmationText("");
       await refresh();
       toast.success(
-        `Draft pull request #${proposal.pull_request_number} opened. Toríu cannot merge it.`
+        `Draft pull request #${proposal.pull_request_number} opened. The assistant cannot merge it.`
       );
     },
     onError: async error => {
@@ -138,7 +138,7 @@ export function GitHubProposalPanel({
                 Reviewed change proposals
               </CardTitle>
               <p className="mt-1 text-sm text-muted-foreground">
-                Toríu can prepare these records, but only you can approve the
+                Your assistant can prepare these records, but only you can approve the
                 external GitHub action.
               </p>
             </div>
@@ -163,7 +163,7 @@ export function GitHubProposalPanel({
           )}
           {proposals.length === 0 ? (
             <div className="rounded-lg border border-dashed border-border p-5 text-sm text-muted-foreground">
-              No proposals yet. Ask Toríu to inspect a repository and propose a
+              No proposals yet. Ask your assistant to inspect a repository and propose a
               specific code change. She will save the complete payload here
               without changing GitHub.
             </div>
@@ -373,8 +373,8 @@ export function GitHubProposalPanel({
               <div>
                 <h3 className="font-semibold">Final GitHub confirmation</h3>
                 <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
-                  This will create one <span className="font-mono">toriu/</span>{" "}
-                  branch, one commit containing the files below, and one draft
+                  This will create one dedicated branch, one commit containing
+                  the files below, and one draft
                   pull request. It will not merge anything.
                 </p>
               </div>
@@ -466,7 +466,7 @@ export function GitHubProposalPanel({
             </div>
             <p className="mt-3 flex items-center gap-1.5 text-[10px] text-emerald-300/80">
               <CheckCircle2 className="h-3.5 w-3.5" /> Merge remains unavailable
-              to Toríu.
+              to the assistant.
             </p>
           </div>
         </div>
