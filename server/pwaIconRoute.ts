@@ -8,7 +8,7 @@
 import { Router, Request, Response } from "express";
 import path from "path";
 import { getSupabaseAdmin } from "./supabase";
-import { resolveAuthenticatedUser } from "./_core/context";
+import { isOwnerIdentity, resolveAuthenticatedUser } from "./_core/context";
 
 export const pwaIconRouter = Router();
 
@@ -71,8 +71,8 @@ pwaIconRouter.post(
       const user = await resolveAuthenticatedUser(req);
       if (!user)
         return res.status(401).json({ error: "Authentication required" });
-      if (user.role !== "admin")
-        return res.status(403).json({ error: "Administrator access required" });
+      if (!isOwnerIdentity(user))
+        return res.status(403).json({ error: "Owner access required" });
 
       const { icon } = req.body;
       if (!icon || typeof icon !== "string") {

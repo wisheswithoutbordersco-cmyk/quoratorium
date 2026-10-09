@@ -116,7 +116,7 @@ async function startServer() {
     );
   }
 
-  // PWA icon reads are public; writes enforce an authenticated admin in the router.
+  // PWA icon reads are public; writes require the verified workspace owner.
   app.use(pwaIconRouter);
 
   // Reliable image route: preconfigured GPT Image primary with one durable

@@ -45,6 +45,7 @@ export function useAuth(_options?: { redirectOnUnauthenticated?: boolean }) {
 
   return {
     user,
+    isOwner: Boolean(session.data?.isVerifiedOwner),
     loading: session.isLoading || session.isFetching,
     error: session.error instanceof Error ? session.error : null,
     isAuthenticated: Boolean(session.data?.authenticated),
