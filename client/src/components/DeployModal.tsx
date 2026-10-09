@@ -163,8 +163,8 @@ export function DeployModal({
           {/* Header */}
           <div className="flex items-center justify-between px-6 py-4 border-b border-white/5">
             <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-orange-500/20 to-blue-500/20 border border-orange-500/20 flex items-center justify-center">
-                <Rocket className="w-4 h-4 text-purple-400" />
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-primary/20 flex items-center justify-center">
+                <Rocket className="w-4 h-4 text-primary" />
               </div>
               <div>
                 <h2 className="text-sm font-semibold text-white">
@@ -208,7 +208,7 @@ export function DeployModal({
                         key={platform.id}
                         onClick={() => void handleDeploy(platform.id)}
                         disabled={disabled}
-                        className="w-full group flex items-center gap-4 p-4 rounded-xl border border-white/5 enabled:hover:border-orange-500/20 bg-white/[0.02] enabled:hover:bg-orange-500/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-60"
+                        className="w-full group flex items-center gap-4 p-4 rounded-xl border border-white/5 enabled:hover:border-primary/25 bg-white/[0.02] enabled:hover:bg-primary/5 transition-all text-left disabled:cursor-not-allowed disabled:opacity-60"
                       >
                         <PlatformLogo platform={platform.id} />
                         <div className="flex-1">
@@ -235,7 +235,7 @@ export function DeployModal({
                             {status?.unsupportedReason || platform.description}
                           </p>
                         </div>
-                        <Zap className="w-4 h-4 text-white/10 group-hover:text-purple-400 transition-colors" />
+                        <Zap className="w-4 h-4 text-white/10 group-hover:text-primary transition-colors" />
                       </button>
                     );
                   })}
@@ -268,8 +268,8 @@ export function DeployModal({
                       ease: "easeInOut",
                     }}
                   >
-                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-500/20 to-blue-500/20 border border-orange-500/20 flex items-center justify-center">
-                      <Rocket className="w-7 h-7 text-purple-400" />
+                    <div className="w-16 h-16 rounded-full bg-gradient-to-br from-blue-500/20 to-violet-500/20 border border-primary/20 flex items-center justify-center">
+                      <Rocket className="w-7 h-7 text-primary" />
                     </div>
                   </motion.div>
 

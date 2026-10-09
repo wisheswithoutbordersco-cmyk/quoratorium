@@ -197,7 +197,7 @@ export function ProjectSidebar({
       case "completed":
         return "#10B981";
       case "active":
-        return "#d86618";
+        return "var(--q-blue)";
       case "failed":
         return "#EF4444";
       default:
@@ -270,7 +270,7 @@ export function ProjectSidebar({
           <div className="p-3 border-b border-border">
             <motion.button
               onClick={handleNewChat}
-              className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[13px] font-semibold shadow-[inset_0_1px_0_rgba(255,190,126,0.05),0_6px_18px_rgba(0,0,0,0.2)] hover:bg-primary/20 hover:border-primary/45 transition-colors"
+              className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-primary/10 border border-primary/30 text-primary text-[13px] font-semibold shadow-[inset_0_1px_0_rgba(145,170,255,0.05),0_6px_18px_rgba(0,0,0,0.2)] hover:bg-primary/20 hover:border-primary/45 transition-colors"
               whileTap={{ scale: 0.97 }}
             >
               <Plus size={12} />
@@ -284,7 +284,7 @@ export function ProjectSidebar({
               onClick={() => setTab("conversations")}
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                 tab === "conversations"
-                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(255,190,126,0.04)]"
+                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(145,170,255,0.04)]"
                   : "text-muted-foreground/50 hover:text-muted-foreground border border-transparent"
               }`}
             >
@@ -295,7 +295,7 @@ export function ProjectSidebar({
               onClick={() => setTab("projects")}
               className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-2 rounded-lg text-xs font-semibold transition-all ${
                 tab === "projects"
-                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(255,190,126,0.04)]"
+                  ? "bg-primary/10 text-primary border border-primary/30 shadow-[inset_0_1px_0_rgba(145,170,255,0.04)]"
                   : "text-muted-foreground/50 hover:text-muted-foreground border border-transparent"
               }`}
             >
@@ -306,7 +306,7 @@ export function ProjectSidebar({
 
           {/* Search */}
           <div className="px-3 py-1.5">
-            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary border border-primary/20 shadow-[inset_0_1px_0_rgba(255,190,126,0.035)] focus-within:border-primary/45 transition-colors">
+            <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-secondary border border-primary/20 shadow-[inset_0_1px_0_rgba(145,170,255,0.035)] focus-within:border-primary/45 transition-colors">
               <Search size={13} className="text-muted-foreground/60" />
               <input
                 type="text"
@@ -348,10 +348,10 @@ export function ProjectSidebar({
                     <motion.button
                       key={conv.id}
                       onClick={() => void handleSelectConversation(conv)}
-                      className={`w-full text-left px-3 py-3 rounded-xl border transition-all group relative shadow-[inset_0_1px_0_rgba(255,190,126,0.025),0_5px_16px_rgba(0,0,0,0.16)] ${
+                      className={`w-full text-left px-3 py-3 rounded-xl border transition-all group relative shadow-[inset_0_1px_0_rgba(145,170,255,0.025),0_5px_16px_rgba(0,0,0,0.16)] ${
                         activeConversationId === conv.id.toString()
-                          ? "bg-primary/12 border-primary/45 shadow-[inset_3px_0_0_rgba(232,122,37,0.85),inset_0_1px_0_rgba(255,190,126,0.06),0_8px_22px_rgba(0,0,0,0.24)]"
-                          : "bg-[#0b0704] border-primary/20 hover:bg-secondary hover:border-primary/40"
+                          ? "bg-primary/12 border-primary/45 shadow-[inset_3px_0_0_rgba(103,152,255,0.9),inset_0_1px_0_rgba(145,170,255,0.06),0_8px_22px_rgba(0,0,0,0.24)]"
+                          : "bg-[#080a12] border-primary/20 hover:bg-secondary hover:border-primary/40"
                       }`}
                       initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
@@ -408,7 +408,7 @@ export function ProjectSidebar({
                   <motion.button
                     key={project.id}
                     onClick={() => handleSelectProject(project)}
-                    className="w-full text-left px-3 py-3 rounded-xl bg-[#0b0704] border border-primary/20 shadow-[inset_0_1px_0_rgba(255,190,126,0.025),0_5px_16px_rgba(0,0,0,0.16)] hover:bg-secondary hover:border-primary/40 transition-all group"
+                    className="w-full text-left px-3 py-3 rounded-xl bg-[#080a12] border border-primary/20 shadow-[inset_0_1px_0_rgba(145,170,255,0.025),0_5px_16px_rgba(0,0,0,0.16)] hover:bg-secondary hover:border-primary/40 transition-all group"
                     initial={{ opacity: 0, x: -8 }}
                     animate={{ opacity: 1, x: 0 }}
                     transition={{ delay: i * 0.03 }}

@@ -138,7 +138,7 @@ export function LivePreview({ code, language, isStreaming, onClose, onDeploy }: 
           {onDeploy && (
             <button
               onClick={onDeploy}
-              className="flex items-center gap-1 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-purple-400 hover:bg-orange-500/20 transition-colors"
+              className="flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
               title="Deploy to platform"
             >
               <Rocket size={11} />

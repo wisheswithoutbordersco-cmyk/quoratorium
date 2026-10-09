@@ -3,8 +3,8 @@
 
 @custom-variant dark (&:is(.dark *));
 
-/* Quoratorium — ALLBLK glass system
- * Pure-black surfaces, near-transparent glass layers, and quiet silver accents.
+/* Quoratorium — blue-violet glass system
+ * Pure-black surfaces, near-transparent glass layers, and restrained Q accents.
  */
 @theme inline {
   --radius-sm: calc(var(--radius) - 4px);
@@ -47,43 +47,45 @@
 
 :root {
   --radius: 0.75rem;
+  --q-blue: #6798ff;
+  --q-violet: #9674ff;
   --background: #000000;
   --foreground: #f1f2f5;
   --card: rgba(255, 255, 255, 0.035);
   --card-foreground: #f1f2f5;
   --popover: rgba(10, 10, 12, 0.92);
   --popover-foreground: #f1f2f5;
-  --primary: #d8dbe2;
-  --primary-foreground: #080809;
-  --secondary: rgba(255, 255, 255, 0.045);
+  --primary: #6798ff;
+  --primary-foreground: #060a16;
+  --secondary: rgba(96, 137, 255, 0.085);
   --secondary-foreground: #f1f2f5;
   --muted: rgba(255, 255, 255, 0.04);
   --muted-foreground: #969ba6;
-  --accent: rgba(255, 255, 255, 0.075);
-  --accent-foreground: #ffffff;
+  --accent: rgba(150, 116, 255, 0.14);
+  --accent-foreground: #f3efff;
   --destructive: #ef4444;
   --destructive-foreground: #ffffff;
-  --border: rgba(255, 255, 255, 0.085);
-  --input: rgba(255, 255, 255, 0.1);
-  --ring: #d8dbe2;
+  --border: rgba(119, 151, 231, 0.14);
+  --input: rgba(119, 151, 231, 0.2);
+  --ring: #9674ff;
   --success: #34d399;
   --warning: #f59e0b;
   --error: #ef4444;
   --surface-elevated: rgba(255, 255, 255, 0.035);
   --surface-overlay: rgba(255, 255, 255, 0.055);
-  --chart-1: #f1f2f5;
-  --chart-2: #c2c6d0;
-  --chart-3: #9298a4;
-  --chart-4: #656b76;
-  --chart-5: #e0e2e8;
+  --chart-1: #6798ff;
+  --chart-2: #9674ff;
+  --chart-3: #51c3ff;
+  --chart-4: #6f79e8;
+  --chart-5: #b09aff;
   --sidebar: #030304;
   --sidebar-foreground: #f1f2f5;
-  --sidebar-primary: #d8dbe2;
+  --sidebar-primary: #6798ff;
   --sidebar-primary-foreground: #080809;
-  --sidebar-accent: rgba(255, 255, 255, 0.055);
+  --sidebar-accent: rgba(150, 116, 255, 0.1);
   --sidebar-accent-foreground: #f1f2f5;
-  --sidebar-border: rgba(255, 255, 255, 0.06);
-  --sidebar-ring: #d8dbe2;
+  --sidebar-border: rgba(119, 151, 231, 0.12);
+  --sidebar-ring: #9674ff;
   --duration-instant: 100ms;
   --duration-fast: 180ms;
   --duration-normal: 280ms;
@@ -119,6 +121,11 @@
     min-width: 320px;
     background-color: #000000;
     font-family: "Plus Jakarta Sans Variable", "Plus Jakarta Sans", system-ui, -apple-system, sans-serif;
+  }
+
+  #root {
+    min-height: 100vh;
+    min-height: 100dvh;
   }
 
   button:not(:disabled),
@@ -186,29 +193,41 @@
     font-variant-numeric: tabular-nums;
   }
 
-  .ember-text {
-    color: #f08a37;
-    background: linear-gradient(100deg, #ffb064 4%, #ef7d2e 48%, #c34a0c 100%);
+  @supports (height: 100dvh) {
+    .h-screen { height: 100dvh; }
+    .min-h-screen { min-height: 100dvh; }
+  }
+
+  .q-gradient-text {
+    color: var(--q-blue);
+    background: linear-gradient(100deg, #72c5ff 4%, #6798ff 48%, #9674ff 100%);
     -webkit-background-clip: text;
     background-clip: text;
     -webkit-text-fill-color: transparent;
   }
 
-  .ember-grid {
+  .q-grid {
     opacity: 0.26;
     background-image:
-      linear-gradient(rgba(234, 120, 31, 0.032) 1px, transparent 1px),
-      linear-gradient(90deg, rgba(234, 120, 31, 0.032) 1px, transparent 1px);
+      linear-gradient(rgba(103, 152, 255, 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(150, 116, 255, 0.04) 1px, transparent 1px);
     background-size: 64px 64px;
     mask-image: linear-gradient(to bottom, black, transparent 78%);
   }
 
   .q-glow {
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.16), 0 0 60px rgba(255, 255, 255, 0.045);
+    box-shadow: 0 0 20px rgba(103, 152, 255, 0.18), 0 0 60px rgba(150, 116, 255, 0.08);
   }
 
   .q-glow-text {
-    text-shadow: 0 0 20px rgba(255, 255, 255, 0.32), 0 0 40px rgba(255, 255, 255, 0.14);
+    text-shadow: 0 0 20px rgba(103, 152, 255, 0.34), 0 0 40px rgba(150, 116, 255, 0.18);
+  }
+
+  .q-card {
+    border: 1px solid rgba(119, 151, 231, 0.16);
+    border-radius: 1.25rem;
+    background: linear-gradient(145deg, rgba(103, 152, 255, 0.045), rgba(255, 255, 255, 0.025));
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 18px 50px rgba(0, 0, 0, 0.24);
   }
 
   .surface-base { background-color: #000000; }
@@ -239,21 +258,21 @@
 
 ::-webkit-scrollbar-thumb {
   border-radius: 4px;
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(119, 151, 231, 0.22);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.28);
+  background: rgba(150, 116, 255, 0.38);
 }
 
 *:focus-visible {
-  outline: 2px solid #d8dbe2;
+  outline: 2px solid #9674ff;
   outline-offset: 2px;
 }
 
 ::selection {
   color: #ffffff;
-  background: rgba(255, 255, 255, 0.2);
+  background: rgba(103, 152, 255, 0.32);
 }
 
 @media (prefers-reduced-motion: reduce) {

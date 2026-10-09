@@ -244,7 +244,7 @@ export default function Projects() {
                               name: project.name,
                             });
                           }}
-                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 text-[10px] font-medium hover:bg-orange-500/20 transition-colors"
+                          className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary text-[10px] font-medium hover:bg-primary/20 transition-colors"
                           whileTap={{ scale: 0.95 }}
                         >
                           <Rocket size={10} />
@@ -284,7 +284,7 @@ export default function Projects() {
                                   i < (project.current_phase || 0)
                                     ? project.status === "completed"
                                       ? "#10B981"
-                                      : "#d86618"
+                                      : "var(--q-blue)"
                                     : "rgba(255,255,255,0.08)",
                               }}
                             />
@@ -488,7 +488,7 @@ function StatusBadge({ status }: { status: string }) {
   const config: Record<string, { color: string; label: string }> = {
     active: { color: "#10B981", label: "Active" },
     paused: { color: "#F59E0B", label: "Paused" },
-    completed: { color: "#d86618", label: "Completed" },
+    completed: { color: "#10B981", label: "Completed" },
     archived: { color: "#8A8A9A", label: "Archived" },
   };
   const c = config[status] || { color: "#8A8A9A", label: status };

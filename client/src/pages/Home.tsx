@@ -291,7 +291,7 @@ function HeartbeatBar() {
       <motion.div
         className="absolute inset-y-0 w-24"
         style={{
-          background: "linear-gradient(90deg, transparent, rgba(232,122,37,0.48), transparent)",
+          background: "linear-gradient(90deg, transparent, rgba(103,152,255,0.5), rgba(150,116,255,0.32), transparent)",
         }}
         animate={{ x: ["-100px", "calc(100vw + 100px)"] }}
         transition={{ duration: 4, repeat: Infinity, ease: "linear" }}
