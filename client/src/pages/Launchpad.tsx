@@ -83,7 +83,7 @@ export default function Launchpad() {
                 className="group relative flex flex-col gap-4 rounded-xl border border-border bg-card p-6 transition-all duration-200 hover:border-primary/50 hover:shadow-lg hover:shadow-primary/5"
               >
                 <div className="flex items-center justify-between">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-primary/45 bg-[#0d0704] text-2xl font-bold text-[#f08a37] shadow-[inset_0_1px_rgba(255,190,126,0.08),0_0_24px_rgba(216,102,24,0.12)] transition-colors duration-200 group-hover:border-primary/70 group-hover:bg-[#160b06] group-hover:text-[#ffad66]">
+                  <div className="flex h-14 w-14 items-center justify-center rounded-lg border border-primary/45 bg-[#080b15] text-2xl font-bold text-[#83b6ff] shadow-[inset_0_1px_rgba(145,170,255,0.08),0_0_24px_rgba(83,132,255,0.14)] transition-colors duration-200 group-hover:border-violet-300/60 group-hover:bg-[#0d0a1b] group-hover:text-[#c0aaff]">
                     {app.letter}
                   </div>
                   <ExternalLink className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />

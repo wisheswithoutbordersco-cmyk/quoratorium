@@ -32,7 +32,7 @@ function getImportanceLabel(importance: number) {
 function getSourceBadge(source: string) {
   switch (source) {
     case "correction": return { label: "Auto-correction", class: "bg-red-500/10 text-red-400" };
-    case "auto_extracted": return { label: "Auto-learned", class: "bg-orange-500/10 text-purple-400" };
+    case "auto_extracted": return { label: "Auto-learned", class: "bg-primary/10 text-primary" };
     case "summary": return { label: "Summary", class: "bg-cyan-500/10 text-cyan-400" };
     default: return { label: "Manual", class: "bg-primary/10 text-primary" };
   }

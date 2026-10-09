@@ -96,8 +96,8 @@ export default function Deployments() {
       case "deploying":
         return {
           label: "Deploying",
-          color: "text-purple-400",
-          bg: "bg-orange-500/10",
+          color: "text-primary",
+          bg: "bg-primary/10",
           icon: Rocket,
         };
       case "failed":
@@ -263,7 +263,7 @@ export default function Deployments() {
                                 name: project.name,
                               })
                             }
-                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-purple-400 hover:bg-orange-500/20 transition-colors"
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-primary/10 border border-primary/20 text-primary hover:bg-primary/20 transition-colors"
                             whileHover={{ scale: 1.02 }}
                             whileTap={{ scale: 0.97 }}
                           >

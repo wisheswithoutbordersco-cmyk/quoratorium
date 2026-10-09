@@ -26,13 +26,13 @@ interface NeuralOrchestrationProps {
 }
 
 const WORKER_CONFIGS: Record<string, { label: string; color: string; glowColor: string }> = {
-  captain: { label: "Q", color: "#e4e6eb", glowColor: "rgba(255, 255, 255, 0.34)" },
-  builder: { label: "Builder", color: "#b8bdc6", glowColor: "rgba(216, 219, 226, 0.42)" },
-  validator: { label: "Validator", color: "#e4e6eb", glowColor: "rgba(255, 255, 255, 0.45)" },
-  research: { label: "Research", color: "#9298a4", glowColor: "rgba(178, 183, 193, 0.34)" },
-  artist: { label: "Artist", color: "#c2c6d0", glowColor: "rgba(224, 226, 232, 0.4)" },
-  browser: { label: "Browser", color: "#7f8590", glowColor: "rgba(164, 169, 179, 0.3)" },
-  executor: { label: "Executor", color: "#aeb3bd", glowColor: "rgba(211, 215, 224, 0.35)" },
+  captain: { label: "Q", color: "#82baff", glowColor: "rgba(103, 152, 255, 0.5)" },
+  builder: { label: "Builder", color: "#79a5ff", glowColor: "rgba(103, 152, 255, 0.44)" },
+  validator: { label: "Validator", color: "#a28aff", glowColor: "rgba(150, 116, 255, 0.45)" },
+  research: { label: "Research", color: "#67cbff", glowColor: "rgba(81, 195, 255, 0.4)" },
+  artist: { label: "Artist", color: "#bf9cff", glowColor: "rgba(176, 138, 255, 0.42)" },
+  browser: { label: "Browser", color: "#7d91ff", glowColor: "rgba(111, 121, 232, 0.4)" },
+  executor: { label: "Executor", color: "#89b8ff", glowColor: "rgba(103, 152, 255, 0.42)" },
 };
 
 export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcessing = false }: NeuralOrchestrationProps) {
@@ -143,7 +143,6 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
       <svg
         viewBox="0 0 100 100"
         className="w-full h-full"
-        style={{ filter: "drop-shadow(0 0 2px rgba(216, 102, 24, 0.2))" }}
       >
         {/* Connection lines from captain to each worker */}
         {nodes.slice(1).map((node) => {
@@ -160,7 +159,6 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
               strokeWidth={isActive ? 0.4 : 0.15}
               className={isActive ? "animate-pulse" : ""}
               style={{
-                filter: isActive ? `drop-shadow(0 0 3px ${node.glowColor})` : "none",
                 transition: "all 0.5s cubic-bezier(0.23, 1, 0.32, 1)",
               }}
             />
@@ -185,7 +183,6 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
               r={0.8}
               fill={particle.color}
               opacity={opacity}
-              style={{ filter: `drop-shadow(0 0 2px ${particle.color})` }}
             />
           );
         })}
@@ -221,7 +218,6 @@ export function NeuralOrchestration({ activeWorkers = [], currentStep, isProcess
                 stroke={node.color}
                 strokeWidth={node.active ? 0.5 : 0.3}
                 style={{
-                  filter: node.active ? `drop-shadow(0 0 4px ${node.glowColor})` : "none",
                   transition: "all 0.4s cubic-bezier(0.23, 1, 0.32, 1)",
                 }}
               />

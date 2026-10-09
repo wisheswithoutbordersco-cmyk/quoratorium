@@ -114,7 +114,7 @@ export function TopNav({ onMobileSidebarOpen }: TopNavProps) {
           animate={{ opacity: 1, x: 0 }}
           transition={{ duration: duration.normal, ease: ease.out }}
         >
-          <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(216, 102, 24,0.5)]" />
+          <div className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_6px_rgba(103,152,255,0.5)]" />
           <span className="text-[10px] font-medium text-muted-foreground tracking-wide">
             {activeProject.name}
           </span>

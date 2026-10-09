@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { HyperBlackQHero } from "./HyperBlackQ";
 import { trpc } from "@/lib/trpc";
 
 export function PasswordGate({ children }: { children: React.ReactNode }) {
@@ -45,14 +44,18 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex items-center justify-center bg-black px-4 py-8">
       <div
-        className={`relative w-full max-w-md p-8 sm:p-10 rounded-[1.75rem] bg-white/[0.035] backdrop-blur-2xl border border-white/10 ${shake ? "animate-shake" : ""}`}
+        className={`relative w-full max-w-md rounded-[1.75rem] border border-primary/20 bg-white/[0.035] p-7 backdrop-blur-2xl sm:p-10 ${shake ? "animate-shake" : ""}`}
         style={{
           boxShadow:
-            "inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 80px rgba(0,0,0,0.72)",
+            "inset 0 1px 0 rgba(255,255,255,0.08), 0 24px 80px rgba(0,0,0,0.72), 0 0 54px rgba(79,135,255,0.08), 0 0 72px rgba(150,116,255,0.06)",
         }}
       >
         <div className="flex flex-col items-center gap-4 mb-8">
-          <HyperBlackQHero size={192} />
+          <img
+            src="/icon-512x512.png"
+            alt="Quoratorium"
+            className="h-40 w-40 rounded-[2rem] border border-primary/20 object-cover shadow-[0_0_36px_rgba(79,135,255,0.14),0_0_54px_rgba(150,116,255,0.1)]"
+          />
           <div className="text-center">
             <h1 className="font-display text-xl font-bold text-white tracking-[0.12em]">
               QUORATORIUM
@@ -84,7 +87,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
               autoFocus
               disabled={loading || unlock.isPending}
               autoComplete="current-password"
-              className="w-full px-4 py-4 rounded-xl bg-white/[0.035] border border-white/10 text-white placeholder:text-white/35 focus:outline-none focus:border-white/30 focus:bg-white/[0.06] transition-colors text-center text-lg tracking-widest disabled:opacity-50"
+              className="w-full rounded-xl border border-primary/20 bg-white/[0.035] px-4 py-4 text-center text-lg tracking-widest text-white placeholder:text-white/35 transition-colors focus:border-violet-400/55 focus:bg-white/[0.06] focus:outline-none focus:ring-2 focus:ring-violet-500/20 disabled:opacity-50"
             />
             {error && (
               <p className="text-red-400 text-xs text-center">{error}</p>
@@ -92,7 +95,7 @@ export function PasswordGate({ children }: { children: React.ReactNode }) {
             <button
               type="submit"
               disabled={loading || unlock.isPending || !password.trim()}
-              className="w-full py-3.5 rounded-xl bg-white/[0.12] border border-white/15 text-white font-semibold tracking-wide transition-all duration-200 hover:bg-white/[0.18] hover:border-white/30 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
+              className="w-full rounded-xl border border-blue-300/25 bg-gradient-to-r from-blue-500 via-indigo-500 to-violet-600 py-3.5 font-semibold tracking-wide text-white transition-all duration-200 hover:border-violet-300/45 hover:brightness-110 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-50"
               style={{
                 boxShadow:
                   "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 24px rgba(0,0,0,0.28)",

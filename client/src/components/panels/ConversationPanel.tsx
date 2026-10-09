@@ -828,7 +828,7 @@ export function ConversationPanel({
               {canDeploySavedProject && (
                 <button
                   onClick={() => setShowDeployModal(true)}
-                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-orange-500/10 border border-orange-500/20 text-[10px] text-purple-400 hover:bg-orange-500/20 transition-colors"
+                  className="shrink-0 flex items-center gap-1 px-2 py-1 rounded-md bg-primary/10 border border-primary/20 text-[10px] text-primary hover:bg-primary/20 transition-colors"
                   title="Deploy saved project files"
                 >
                   <Rocket size={11} />
@@ -1088,7 +1088,7 @@ function MessageBubble({
             <div className="mt-3 pt-2 border-t border-white/5">
               <button
                 onClick={() => setShowPushDialog(!showPushDialog)}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all"
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-primary/10 border border-white/10 hover:border-primary/20 text-[11px] text-white/60 hover:text-primary transition-all"
               >
                 <Github className="w-3.5 h-3.5" />
                 Push to GitHub
@@ -1122,7 +1122,7 @@ function MessageBubble({
             <motion.button
               type="button"
               onClick={handleCopy}
-              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-[#100a06] text-muted-foreground/75 shadow-[inset_0_1px_0_rgba(255,190,126,0.05),0_4px_12px_rgba(0,0,0,0.24)] transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
+              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-primary/25 bg-[#080a12] text-muted-foreground/75 shadow-[inset_0_1px_0_rgba(145,170,255,0.05),0_4px_12px_rgba(0,0,0,0.24)] transition-all hover:border-primary/50 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/70"
               whileTap={{ scale: 0.9 }}
               aria-label={copied ? "Message copied" : "Copy this message"}
               title={copied ? "Copied" : "Copy this message"}
@@ -1351,7 +1351,7 @@ function VoiceButton({
       <button
         onClick={handlePlay}
         disabled={loading}
-        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-orange-500/10 border border-white/10 hover:border-orange-500/20 text-[11px] text-white/60 hover:text-orange-300 transition-all disabled:opacity-50"
+        className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-primary/10 border border-white/10 hover:border-primary/20 text-[11px] text-white/60 hover:text-primary transition-all disabled:opacity-50"
       >
         {playing ? (
           <Square className="w-3 h-3" />
@@ -1394,6 +1394,6 @@ function FileIcon({ type }: { type: string }) {
   if (type.startsWith("image/"))
     return <Image size={10} className="text-blue-400" />;
   if (type.includes("pdf") || type.includes("document"))
-    return <FileText size={10} className="text-orange-400" />;
+    return <FileText size={10} className="text-primary" />;
   return <File size={10} className="text-muted-foreground" />;
 }

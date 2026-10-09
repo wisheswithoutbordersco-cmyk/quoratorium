@@ -246,7 +246,7 @@ export default function Recyclatorium() {
 
         <div className="grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
           <div className="space-y-6">
-            <section className="ember-card p-5 lg:p-6">
+            <section className="q-card p-5 lg:p-6">
               <div className="mb-4 flex items-start justify-between gap-4">
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Step 1</p>
@@ -300,7 +300,7 @@ export default function Recyclatorium() {
                           setPlan(null);
                           setGenerated(null);
                         }}
-                        className="mt-1 accent-orange-500"
+                        className="mt-1 accent-blue-500"
                       />
                       {asset.previewUrl ? (
                         <img src={asset.previewUrl} alt="" className="h-16 w-16 rounded-lg bg-white object-contain" />
@@ -317,7 +317,7 @@ export default function Recyclatorium() {
               )}
             </section>
 
-            <section className="ember-card p-5 lg:p-6">
+            <section className="q-card p-5 lg:p-6">
               <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Step 2</p>
               <h2 className="mt-1 text-xl font-semibold">Choose the transformation</h2>
               <div className="mt-4 grid gap-3">
@@ -326,7 +326,7 @@ export default function Recyclatorium() {
                     key={option.id}
                     type="button"
                     onClick={() => { setMode(option.id); setPlan(null); setGenerated(null); }}
-                    className={`rounded-xl border p-4 text-left transition-all ${mode === option.id ? "border-primary bg-primary/10 shadow-[0_0_0_1px_rgba(216,102,24,0.12)]" : "border-white/10 bg-black/15 hover:border-primary/25"}`}
+                    className={`rounded-xl border p-4 text-left transition-all ${mode === option.id ? "border-primary bg-primary/10 shadow-[0_0_0_1px_rgba(103,152,255,0.12)]" : "border-white/10 bg-black/15 hover:border-primary/25"}`}
                   >
                     <span className="flex items-center gap-2 font-semibold"><WandSparkles className={`h-4 w-4 ${mode === option.id ? "text-primary" : "text-muted-foreground"}`} />{option.title}</span>
                     <span className="mt-1 block text-xs leading-5 text-muted-foreground">{option.description}</span>
@@ -348,7 +348,7 @@ export default function Recyclatorium() {
 
           <div className="space-y-6">
             {!plan ? (
-              <section className="grid min-h-[520px] place-items-center rounded-3xl border border-primary/15 bg-[radial-gradient(circle_at_top_right,rgba(216,102,24,0.12),transparent_36%),linear-gradient(145deg,rgba(255,255,255,0.025),rgba(0,0,0,0.18))] p-8 text-center">
+              <section className="grid min-h-[520px] place-items-center rounded-3xl border border-primary/15 bg-[radial-gradient(circle_at_top_right,rgba(103,152,255,0.12),transparent_36%),linear-gradient(145deg,rgba(255,255,255,0.025),rgba(0,0,0,0.18))] p-8 text-center">
                 <div className="max-w-md">
                   <div className="mx-auto grid h-16 w-16 place-items-center rounded-3xl border border-primary/25 bg-primary/10 text-primary"><Sparkles className="h-7 w-7" /></div>
                   <h2 className="mt-5 text-2xl font-semibold">The new product will appear here</h2>
@@ -386,7 +386,7 @@ export default function Recyclatorium() {
                   </div>
                 </section>
 
-                <section className="ember-card p-5 lg:p-6">
+                <section className="q-card p-5 lg:p-6">
                   <div className="flex items-center justify-between gap-4">
                     <div>
                       <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-primary">Step 3</p>
@@ -422,7 +422,7 @@ export default function Recyclatorium() {
             )}
 
             {generated && plan && (
-              <section className="ember-card overflow-hidden">
+              <section className="q-card overflow-hidden">
                 <div className="flex flex-col gap-4 border-b border-primary/15 p-5 sm:flex-row sm:items-center sm:justify-between lg:p-6">
                   <div>
                     <p className="flex items-center gap-2 text-sm font-semibold text-emerald-300"><CheckCircle2 className="h-4 w-4" /> Product built successfully</p>
