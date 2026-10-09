@@ -4,18 +4,28 @@
  */
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Key, Plus, Shield, Lock, Search, Trash2, Loader2, FileText } from "lucide-react";
+import { Eye, EyeOff, Key, Plus, Shield, Lock, Search, Trash2, Loader2, FileText } from "lucide-react";
 import { TopNav } from "@/components/TopNav";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { trpc } from "@/lib/trpc";
 import { toast } from "sonner";
 
 export default function Vault() {
   const [showCreate, setShowCreate] = useState(false);
   const [search, setSearch] = useState("");
+  const [selectedEntryId, setSelectedEntryId] = useState<number | null>(null);
+  const [revealContent, setRevealContent] = useState(false);
   const [newEntry, setNewEntry] = useState({ name: "", content: "", entryType: "credential" as const });
 
   const { data: entries, isLoading } = trpc.vault.list.useQuery();
   const utils = trpc.useUtils();
+  const selectedEntry = entries?.find((entry) => entry.id === selectedEntryId) ?? null;
 
   const createEntry = trpc.vault.create.useMutation({
     onSuccess: () => {
@@ -51,10 +61,11 @@ export default function Vault() {
                 Vault
               </h1>
               <p className="text-[11px] text-muted-foreground/50 mt-1">
-                Secure credential and configuration management
+                Tap an entry to view its saved content
               </p>
             </div>
             <motion.button
+              type="button"
               onClick={() => setShowCreate(true)}
               className="flex items-center gap-2 px-3.5 py-2 rounded-lg bg-primary text-primary-foreground text-[11px] font-medium"
               whileHover={{ scale: 1.02 }}
@@ -95,36 +106,50 @@ export default function Vault() {
               {filtered.map((item, index) => (
                 <motion.div
                   key={item.id}
-                  className="flex items-center gap-4 p-4 rounded-xl surface-elevated border border-border hover:border-primary/20 transition-colors group"
+                  className="group flex items-center gap-2 rounded-xl surface-elevated border border-border hover:border-primary/20 transition-colors p-2"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.25, delay: index * 0.05 }}
                 >
-                  <div className="w-9 h-9 rounded-lg surface-overlay border border-border flex items-center justify-center flex-shrink-0">
-                    {item.entry_type === "credential" ? (
-                      <Key size={14} className="text-primary/60" />
-                    ) : (
-                      <FileText size={14} className="text-primary/60" />
-                    )}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h4 className="text-[13px] font-medium text-foreground">{item.name}</h4>
-                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/70">
-                        {item.entry_type}
-                      </span>
+                  <motion.button
+                    type="button"
+                    aria-label={`View ${item.name}, ${item.entry_type}`}
+                    onClick={() => {
+                      setSelectedEntryId(item.id);
+                      setRevealContent(false);
+                    }}
+                    className="flex min-w-0 flex-1 items-center gap-4 rounded-lg p-2 text-left select-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    whileTap={{ scale: 0.995 }}
+                  >
+                    <div className="w-9 h-9 rounded-lg surface-overlay border border-border flex items-center justify-center flex-shrink-0">
+                      {item.entry_type === "credential" ? (
+                        <Key size={14} className="text-primary/60" />
+                      ) : (
+                        <FileText size={14} className="text-primary/60" />
+                      )}
                     </div>
-                    <p className="text-[10px] text-muted-foreground/50 truncate max-w-md">
-                      {item.entry_type === "credential" ? "••••••••••" : (item.content || "").slice(0, 80)}
-                    </p>
-                  </div>
+
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <h4 className="truncate text-[13px] font-medium text-foreground">{item.name}</h4>
+                        <span className="flex-shrink-0 text-[9px] px-1.5 py-0.5 rounded bg-primary/10 text-primary/70">
+                          {item.entry_type}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-muted-foreground/50 truncate max-w-md">
+                        {item.entry_type === "credential" ? "••••••••••" : (item.content || "").slice(0, 80)}
+                      </p>
+                    </div>
+                  </motion.button>
 
                   <button
+                    type="button"
+                    aria-label={`Delete ${item.name}`}
+                    title={`Delete ${item.name}`}
                     onClick={() => deleteEntry.mutate({ id: item.id })}
-                    className="opacity-0 group-hover:opacity-100 p-1.5 rounded text-muted-foreground/40 hover:text-destructive transition-all"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-lg text-muted-foreground/50 hover:text-destructive transition-colors opacity-70 sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
                   >
-                    <Trash2 size={12} />
+                    <Trash2 size={14} />
                   </button>
                 </motion.div>
               ))}
@@ -138,6 +163,55 @@ export default function Vault() {
           )}
         </div>
       </div>
+
+      {/* Entry Details */}
+      <Dialog
+        open={Boolean(selectedEntry)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedEntryId(null);
+            setRevealContent(false);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[85dvh] overflow-y-auto surface-elevated border-border sm:max-w-lg">
+          {selectedEntry && (
+            <>
+              <DialogHeader className="pr-8 text-left">
+                <DialogTitle className="break-words text-left">{selectedEntry.name}</DialogTitle>
+                <DialogDescription>
+                  {selectedEntry.entry_type} vault entry
+                </DialogDescription>
+              </DialogHeader>
+
+              <div className="space-y-2">
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs font-medium text-muted-foreground">Saved content</p>
+                  {selectedEntry.entry_type === "credential" && (
+                    <button
+                      type="button"
+                      aria-label={revealContent ? "Hide secret value" : "Reveal secret value"}
+                      aria-pressed={revealContent}
+                      onClick={() => setRevealContent((visible) => !visible)}
+                      className="inline-flex min-h-10 items-center gap-2 rounded-lg px-3 text-xs text-primary hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary"
+                    >
+                      {revealContent ? <EyeOff size={14} /> : <Eye size={14} />}
+                      {revealContent ? "Hide" : "Show"}
+                    </button>
+                  )}
+                </div>
+                <div className="max-h-[50dvh] min-h-16 overflow-auto rounded-lg border border-border bg-background p-3">
+                  <pre className="whitespace-pre-wrap break-words font-mono text-sm text-foreground select-text">
+                    {selectedEntry.entry_type === "credential" && !revealContent && selectedEntry.content
+                      ? "••••••••••"
+                      : selectedEntry.content || "No content stored for this entry."}
+                  </pre>
+                </div>
+              </div>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
 
       {/* Create Modal */}
       <AnimatePresence>
@@ -185,12 +259,14 @@ export default function Vault() {
               </div>
               <div className="flex gap-2">
                 <button
+                  type="button"
                   onClick={() => setShowCreate(false)}
                   className="flex-1 py-2.5 rounded-lg border border-border text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   Cancel
                 </button>
                 <button
+                  type="button"
                   onClick={() => createEntry.mutate(newEntry)}
                   disabled={!newEntry.name.trim() || !newEntry.content.trim() || createEntry.isPending}
                   className="flex-1 py-2.5 rounded-lg bg-primary text-primary-foreground text-xs font-medium disabled:opacity-50"
