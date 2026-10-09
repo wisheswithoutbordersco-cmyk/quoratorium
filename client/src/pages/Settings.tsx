@@ -19,7 +19,7 @@ import {
 type SettingsMap = Record<string, string>;
 
 export default function Settings() {
-  const { user } = useAuth();
+  const { user, isOwner } = useAuth();
 
   const [settings, setSettings] = useState<SettingsMap>({});
   const [activeSection, setActiveSection] = useState("ai");
@@ -384,7 +384,7 @@ export default function Settings() {
                           { value: "hidden", label: "Hidden" },
                         ]}
                       />
-                      {user?.role === "admin" && (
+                      {isOwner && (
                         <Card className="mt-4">
                           <CardHeader>
                             <CardTitle className="text-sm">
@@ -393,8 +393,9 @@ export default function Settings() {
                           </CardHeader>
                           <CardContent>
                             <p className="text-xs text-muted-foreground mb-3">
-                              Administrators can upload the 512x512 PNG served
-                              to every installed copy of this workspace.
+                              Only the workspace owner can change the 512x512
+                              PNG served to every installed copy of this
+                              workspace.
                             </p>
                             <div className="flex items-center gap-4">
                               <img

@@ -49,7 +49,7 @@ export async function getOwnerUser(): Promise<User | null> {
   }
 }
 
-function isOwnerIdentity(user: User | null): boolean {
+export function isOwnerIdentity(user: User | null): boolean {
   if (!user) return false;
   const isOwnerByOpenId = Boolean(
     ENV.ownerOpenId && user.clerk_id === ENV.ownerOpenId
