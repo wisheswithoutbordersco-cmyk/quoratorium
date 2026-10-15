@@ -141,7 +141,8 @@ export function ConversationPanel({
     plan: string;
     dailyLimit: number;
   } | null>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const shouldAutoScrollRef = useRef(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -170,6 +171,7 @@ export function ConversationPanel({
 
   useEffect(() => {
     activeConversationIdRef.current = activeConversationId;
+    shouldAutoScrollRef.current = true;
     setAutoPlayMessageId(null);
     stopActiveVoiceAudio();
   }, [activeConversationId]);
@@ -183,8 +185,15 @@ export function ConversationPanel({
   }, [setTyping]);
 
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, isTyping]);
+    // Scroll only this viewport; scrollIntoView can also move page-level ancestors.
+    const container = messagesContainerRef.current;
+    if (!container || !shouldAutoScrollRef.current) return;
+
+    const frame = window.requestAnimationFrame(() => {
+      container.scrollTop = container.scrollHeight;
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [messages, isTyping]);
 
   useEffect(() => {
     if (textareaRef.current) {
@@ -228,6 +237,7 @@ export function ConversationPanel({
       timestamp: new Date(),
       attachments: pendingUploads.length > 0 ? [...pendingUploads] : undefined,
     };
+    shouldAutoScrollRef.current = true;
     addMessage(userMessage);
     const messageText = input.trim();
     setInput("");
@@ -683,7 +693,17 @@ export function ConversationPanel({
         )}
       </AnimatePresence>
 
-      <div className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-4 py-4 space-y-4">
+      <div
+        ref={messagesContainerRef}
+        onScroll={event => {
+          // Preserve the reader's position when they scroll up to review history.
+          const container = event.currentTarget;
+          const distanceFromBottom =
+            container.scrollHeight - container.scrollTop - container.clientHeight;
+          shouldAutoScrollRef.current = distanceFromBottom <= 80;
+        }}
+        className="flex-1 overflow-y-auto px-3 sm:px-4 lg:px-4 py-4 space-y-4"
+      >
         {/* Memory Active Indicator */}
         <AnimatePresence>
           {activeMemoryCount > 0 && isTyping && (
@@ -767,7 +787,6 @@ export function ConversationPanel({
             </div>
           </motion.div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       <BusinessActionPanel
