@@ -1003,7 +1003,7 @@ function MessageBubble({
           className={
             "rounded-2xl border px-4 py-3.5 text-[15px] sm:text-[15px] leading-[1.7] transition-colors " +
             (isUser
-              ? "backdrop-blur-xl border-white/15 bg-white/[0.09] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_10px_28px_rgba(0,0,0,0.3)]"
+              ? "backdrop-blur-xl border-white/15 bg-[#0A84FF] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.09),0_10px_28px_rgba(0,0,0,0.3)]"
               : "backdrop-blur-xl bg-white/[0.025] border-white/[0.08] text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.06),inset_3px_0_0_rgba(255,255,255,0.12),0_10px_28px_rgba(0,0,0,0.3)]")
           }
         >
